@@ -1,0 +1,3 @@
+[submodule "ParlayANN"]
+	path = ParlayANN
+	url = https://github.com/cmuparlay/ParlayANN.git
