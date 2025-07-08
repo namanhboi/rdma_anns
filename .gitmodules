@@ -1,3 +1,6 @@
 [submodule "extern/ParlayANN"]
 	path = extern/ParlayANN
 	url = https://github.com/cmuparlay/ParlayANN.git
+[submodule "extern/gp-ann"]
+	path = extern/gp-ann
+	url = https://github.com/larsgottesbueren/gp-ann.git
