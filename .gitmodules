@@ -4,3 +4,6 @@
 [submodule "extern/gp-ann"]
 	path = extern/gp-ann
 	url = https://github.com/larsgottesbueren/gp-ann.git
+[submodule "extern/DiskANN"]
+	path = extern/DiskANN
+	url = https://github.com/microsoft/DiskANN
