@@ -1,8 +1,11 @@
+#include <cstring>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include "ann_exception.h"
 #include "defaults.h"
 #include "defs.h"
 #include "distance.h"
+#include "in_mem_data_store.h"
+#include "in_mem_graph_store.h"
 #include "index_build_params.h"
 #include "index_factory.h"
 #include "linux_aligned_file_reader.h"
@@ -17,17 +20,23 @@
 #include <libaio.h>
 #include <omp.h>
 #include <stdexcept>
+#include <string>
 #include <utils/graph.h>
 #include "index_config.h"
+#include "utils.h"
 
+#define HEAD_INDEX_R 32
+#define HEAD_INDEX_L 50
+#define HEAD_INDEX_ALPHA 1.2
+#define HEAD_INDEX_PERCENTAGE 0.05
 
 
 #define NUM_THREADS 16
 #define WHOLE_GRAPH_SUBGROUP_INDEX 0
 #define HEAD_INDEX_SUBGROUP_INDEX 1
-#define MAX_DEGREE 128
+#define MAX_DEGREE 32
 #define GRAPH_CLUSTER_PREFIX "/anns/cluster_"
-#define HEAD_INDEX "/anns/head_index"
+#define HEAD_INDEX_PREFIX "/anns/head_index"
 
 using namespace derecho::cascade;
 using namespace parlayANN;
@@ -110,6 +119,16 @@ void load_diskann_graph_into_cascade(
   }
 }
 
+/**
+   node_list is the list of nodes from the ssd index that shuld be saved in the
+   head index
+
+*/
+void save_head_index_node_indices(std::vector<uint32_t> &node_list,
+                                  const std::string &in_mem_index_path);
+
+
+
 
 /**
    This function builds the head index from the current diskindex and then saves
@@ -120,7 +139,6 @@ void build_and_save_head_index(
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
 			       uint64_t num_nodes_to_cache,
 			       int R, int L, float alpha,
-			       const std::string &data_type_str,
 			       const std::string &in_mem_index_path) {
   std::vector<uint32_t> node_list;
   _pFlashIndex->cache_bfs_levels(num_nodes_to_cache, node_list);
@@ -204,7 +222,7 @@ void build_and_save_head_index(
           .with_max_points(node_list.size())
           .with_data_load_store_strategy(diskann::DataStoreStrategy::MEMORY)
           .with_graph_load_store_strategy(diskann::GraphStoreStrategy::MEMORY)
-          .with_data_type(data_type_str)
+          .with_data_type(diskann_type_to_name<data_type>())
           .with_label_type("uint")
           .is_dynamic_index(false)
           .with_index_write_params(index_build_params)
@@ -217,7 +235,9 @@ void build_and_save_head_index(
   auto index = index_factory.create_instance();
   std::vector<uint32_t> tags;
   index->build(_coord_cache_buf, node_list.size(), tags);
-  index->save(in_mem_index_path.c_str());  
+  index->save(in_mem_index_path.c_str());
+
+  save_head_index_node_indices(node_list, in_mem_index_path);
 }
 
 
@@ -228,12 +248,85 @@ template <typename data_type>
 void load_diskann_head_index_into_cascade(
     ServiceClientAPI &capi,
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
-    const std::string &in_mem_index_path) {
-  // TODO
-
-    // capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-      // HEAD_INDEX, HEAD_INDEX_SUBGROUP_INDEX);
+					  const std::string &in_mem_index_path,
+					  int max_degree) {
+  int num_points_head_index = _pFlashIndex->get_num_points() * HEAD_INDEX_PERCENTAGE;
   
+  diskann::InMemGraphStore graph_store(num_points_head_index,
+                                       max_degree);
+  auto [nodes_read, start, num_frozen_points] =
+    graph_store.load(in_mem_index_path, num_points_head_index);
+
+  // if (nodes_read != _pFlashIndex->get_num_points()) {
+    // throw std::runtime_error("number of nodes read not equal to num points " + std::to_string(nodes_read) + " , " + std::to_string(_pFlashIndex->get_num_points()));
+  // }
+
+  std::unique_ptr<diskann::Distance<data_type>> dist;
+  dist.reset((diskann::Distance<data_type> *)diskann::get_distance_function<data_type>(diskann::Metric::L2));
+  diskann::InMemDataStore<data_type> data_store(
+						_pFlashIndex->get_num_points(), _pFlashIndex->get_data_dim(), std::move(dist));
+  data_store.load(in_mem_index_path + ".data");
+
+
+  uint32_t *node_list_data = nullptr;
+  size_t npts, dim;
+  diskann::load_bin<uint32_t>(in_mem_index_path + ".indices", node_list_data, npts, dim);
+  if (dim != 1) throw std::runtime_error("The dimension for indices file doesn't make sense: " + std::to_string(dim));
+  if (npts != num_points_head_index)
+    throw std::runtime_error(
+        "Number of points from graph and indices file is different " +
+        std::to_string(num_points_head_index) + " " + std::to_string(npts));
+  uint8_t *mapping = new uint8_t[npts * sizeof(uint32_t)];
+  std::memcpy(mapping, node_list_data, npts * sizeof(uint32_t));
+  
+
+  // for (
+  capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
+  
+  for (int i = 0; i < npts; i++) {
+    data_type vector_emb[_pFlashIndex->get_data_dim()];
+    data_store.get_vector(i, vector_emb);
+
+    auto neighbors = graph_store.get_neighbours(i);
+
+    size_t num_byte_emb = _pFlashIndex->get_data_dim() * sizeof(data_type);
+    size_t num_byte_nbr = neighbors.size() * sizeof(uint32_t);
+    size_t num_byte_obj = num_byte_emb + num_byte_nbr;
+    std::vector<std::byte> data(num_byte_obj);
+    std::memcpy(data.data(), vector_emb, num_byte_emb);
+    std::memcpy(data.data() + num_byte_emb, neighbors.data(), num_byte_nbr);
+    ObjectWithStringKey vector_data;
+    vector_data.key = HEAD_INDEX_PREFIX "/vector_" + std::to_string(i);
+    vector_data.previous_version = INVALID_VERSION;
+    vector_data.previous_version_by_key = INVALID_VERSION;
+    vector_data.blob =
+      Blob(reinterpret_cast<const uint8_t *>(data.data()), num_byte_obj);
+    auto result = capi.put(vector_data, false);
+    for (auto &reply_future : result.get()) {
+      auto reply = reply_future.second.get();
+    }
+  }
+
+  ObjectWithStringKey head_index_mapping;
+  head_index_mapping.key = HEAD_INDEX_PREFIX "/mapping";
+  head_index_mapping.previous_version = INVALID_VERSION;
+  head_index_mapping.previous_version_by_key = INVALID_VERSION;
+
+  head_index_mapping.blob =
+    Blob(reinterpret_cast<const uint8_t *>(mapping), npts * sizeof(uint32_t));
+  
+  auto result = capi.put(head_index_mapping, false);
+  for (auto &reply_future : result.get()) {
+    auto reply = reply_future.second.get();
+  }
+  delete[] mapping;
+  delete[] node_list_data;
+  
+  // for (
+  // 
+  // capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+								      // HEAD_INDEX, HEAD_INDEX_SUBGROUP_INDEX);
 }
 
 template <typename data_type>

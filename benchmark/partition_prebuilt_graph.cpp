@@ -19,3 +19,10 @@ Clusters get_clusters_from_adjgraph(AdjGraph &adj, int num_clusters) {
 }
 
 
+void save_head_index_node_indices(std::vector<uint32_t> &node_list,
+                                  const std::string &in_mem_index_path) {
+  const std::string filename = in_mem_index_path + ".indices";
+  diskann::save_bin<uint32_t>(filename, node_list.data(), node_list.size(), 1);
+  std::cout << "finished writing head index node indices\n";
+}
+

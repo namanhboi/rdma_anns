@@ -8,12 +8,14 @@ target_link_libraries(setup PRIVATE ParlayANN derecho::cascade Boost::program_op
 add_custom_command(TARGET setup POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
   COMMAND ${CMAKE_COMMAND} -E copy    ${CMAKE_CURRENT_SOURCE_DIR}/run_setup.sh        ${CMAKE_CURRENT_BINARY_DIR}/run_setup.sh
-    COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
-        ${CMAKE_BINARY_DIR}/cfg/n0/layout.json
-    COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
-        ${CMAKE_BINARY_DIR}/cfg/n1/layout.json
-    COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
+  COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
+  ${CMAKE_BINARY_DIR}/cfg/n0/layout.json
+  COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
+  ${CMAKE_BINARY_DIR}/cfg/n1/layout.json
+  COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
   ${CMAKE_BINARY_DIR}/cfg/n2/layout.json
+  COMMAND ln -sf ${CMAKE_BINARY_DIR}/cfg/layout.json
+  ${CMAKE_BINARY_DIR}/cfg/n3/layout.json
     )
 
 
