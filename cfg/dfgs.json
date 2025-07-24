@@ -1,0 +1,25 @@
+[
+  {
+    "id": "53087e25-084e-43c4-bdf5-33fde6dda13a",
+    "desc": "Head index search for rdma anns project",
+    "graph": [
+      {
+        "pathname": "/anns/head_index_search",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["69eb06e2-017c-481b-8534-2e5dac301949"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [
+          {
+            "dim":128,
+            "num_search_threads":16,
+            "min_batch_size":1,
+            "max_batch_size":100,
+            "batch_time_us":1000,
+            "emit_key_prefix":"/anns/graph"
+          }],
+        "destinations": [{}]
+      }
+    ]
+  }
+
+]

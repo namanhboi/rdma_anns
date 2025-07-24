@@ -27,4 +27,6 @@ message(STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}")
 add_subdirectory(extern/gp-ann)
 add_subdirectory(extern/DiskANN)
 add_subdirectory(benchmark)
+add_subdirectory(src)
+
 

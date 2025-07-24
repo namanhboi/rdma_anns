@@ -1,5 +1,1 @@
-./setup -P /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/disk_index_sift_learn_R32_L50_A1.2 \
-	-T float \
-	-F Euclidian \
-	-O clusters.txt \
-	-N 3 
+./setup -P /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/disk_index_sift_learn_R32_L50_A1.2  -T float        -F Euclidian    -O clusters.txt         -N 2    --in_mem_index_path /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/index_sift_learn_R32_L50_A1.2 --query_file /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query.fbin --gt_file /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query_learn_gt100
