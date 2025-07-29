@@ -4,17 +4,35 @@
 #include <cstring>
 #include <queue>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <cascade/service_client_api.hpp>
+#include "neighbor.h"
+
+
+// 
+
+#define HEAD_INDEX_OBJECT_POOL "/head_index"
+#define GLOBAL_SEARCH_OBJECT_POOL "/anns"
+#define GLOBAL_SEARCH_DATA_PREFIX "/anns/data"
+// example data: /anns/data/cluster_i_nbr_j, /anns/data/cluster_i_emb_j, /anns/data/cluster_i_mapping
+#define GLOBAL_SEARCH_SEARCH_PREFIX "/anns/search"
+
+
+
+
 /**
-   One optimziation for both the batch manager which accepts a buffer pointer
-from an blob object is to avoid doing memcpy and instead just let a shared_ptr
-handle that address:
-
-int* raw_ptr = new int[10];  // Allocates memory at address X
-std::shared_ptr<int[]> sp(raw_ptr, std::default_delete<int[]>());
-
-Should look into this after testing that the system works.
+   Explanation about the naming conventions in this file:
+   - greedy_query_t, query_t,... : this is the intermedidate representation of
+stuff to be sent to the batcher to serialize.
+   - CamelCaseClasses: these are the data structures that refer to the shared
+   ptr buffer that the batch manager first manages. This is to reduce data
+   copying + use RAII to clean up data neatly
+   - BatchManager: de serializes the data recived from the handler to create the
+   appropriate CamelCaseClasses that all refer to the pointer to the data that
+   was recieved from the handler.
+   - Batcher: serializes the data that it manages so that this data can be moved
+   into a blob and sent to the appropriate object pool to trigger whatever udl
 */
 
 template <typename data_type>
@@ -488,7 +506,6 @@ class GreedySearchQueryBatchManager {
 public:
   GreedySearchQueryBatchManager(const uint8_t *buffer, uint64_t buffer_size,
                              bool copy_embeddings = true) { // why would you not want to copty the embedding?
-
     this->copy_embeddings = copy_embeddings;
 
     const uint32_t *header = reinterpret_cast<const uint32_t *>(buffer);
@@ -532,32 +549,108 @@ public:
 };
 
 
-enum global_message_type : uint8_t {
-  SEARCH_QUERY,
-  DISTANCE_TASK,
-  DISTANCE_RES
+enum message_type : uint8_t {
+  QUERY_DATA,   // this is sent to the secondary partitions from the head index
+                // udl to do distance calculations with. Is just a EmbeddingQuery
+  SEARCH_QUERY, // this is sent to the primary partitions from the head index
+                // udl to do search
+  SEARCH_RES,
+  COMPUTE_QUERY,
+  COMPUTE_RES
 };
 
-// template <typename data_type> class ComputationTaskQuery {
+
+// since this struct is so small, no need for a ComputeQuery class 
+struct compute_query_t {
+  uint32_t node_id;
+  uint32_t query_id;
+  float min_distance;
+  uint8_t cluster_sender_id;
+  uint8_t cluster_receiver_id;
   
-// public:
-  // ComputationTaskQuery();
+};
+
+struct compute_result_t {
+  uint8_t cluster_sender_id; 
+  uint8_t cluster_receiver_id;
+  // this should be sorted?? maybe? haven't thought too much about it tbh
+  diskann::Neighbor neighbor;
+  uint32_t query_id;
+};
+
+struct ann_search_result_t {
+  std::shared_ptr<uint32_t[]> search_result;
+  uint32_t query_id;
+  uint32_t client_id;
+  uint8_t cluster_id;
+};  
+
+
+template<typename data_type>
+struct global_search_message {
+  message_type msg_type;
+  union msg {
+    greedy_query_t<data_type> search_query;
+    compute_query_t compute_query;
+    compute_result_t compute_result;
+    ann_search_result_t search_res;
+  };
+};  
+
+
+template <typename data_type> class GlobalSearchMessageBatcher {
+  // Usage: in the global search udl when you want to send messages to other
+  // global search udls. When sending msgs to other global search udls, it never
+  // sends full query embeddings, only candidate queue (cosearch) and distance
+  // calc task/result.
+  // will use this class for the head index udl as well to batch the greedy
+  // search queries.
+  // data layout: header || search queries || compute result || compute query
+
+  struct {
+    uint32_t compute_result_position;
+    uint32_t compute_query_position;
+
+    uint32_t size() {
+      return sizeof(compute_query_position) + sizeof(compute_result_position);
+    }
+    void write_header(uint8_t *buffer) {
+      std::memcpy(buffer, &compute_result_position,
+                  sizeof(compute_result_position));
+      std::memcpy(buffer, &compute_query_position,
+                  sizeof(compute_query_position));
+    }
+  } header;
+
+  static uint32_t get_header_size() { return sizeof(uint32_t) * 2; }
+
+  std::shared_ptr<derecho::cascade::Blob> blob;
   
+  std::vector<global_search_message<data_type>> messages;
+  uint32_t query_emb_dim; // this is only used for head search udl
+  // sending stuff to global search udl
+  
+  GlobalSearchMessageBatcher(uint32_t emb_dim, uint64_t size_hint = 100) {
+    this->query_emb_dim = emb_dim;
+    messages.reserve(size_hint);
+  }
+  
+  void push_message(global_search_message<data_type> &message) {
+    messages.push_back(message);
+  }
+  void serialize() {
+    uint32_t total_size = this->header.size();
 
-// };
+  }
+
+  std::shared_ptr<derecho::cascade::Blob> get_blob() { return blob; }
+  void reset() {
+    blob.reset();
+    messages.clear();
+  }
+};
 
 
-// template <typename data_type>
-//     class GlobalSearchMessage {
-//   global_message_type msg_type;
-//   union msg {
-//     GreedySearchQuery<data_type> search_query;
-    
 
-//   };
-// public:
-//   GlobalSearchMessage(global_message_type msg_type, ) {
 
-//   }
-
-// };
+uint8_t get_cluster_id(const std::string &key);

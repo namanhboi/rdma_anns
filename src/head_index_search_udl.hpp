@@ -24,8 +24,6 @@ namespace cascade {
   "UDL for searching the head index to find good starting points in clusters " \
   "for greedy/beam search udl"
 #define DATA_TYPE "float"
-#define HEAD_INDEX_BEAM_SIZE 20
-#define HEAD_INDEX_K 10
 
 std::string get_uuid();
 
@@ -111,22 +109,22 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // udl. K = 1 for search
     std::unordered_map<std::byte, std::vector<uint32_t>>
     head_index_search(std::shared_ptr<EmbeddingQuery<data_type>> &query) {
-      std::vector<uint32_t> search_id_results(HEAD_INDEX_K);
-      std::vector<float> search_dist_results(HEAD_INDEX_K);
+      std::vector<uint32_t> search_id_results(parent->K);
+      std::vector<float> search_dist_results(parent->K);
       // std::cout << "start search on query " << query->get_query_id()
       // << std::endl;
       const data_type *emb = query->get_embedding_ptr();
       
       if (emb == nullptr) throw std::runtime_error("embedding nullptr");
       auto [hops, dist_cmps] = parent->head_index->search(
-          emb, HEAD_INDEX_K, HEAD_INDEX_BEAM_SIZE,
+          emb, parent->K, parent->L,
 							  search_id_results.data());
       // std::cout << "done search on query " << query->get_query_id() << std::endl;
 
       std::unordered_map<std::byte, std::vector<uint32_t>> res;
       std::byte cluster_0 = static_cast<std::byte>(0);
       res[cluster_0] = std::vector<uint32_t>();
-      for (int i = 0; i < HEAD_INDEX_K; i++) {
+      for (int i = 0; i < parent->K; i++) {
         // std::byte cluster_id =
         // parent->cluster_assignment[search_id_results[i]]; // need to put in
         // the mapping first mate
@@ -201,12 +199,10 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
       while (running) {
         lock.lock();
-	if (cluster_queue.size() != 0) std::cout << "size of cluster queue" << cluster_queue.size() << std::endl;
         bool empty = true;
         for(auto& item : cluster_queue){
           if(!(item.second->empty())){
             empty = false;
-            std::cout << "there is something in batching queue" << std::endl;
             break;
           }
         }
@@ -406,7 +402,9 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::cout << "called to get header " << std::endl;
     auto &header_reply = header.get().begin()->second.get();
     Blob header_blob = std::move(const_cast<Blob &>(header_reply.blob));
-    header_blob.memory_mode = object_memory_mode_t::EMPLACED;
+    // header_blob.memory_mode = object_memory_mode_t::EMPLACED; // why need emplaced?
+
+
     uint32_t num_pts = *reinterpret_cast<const uint32_t *>(header_blob.bytes);
     uint32_t num_dim = *reinterpret_cast<const uint32_t *>(header_blob.bytes +
                                                            sizeof(uint32_t));
@@ -434,7 +432,8 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto nbr_get = typed_ctxt->get_service_client_ref().get(nbr_key, CURRENT_VERSION, true);
       auto &nbr_reply = nbr_get.get().begin()->second.get();
       Blob nbr_blob = std::move(const_cast<Blob &>(nbr_reply.blob));
-      nbr_blob.memory_mode = object_memory_mode_t::EMPLACED;
+      // nbr_blob.memory_mode = object_memory_mode_t::EMPLACED; // why the need
+      // for emplaced, will need to call free later
       uint32_t num_nbr = nbr_blob.size / sizeof(uint32_t);
       const uint32_t *start_nbr =
         reinterpret_cast<const uint32_t *>(nbr_blob.bytes);
@@ -448,7 +447,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto emb_get = typed_ctxt->get_service_client_ref().get(emb_key, CURRENT_VERSION, true);
       auto &emb_reply = emb_get.get().begin()->second.get();
       Blob emb_blob = std::move(const_cast<Blob &>(emb_reply.blob));
-      emb_blob.memory_mode = object_memory_mode_t::EMPLACED;
+      // emb_blob.memory_mode = object_memory_mode_t::EMPLACED; // why 
       if (emb_blob.size != sizeof(data_type) * dim)
         throw std::runtime_error("wrong size emb");
       std::memcpy(emb_buf + i * dim, emb_blob.bytes , emb_blob.size);
@@ -474,52 +473,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         std::make_shared<diskann::InMemDataStore<data_type>>(num_pts, num_dim,
                                                              std::move(dist));
     data_store->populate_data(emb_buf, num_pts);
-    // done with data store
-    // std::cout << "distance between node 120 and node 7 is "
-    // << data_store->get_distance(120, 7) << std::endl;
-    // std::cout << "distance between node 999 and node 0 is " << data_store->get_distance(999, 0) << std::endl;
-    
-    // auto get_graph_store_results = typed_ctxt->get_service_client_ref().get(
-									    // graph_store_key, CURRENT_VERSION, true);
-    // auto &graph_reply = get_graph_store_results.get().begin()->second.get();
-    // Blob graph_blob = std::move(const_cast<Blob &>(graph_reply.blob));
-    // graph_blob.memory_mode = object_memory_mode_t::EMPLACED;
-    // uint32_t graph_num_pts = *reinterpret_cast<const uint32_t *>(graph_blob.bytes);
-      
-    // uint32_t max_deg = *reinterpret_cast<const uint32_t *>(graph_blob.bytes +
-                                                           // sizeof(uint32_t));
-    // if (graph_num_pts != num_pts) {
-      // throw std::runtime_error(
-			       // "Difference between data store and graph store number of pts");
-    // }
-    // auto nbr_data_ptr =
-        // const_cast<uint32_t *>(reinterpret_cast<const uint32_t *>(
-								  // graph_blob.bytes + sizeof(uint32_t) * 3 + sizeof(size_t)));
-    // 3 uint32 and 1 size_t (frozen) because of the header of graph store file, which i changed out the first element to be num_pts which is uint32_t. chcek data loading utils file 
-    // std::unique_ptr<diskann::InMemGraphStore> graph_store =
-      // std::make_unique<diskann::InMemGraphStore>(num_pts, max_deg);
-    // uint32_t location = 0;
-    
-    // std::cout << "num neighbors of node 0 " << nbr_data_ptr[0] << std::endl;
-
-    // for (uint32_t i = 0; i < graph_num_pts; i++) {
-      // uint32_t num_nbrs =
-          // nbr_data_ptr[location];
-      // neighbors, + 1 for size, first element is the size
-      // if (num_nbrs > 32)
-        // throw std::runtime_error("max nbrs impossible " +
-                                 // std::to_string(num_nbrs));
-      
-      // uint32_t *nbr_start_ptr = nbr_data_ptr + location + 1; 
-      // uint32_t *nbr_end_ptr = nbr_data_ptr + location + 1 + num_nbrs;
-      // std::vector<uint32_t> nbrs(nbr_start_ptr, nbr_end_ptr);
-      // graph_store->set_neighbours(i, nbrs);
-      // location += num_nbrs + 1;
-    // }
-    // std::cout << "neighbos of node 0: " << graph_store->get_neighbours(0)
-    // << std::endl;
-    // std::cout << "neighbos of node 999: " << graph_store->get_neighbours(999)
-    // << std::endl;
 
   uint32_t filter_list_size = 0;
   auto index_build_params = diskann::IndexWriteParametersBuilder(50, 32)

@@ -68,7 +68,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
   
   uint32_t num_queries = dataset.get_num_queries();
   std::cout << "starting benchmark: sending " << dataset.get_num_queries() << " queries ..." << std::endl;
-  std::unordered_map<uint64_t,uint64_t> query_id_to_index;
+  std::unordered_map<uint64_t,uint32_t> query_id_to_index;
   auto extra_time = std::chrono::nanoseconds(0);
   for(uint32_t i=0;i<num_queries;i++){
     auto start = std::chrono::steady_clock::now();
@@ -78,6 +78,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     uint64_t next_query_index = dataset.get_next_query_index();
     const data_type *query_emb = dataset.get_query(next_query_index);
     uint64_t query_id = client.query(query_emb);
+    query_id_to_index[query_id] = next_query_index;
             
     auto end = std::chrono::steady_clock::now();
     if (rate_control) {
@@ -102,19 +103,19 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
   data_type query_data[num_queries * dataset.query_dim];
   std::vector<uint32_t> bad_queries;
   std::byte cluster_0;
-  for (uint32_t query_id = 0; query_id < num_queries; query_id++) {
+  for (auto &[query_id, query_index] : query_id_to_index) {
 
     std::shared_ptr<GreedySearchQuery<data_type>> greedy_search_q =
       client.get_result(query_id);
 
     if (greedy_search_q->get_cluster_id() != cluster_0) throw std::runtime_error("query cluster " + std::to_string(static_cast<uint32_t>(greedy_search_q->get_cluster_id())));
-    if (greedy_search_q->get_query_id() != query_id) throw std::runtime_error("query bad id " + std::to_string(greedy_search_q->get_query_id()));
-    if (greedy_search_q->get_candidate_queue_size() != HEAD_INDEX_K) bad_queries.push_back(query_id);
+    if (greedy_search_q->get_query_id() != query_index) throw std::runtime_error("query bad id " + std::to_string(greedy_search_q->get_query_id()));
+    if (greedy_search_q->get_candidate_queue_size() != HEAD_INDEX_K) bad_queries.push_back(query_index);
     // std::cout << "total size " << greedy_search_q->get_candidate_queue_size() << std::endl;
-    std::memcpy(query_result + query_id * HEAD_INDEX_K,
+    std::memcpy(query_result + query_index * HEAD_INDEX_K,
                 greedy_search_q->get_candidate_queue_ptr(),
                 greedy_search_q->get_candidate_queue_size() * sizeof(uint32_t));
-    std::memcpy(query_data + query_id * dataset.query_dim,
+    std::memcpy(query_data + query_index * dataset.query_dim,
                 greedy_search_q->get_embedding_ptr(),
                 sizeof(data_type) * dataset.query_dim);
   }

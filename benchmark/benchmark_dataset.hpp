@@ -41,7 +41,7 @@ public:
     next_query++;
     return query_index;
   }
-  void reset() { next_query = 0; }
+  void reset() { this->next_query = 0; }
 
   const data_type *get_query(uint32_t query_index) {
     return query_data + query_index * query_aligned_dim;
