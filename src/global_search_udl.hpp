@@ -44,7 +44,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     uint32_t num_points;
 
     //contains the mapping of all the nodes to clusters.
-    std::unique_ptr<uint8_t[]> node_id_cluster_mapping;
+    std::unique_ptr<uint8_t, decltype(&std::free)> node_id_cluster_mapping;
     DefaultCascadeContextType *typed_ctxt;
 
     uint32_t dim;
@@ -62,11 +62,19 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       // retrieve data like mappings, etc...
       // TODO
       std::string mapping_key = parent->cluster_data_prefix + "_mapping";
-      // typed_ctxt->get_service_client_ref().get(
+      auto result = typed_ctxt->get_service_client_ref().get(mapping_key, true);
+      auto &reply = result.get().begin()->second.get();
+      Blob blob = std::move(const_cast<Blob &>(reply.blob));
+      blob.memory_mode = object_memory_mode_t::EMPLACED; // memory will now be
+      // freed by std::free
+      std::unique_ptr<uint8_t, decltype(&std::free)> tmp(
+							 const_cast<uint8_t *>(blob.bytes), std::free);
+
+      node_id_cluster_mapping = std::move(tmp);
     }
 
     bool is_in_cluster(uint32_t node_id) {
-      return node_id_cluster_mapping[node_id] == this->cluster_id;
+      return node_id_cluster_mapping.get()[node_id] == this->cluster_id;
     }
 
     // could involve less copying of data, could just be a pointer to neighbor
@@ -91,8 +99,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       return nbrs;
     }
 
-    // maybe we don't need to copy the data
-    // if we just retrieve a single embedding
+    // no need to do memcpy
     std::shared_ptr<data_type[]>
     retrieve_embeddings(const std::vector<uint32_t> &node_ids) {
       std::shared_ptr<data_type[]> emb_data = std::make_shared<data_type[]>(node_ids.size() * this->dim);
@@ -328,14 +335,13 @@ check upon each new iteration of the search loop.
           std::make_shared<diskann::ConcurrentQueue<compute_result_t>>(empty_res);
         compute_res_lock.unlock();
         lock.unlock();
-        uint32_t result_indices[parent->K];
-        const uint32_t K = parent->K;
 	std::shared_ptr<uint32_t[]> result(new uint32_t[parent->K]);
         parent->index->search(query, compute_res_queues[query_id], parent->L,
                               parent->K, result.get(), nullptr);
-        parent->batch_thread->push_ann_result(query->get_query_id(),
-                                              query->get_client_node_id(),
-                                              std::move(result_indices));
+        parent->batch_thread->push_ann_result(
+            query->get_query_id(), query->get_client_node_id(), parent->K,
+					      parent->L, std::move(result), parent->cluster_id);
+        
       }
 
 
@@ -351,7 +357,7 @@ check upon each new iteration of the search loop.
         throw std::invalid_argument(
             "result computation between query id " +
             std::to_string(result.query_id) + " and node id " +
-            std::to_string(result.neighbor.id) +
+            std::to_string(result.node.id) +
             " has mismatch cluster id (this cluster vs intended receiver):" +
             std::to_string(parent->cluster_id) + " " +
             std::to_string(result.cluster_receiver_id));
@@ -435,26 +441,41 @@ check upon each new iteration of the search loop.
               " but this node has cluster id " +
               std::to_string(parent->cluster_id));
         }
-        std::string vector_key =
+        std::string emb_key =
           parent->cluster_data_prefix + "_emb_" + std::to_string(query.node_id);
         bool stable = true;
-        auto vector_get_result =
-          typed_ctxt->get_service_client_ref().get(vector_key, stable);
+        auto emb_get_result =
+          typed_ctxt->get_service_client_ref().get(emb_key, stable);
 
-        auto &reply = vector_get_result.get().begin()->second.get();
-        Blob blob = std::move(const_cast<Blob &>(reply.blob));
-        const data_type *vec_emb = reinterpret_cast<const data_type *>(blob.bytes);
+        auto &emb_reply = emb_get_result.get().begin()->second.get();
+        Blob emb_blob = std::move(const_cast<Blob &>(emb_reply.blob));
+        const data_type *vec_emb =
+          reinterpret_cast<const data_type *>(emb_blob.bytes);
 
         float distance = parent->dist_fn->compare(
             vec_emb, query_emb_ptr->get_embedding_ptr(),
 						  query_emb_ptr->get_dim());
-        diskann::Neighbor nbr= {query.node_id, distance};
+        diskann::Neighbor node = {query.node_id, distance};
+
+        std::string nbr_key =
+          parent->cluster_data_prefix + "_nbr_" + std::to_string(query.node_id);
+        auto nbr_get_result =
+          typed_ctxt->get_service_client_ref().get(nbr_key, stable);
+        auto &nbr_reply = nbr_get_result.get().begin()->second.get();
+        Blob nbr_blob = std::move(const_cast<Blob &>(nbr_reply.blob));
+        const uint32_t *vec_nbr =
+          reinterpret_cast<const uint32_t *>(nbr_blob.bytes);
+        uint32_t num_nbrs = vec_nbr[0];
+
         if (distance >= query.min_distance) {
-          compute_result_t res = {.cluster_sender_id = parent->cluster_id,
-                                  .cluster_receiver_id =
-                                      query.cluster_sender_id,
-                                  .neighbor = nbr,
-                                  .query_id = query.query_id};
+          compute_result_t res = {
+            .cluster_sender_id = parent->cluster_id,
+            .cluster_receiver_id = query.cluster_sender_id,
+            .node = node,
+            .query_id = query.query_id,
+            .num_neighbors = num_nbrs,
+            .neighbors = (vec_nbr + 1)
+          };
           parent->batch_thread->push_compute_res(res);
         }
       }
@@ -577,7 +598,7 @@ check upon each new iteration of the search loop.
     
   public:
     void push_message(uint8_t cluster_receiver_id,
-                      global_search_message<data_type> msg) {
+                      global_search_message<data_type> &msg) {
       std::scoped_lock<std::mutex> lock(cluster_messages_mutex);
       if (cluster_messages.count(cluster_receiver_id) == 0) {
         cluster_messages[cluster_receiver_id] =
@@ -603,14 +624,19 @@ check upon each new iteration of the search loop.
       push_message(res.cluster_receiver_id, msg);
     }
 
-    void push_ann_result(uint32_t query_id, uint32_t client_id, std::shared_ptr<uint32_t[]> search_result) {
-      global_search_message<data_type> res = {
-        .msg_type = SEARCH_RES,
-        .search_res = {.search_result = std::move(search_result),
-                         .query_id = query_id,
-                         .client_id = client_id,
-                         .cluster_id = parent->cluster_id}};
-      
+    void push_ann_result(uint32_t query_id, uint32_t client_id, uint32_t K,
+                         uint32_t L, std::shared_ptr<uint32_t[]> search_result,
+                         uint8_t cluster_id) {
+      ann_search_result_t search_res = {
+        .query_id = query_id,
+        .client_id = client_id,
+        .K = K,
+        .L = L,
+        .search_result = std::move(search_result),
+        .cluster_id = cluster_id
+      };
+      global_search_message<data_type> res = {.msg_type = SEARCH_RES,
+                                              .search_res = search_res};
       push_message(search_result_bucket_id, res);
     }      
   };
