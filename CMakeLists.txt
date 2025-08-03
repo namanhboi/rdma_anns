@@ -16,6 +16,7 @@ target_include_directories(ParlayANN INTERFACE
 
 target_link_libraries(ParlayANN INTERFACE Parlay)
 
+
 find_package(cascade CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS program_options)
 message(STATUS "Boost_FOUND: ${Boost_FOUND}")
@@ -28,5 +29,5 @@ add_subdirectory(extern/gp-ann)
 add_subdirectory(extern/DiskANN)
 add_subdirectory(benchmark)
 add_subdirectory(src)
-
+add_subdirectory(test)
 

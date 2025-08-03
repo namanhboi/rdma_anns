@@ -23,7 +23,9 @@ template <typename data_type>
 void benchmark(const std::string &query_file, const std::string &gt_file,
                uint32_t batch_min_size, uint32_t batch_max_size,
                uint32_t batch_time_us, uint32_t num_result_threads,
-               uint32_t num_warmup, uint32_t send_rate) {
+               uint32_t num_warmup, uint32_t send_rate, uint32_t K,
+               uint32_t L) {
+  
   BenchmarkDataset<data_type> dataset(query_file, gt_file);
   BenchmarkClient<data_type> client(num_warmup);
 
@@ -46,7 +48,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
       auto start = std::chrono::steady_clock::now();
       uint64_t next_query_index = dataset.get_next_query_index();
       const data_type *query_emb = dataset.get_query(next_query_index);
-      uint64_t query_id = client.query(query_emb);
+      uint64_t query_id = client.query(query_emb, K, L);
             
       auto end = std::chrono::steady_clock::now();
       if (rate_control) {
@@ -77,7 +79,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     }
     uint64_t next_query_index = dataset.get_next_query_index();
     const data_type *query_emb = dataset.get_query(next_query_index);
-    uint64_t query_id = client.query(query_emb);
+    uint64_t query_id = client.query(query_emb, K, L);
     query_id_to_index[query_id] = next_query_index;
             
     auto end = std::chrono::steady_clock::now();
@@ -151,7 +153,8 @@ int main(int argc, char **argv) {
   uint32_t batch_time_us;
   uint32_t num_result_threads;
   uint32_t num_warmup;
-  
+  uint32_t K, L;
+
   desc.add_options()("help,h", "show help message")(
       "query_file,Q", po::value<std::string>(&query_file)->required(),
       "Path to the query file")(
@@ -177,7 +180,12 @@ int main(int argc, char **argv) {
       "number of threads for processing results")(
       "num_warmup,W",
       po::value<uint32_t>(&num_warmup)->default_value(DEFAULT_WARMUP),
-						  "number of quries to wamrup system");
+      "number of quries to wamrup system")(
+      "K", po::value<uint32_t>(&K)->required(), "recall at")(
+							     "L", po::value<uint32_t>(&L)->required(), "candidate queue size");
+  
+  
+  
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
   if (vm.count("help")) {
@@ -191,11 +199,11 @@ int main(int argc, char **argv) {
 
 
   if (data_type == "float") {
-    benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate);
+    benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
   } else if (data_type == "uint8_t") {
-    benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate);
+    benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
   } else if (data_type == "int8_t") {
-    benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate);
+    benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
   }
   
 }

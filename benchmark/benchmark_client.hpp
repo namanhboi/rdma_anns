@@ -393,9 +393,9 @@ public:
   }
 
 
-  uint32_t query(const data_type *query_emb) {
+  uint32_t query(const data_type *query_emb, uint32_t K, uint32_t L) {
     uint32_t query_id = next_query_id();
-    query_t<data_type> query(query_id, my_id, query_emb, dim);
+    query_t<data_type> query(query_id, my_id, query_emb, dim, K, L);
     query_send_time[query_id] = std::chrono::steady_clock::now();
     client_thread->push_query(query);
     // std::cout << "done pushing query" << std::endl;

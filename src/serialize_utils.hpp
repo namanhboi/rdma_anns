@@ -1,5 +1,5 @@
-#pragma once
 
+#include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include <cstdint>
 #include <cstring>
 #include <queue>
@@ -183,8 +183,12 @@ public:
 
     this->dim = emb_dim;
   }
-  uint64_t get_query_id() {
-    return this->query_id;
+  uint64_t get_query_id() { return this->query_id; }
+
+  uint32_t get_K() { return this->K; }
+
+  uint32_t get_L() {
+    return this->L;
   }
   uint32_t get_client_node_id() { return this->client_node_id; }
 
@@ -1233,8 +1237,10 @@ class GlobalSearchMessageBatcher {
 
   size_t get_serialize_size() {
     // size_t total_size = this->header.size();
-    // total_size += query_embeddings_batcher.get_serialize_size(query_embeddings);
-    // total_size += search_queries_batcher.get_serialize_size(search_queries);
+    // total_size +=
+    // query_embeddings_batcher.get_serialize_size(query_embeddings); total_size
+    // += search_queries_batcher.get_serialize_size(search_queries);
+    return 0;
   }
 
 
