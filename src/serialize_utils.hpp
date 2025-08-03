@@ -99,11 +99,11 @@ public:
   }
 
   void add_query(uint32_t query_id, uint32_t client_node_id,
-                 data_type *query_data, uint32_t dimension, uint32_t K, uint32_t L) {
+                 const data_type *query_data, uint32_t dimension, uint32_t K, uint32_t L) {
     queries.emplace_back(query_id, client_node_id, query_data, dimension, K, L);
   }
 
-  size_t get_serialize_size() {
+  size_t get_serialize_size() const {
     size_t total_size =
         EmbeddingQueryBatcher<data_type>::get_header_size() +
         query_t<data_type>::get_metadata_size() * queries.size() +
@@ -221,36 +221,53 @@ uint64_t  uint32_t       uint32_t      uint32_t
 // TODO rewrite this inlight of the new batcher
 template<typename data_type>
 class EmbeddingQueryBatchManager {
-    std::shared_ptr<uint8_t[]> buffer; 
-    uint64_t buffer_size;
+  std::shared_ptr<uint8_t[]> buffer; 
+  uint64_t buffer_size;
   uint32_t data_position;
-    uint32_t emb_dim;
-    uint32_t num_queries;
+  uint32_t emb_dim;
+  uint32_t num_queries;
   uint32_t embeddings_position;
   uint32_t metadata_position;
-    bool copy_embeddings = true;
+  bool copy_embeddings = true;
 
-    uint32_t header_size;
-    uint32_t metadata_size;
+  uint32_t header_size;
+  uint32_t metadata_size;
 
-    std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> queries;
+  std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> queries;
 
-    void create_queries() {
-      for (uint32_t i = 0; i < num_queries; i++) {
-        queries.emplace_back(
-            std::move(std::make_shared<EmbeddingQuery<data_type>>(
-                this->buffer, this->buffer_size, get_metadata_position(i),
-								  get_embeddings_position(i), emb_dim)));
-      }
-
+  void create_queries() {
+    for (uint32_t i = 0; i < num_queries; i++) {
+      queries.emplace_back(
+			   std::move(std::make_shared<EmbeddingQuery<data_type>>(
+										 this->buffer, this->buffer_size, get_metadata_position(i),
+										 get_embeddings_position(i), emb_dim)));
     }
 
-public:
-  EmbeddingQueryBatchManager(const uint8_t *buffer, uint64_t buffer_size,
-                             uint32_t data_position = 0) { 
-    this->data_position = data_position;
+  }
 
-    const uint32_t *header = reinterpret_cast<const uint32_t *>(buffer + data_position);
+public:
+  EmbeddingQueryBatchManager(std::shared_ptr<uint8_t[]> buffer,
+                             uint64_t buffer_size, uint32_t data_position) {
+    this->buffer = buffer;
+    this->buffer_size = buffer_size;
+    initialize(data_position);
+
+  }
+  EmbeddingQueryBatchManager(const uint8_t *buffer, uint64_t buffer_size) { 
+    this->buffer_size = buffer_size;
+    std::shared_ptr<uint8_t[]> copy(new uint8_t[this->buffer_size]);
+    // std::cerr << "done shared: " << this->buffer_size;
+    std::memcpy(copy.get(), buffer, this->buffer_size);
+    // std::cerr << "done copy";
+    this->buffer = std::move(copy);
+    // std::cerr << "before init";
+    initialize(0);
+    
+  }
+
+  void initialize(uint32_t data_position) {
+    // std::cerr << "starting initizalition" << std::endl;
+    const uint32_t *header = reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
     this->header_size = EmbeddingQueryBatcher<data_type>::get_header_size();
     this->num_queries = header[0];
     this->emb_dim = header[1];
@@ -260,14 +277,12 @@ public:
     this->metadata_position = this->data_position + this->header_size;
     this->embeddings_position = this->data_position + this->header_size + this->metadata_size * this->num_queries;
 
-    this->buffer_size = buffer_size;
-
-    std::shared_ptr<uint8_t[]> copy(new uint8_t[this->buffer_size]);
-    std::memcpy(copy.get(), buffer, this->buffer_size);
-    this->buffer = std::move(copy);
   }
+
+  
   const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &get_queries() {
     if (this->queries.empty()) {
+      // std::cout << "creating queries" << std::endl;
       this->create_queries();
     }
     // std::cout << "num queries " << queries.size() << std::endl;

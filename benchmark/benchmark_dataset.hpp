@@ -5,7 +5,6 @@
 #include <string>
 #include "utils.h" // this is diskann utils
 
-
 /**
    this class is a container for query and groundtruth data.
 */
@@ -52,8 +51,10 @@ public:
   uint32_t get_dim() {
     return query_dim;
   }
-  
 
+  size_t get_query_size() {
+    return this->query_dim * sizeof(data_type);
+  }
 
   
   ~BenchmarkDataset() {
