@@ -44,7 +44,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     uint32_t num_points;
 
     //contains the mapping of all the nodes to clusters.
-    std::unique_ptr<uint8_t, decltype(&std::free)> node_id_cluster_mapping;
+    std::unique_ptr<const uint8_t, decltype(&std::free)> node_id_cluster_mapping;
     DefaultCascadeContextType *typed_ctxt;
 
     uint32_t dim;
@@ -65,10 +65,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto result = typed_ctxt->get_service_client_ref().get(mapping_key, true);
       auto &reply = result.get().begin()->second.get();
       Blob blob = std::move(const_cast<Blob &>(reply.blob));
-      blob.memory_mode = object_memory_mode_t::EMPLACED; // memory will now be
-      // freed by std::free
-      std::unique_ptr<uint8_t, decltype(&std::free)> tmp(
-							 const_cast<uint8_t *>(blob.bytes), std::free);
+      blob.memory_mode = object_memory_mode_t::EMPLACED; // memory now owned by us
+      std::unique_ptr<const uint8_t, decltype(&std::free)> tmp(
+							 (blob.bytes), std::free);
 
       node_id_cluster_mapping = std::move(tmp);
     }
@@ -330,7 +329,7 @@ check upon each new iteration of the search loop.
 
         uint32_t query_id = query->get_query_id();
         std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
-	compute_result_t empty_res = {};
+	compute_result_t empty_res;
         compute_res_queues[query_id] =
           std::make_shared<diskann::ConcurrentQueue<compute_result_t>>(empty_res);
         compute_res_lock.unlock();
@@ -463,9 +462,11 @@ check upon each new iteration of the search loop.
           typed_ctxt->get_service_client_ref().get(nbr_key, stable);
         auto &nbr_reply = nbr_get_result.get().begin()->second.get();
         Blob nbr_blob = std::move(const_cast<Blob &>(nbr_reply.blob));
-        const uint32_t *vec_nbr =
-          reinterpret_cast<const uint32_t *>(nbr_blob.bytes);
-        uint32_t num_nbrs = vec_nbr[0];
+        std::shared_ptr<const uint32_t> nbr_ptr(
+						reinterpret_cast<const uint32_t *>(nbr_blob.bytes), std::free);
+        
+	uint32_t num_nbrs = *nbr_ptr.get();
+        
 
         if (distance >= query.min_distance) {
           compute_result_t res = {
@@ -474,7 +475,7 @@ check upon each new iteration of the search loop.
             .node = node,
             .query_id = query.query_id,
             .num_neighbors = num_nbrs,
-            .neighbors = (vec_nbr + 1)
+            .nbr_ptr = std::move(nbr_ptr)
           };
           parent->batch_thread->push_compute_res(res);
         }
@@ -502,44 +503,54 @@ check upon each new iteration of the search loop.
   */
   class BatchingThread {
     GlobalSearchOCDPO<data_type> *parent;
-    
-    std::unordered_map<
-        std::uint8_t,
-        std::unique_ptr<std::vector<global_search_message<data_type>>>>
-        cluster_messages;
-    std::condition_variable_any cluster_messages_cv;
-    std::mutex cluster_messages_mutex;
 
-    // need this because cluster_messages has key being the cluster id of the
-    // message you want to send to, but in this case we want to batch based on client
-    // id instead
-    const uint8_t search_result_bucket_id = std::numeric_limits<uint8_t>::max();
+    // key is cluster_id
+    template <typename K, typename V>
+    bool is_empty(
+		      const std::unordered_map<K, std::unique_ptr<std::vector<V>>> &map) {
+      bool empty = true;
+      for (auto &item : map) {
+        if (!item.second->empty()) {
+          empty = false;
+          break;
+        }
+      }
+      return empty;
+    }
+
+    std::unordered_map<
+        uint8_t, std::unique_ptr<std::vector<global_search_message<data_type>>>>
+        cluster_messages;
+
+
+
+    //key is client_id
+    std::unordered_map<uint32_t,
+                       std::unique_ptr<std::vector<ann_search_result_t>>>
+        search_results;
+    std::condition_variable_any messages_cv;
+    std::mutex messages_mutex;
 
     bool running = false;
 
-    // TODO
+    // TODO: fix it to include search_results consideration.
     // the batching for sending results could probably be better. Should ask alicia 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
-      std::unique_lock<std::mutex> lock(cluster_messages_mutex);
+      std::unique_lock<std::mutex> lock(messages_mutex);
       std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
       wait_time;
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
 
       while (running) {
         lock.lock();
-        bool empty = true;
-        for (auto &item : cluster_messages) {
-          if (!item.second->empty()) {
-            empty = false;
-            break;
-          }
-        }
-        if (empty) {
-          cluster_messages_cv.wait_for(lock, batch_time);
+        if (is_empty(cluster_messages) && is_empty(search_results)) {
+          messages_cv.wait_for(lock, batch_time);
         }
         if (!running)
           break;
         
+	// BELOW HERE I NEED TO TAKE A LOOK AT, NEED FIXING
+
 	//key is cluster_id
         std::unordered_map<
             uint8_t,
@@ -561,29 +572,29 @@ check upon each new iteration of the search loop.
           }
         }
         lock.unlock();
-
+//TODO
         
 	// //key is client node id
-        std::unordered_map<
-            uint32_t,
-            std::unique_ptr<std::vector<global_search_message<data_type>>>>
-        results_by_client_id;
+        // std::unordered_map<
+            // uint32_t,
+            // std::unique_ptr<std::vector<global_search_message<data_type>>>>
+        // results_by_client_id;
 
 
-        for (auto &search_res_msg : *to_send[search_result_bucket_id]) {
-          if (search_res_msg.msg_type != SEARCH_RES) {
-            throw std::runtime_error("expected search result message in " +
-                                     std::to_string(search_result_bucket_id));
-          }
-          uint32_t client_id = search_res_msg.search_res.client_id;
-          if (results_by_client_id.count(client_id) == 0) {
-            results_by_client_id[client_id] = std::make_unique<
-							       std::vector<global_search_message<data_type>>>();
-            results_by_client_id[client_id]->reserve(parent->max_batch_size);
-          }
-          results_by_client_id[client_id]->emplace_back(
-							std::move(search_res_msg));
-        }
+        // for (auto &search_res_msg : *to_send[search_result_bucket_id]) {
+          // if (search_res_msg.msg_type != SEARCH_RES) {
+            // throw std::runtime_error("expected search result message in " +
+                                     // std::to_string(search_result_bucket_id));
+          // }
+          // uint32_t client_id = search_res_msg.search_res.client_id;
+          // if (results_by_client_id.count(client_id) == 0) {
+            // results_by_client_id[client_id] = std::make_unique<
+							       // std::vector<global_search_message<data_type>>>();
+            // results_by_client_id[client_id]->reserve(parent->max_batch_size);
+          // }
+          // results_by_client_id[client_id]->emplace_back(
+							// std::move(search_res_msg));
+        // }
 
         // done with all data prep, now time to send batches of messages. Need
         // to finish serializaiton part first.
@@ -599,7 +610,7 @@ check upon each new iteration of the search loop.
   public:
     void push_message(uint8_t cluster_receiver_id,
                       global_search_message<data_type> &msg) {
-      std::scoped_lock<std::mutex> lock(cluster_messages_mutex);
+      std::scoped_lock<std::mutex> lock(messages_mutex);
       if (cluster_messages.count(cluster_receiver_id) == 0) {
         cluster_messages[cluster_receiver_id] =
           std::make_unique<std::vector<global_search_message<data_type>>>();
@@ -627,17 +638,15 @@ check upon each new iteration of the search loop.
     void push_ann_result(uint32_t query_id, uint32_t client_id, uint32_t K,
                          uint32_t L, std::shared_ptr<uint32_t[]> search_result,
                          uint8_t cluster_id) {
-      ann_search_result_t search_res = {
-        .query_id = query_id,
-        .client_id = client_id,
-        .K = K,
-        .L = L,
-        .search_result = std::move(search_result),
-        .cluster_id = cluster_id
-      };
-      global_search_message<data_type> res = {.msg_type = SEARCH_RES,
-                                              .search_res = search_res};
-      push_message(search_result_bucket_id, res);
+      ann_search_result_t search_res = {.query_id = query_id,
+                                        .client_id = client_id,
+                                        .K = K,
+                                        .L = L,
+                                        .search_result =
+                                            std::move(search_result),
+                                        .cluster_id = cluster_id};
+      std::scoped_lock<std::mutex> lock(messages_mutex);
+      search_results[client_id]->emplace_back(std::move(search_res));
     }      
   };
 
