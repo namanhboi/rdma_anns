@@ -193,7 +193,7 @@ public:
   uint32_t get_client_node_id() { return this->client_node_id; }
 
   const data_type *get_embedding_ptr() {
-    if (this->embeddings_position >= this->buffer_size) return nullptr;
+    if (this->embeddings_position >= this->buffer_size) throw std::runtime_error("embeddings_position " + std::to_string(this->embeddings_position) +  " > " + std::to_string(this->buffer_size));
     return reinterpret_cast<const data_type*>(this->buffer.get() + this->embeddings_position);
   }
 
@@ -223,14 +223,12 @@ template<typename data_type>
 class EmbeddingQueryBatchManager {
   std::shared_ptr<uint8_t[]> buffer; 
   uint64_t buffer_size;
-  uint32_t data_position;
   uint32_t emb_dim;
   uint32_t num_queries;
   uint32_t embeddings_position;
   uint32_t metadata_position;
   bool copy_embeddings = true;
 
-  uint32_t header_size;
   uint32_t metadata_size;
 
   std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> queries;
@@ -268,14 +266,17 @@ public:
   void initialize(uint32_t data_position) {
     // std::cerr << "starting initizalition" << std::endl;
     const uint32_t *header = reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
-    this->header_size = EmbeddingQueryBatcher<data_type>::get_header_size();
+
     this->num_queries = header[0];
     this->emb_dim = header[1];
 
     this->metadata_size = query_t<data_type>::get_metadata_size();
 
-    this->metadata_position = this->data_position + this->header_size;
-    this->embeddings_position = this->data_position + this->header_size + this->metadata_size * this->num_queries;
+    this->metadata_position = data_position + EmbeddingQueryBatcher<data_type>::get_header_size();
+    this->embeddings_position =
+        data_position + EmbeddingQueryBatcher<data_type>::get_header_size() +
+        this->metadata_size * this->num_queries;
+    
 
   }
 
@@ -420,8 +421,8 @@ public:
       greedy_query_t<data_type>::get_metadata_size() *
       queries.size();
     uint32_t candidate_queue_position =
-      embedding_position +
-      this->query_emb_size * queries.size();
+      embedding_position + this->query_emb_size * queries.size();
+    // std::cout << metadata_position << " " << embedding_position << " " << candidate_queue_position << std::endl;
           
 
     write_header(buffer);
@@ -433,6 +434,7 @@ public:
       metadata_position += greedy_query_t<data_type>::get_metadata_size();
       embedding_position += this->query_emb_size;
       candidate_queue_position += query.get_candidate_queue_size();
+      // std::cout << metadata_position << " " << embedding_position << " " << candidate_queue_position << std::endl;
     }
   }
   
@@ -503,7 +505,7 @@ public:
   }
 
   const uint32_t *get_candidate_queue_ptr() {
-    if (this->candidate_queue_position >= this->buffer_size) {
+    if (this->candidate_queue_position > this->buffer_size) {
       throw std::runtime_error("pointer for candidate queue doesn't make sense");
     }
     return reinterpret_cast<const uint32_t *>(buffer.get() + this->candidate_queue_position);
@@ -572,11 +574,10 @@ public:
 
   // for testing purposes, if you want to own the bytes of the whole blob
   GreedySearchQueryBatchManager(const uint8_t *buffer, uint64_t buffer_size) {
+    this->buffer_size = buffer_size;
     std::shared_ptr<uint8_t[]> copy(new uint8_t[this->buffer_size]);
     std::memcpy(copy.get(), buffer, this->buffer_size);
     this->buffer = std::move(copy);
-    this->buffer_size = buffer_size;
-
     initialize(0);
   }
 
