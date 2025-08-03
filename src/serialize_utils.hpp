@@ -306,11 +306,11 @@ public:
 
 template <typename data_type>
 struct greedy_query_t {
-  std::byte cluster_id; // this is to ensure that the candidate queue is sent to the correct cluster
+  uint8_t cluster_id; // this is to ensure that the candidate queue is sent to the correct cluster
   std::vector<uint32_t> candidate_queue;
   std::shared_ptr<EmbeddingQuery<data_type>> query;
 
-  greedy_query_t(std::byte _cluster_id,
+  greedy_query_t(uint8_t _cluster_id,
                  std::vector<uint32_t> _candidate_queue,
                  std::shared_ptr<EmbeddingQuery<data_type>> _query) {
     cluster_id = _cluster_id;
@@ -319,7 +319,7 @@ struct greedy_query_t {
   }
       
 
-  static uint32_t get_metadata_size() { return sizeof(uint32_t) * 5 + sizeof(std::byte);}
+  static uint32_t get_metadata_size() { return sizeof(uint32_t) * 5 + sizeof(uint8_t);}
 
   void write_metadata(uint8_t *buffer) {
     uint32_t offset = 0;
@@ -387,7 +387,7 @@ public:
   void add_query(greedy_query_t<data_type> query) {
     queries.push_back(query);
   }
-  void add_query(std::byte cluster_id,
+  void add_query(uint8_t cluster_id,
                  std::vector<uint32_t> candidate_queue,
                  std::shared_ptr<EmbeddingQuery<data_type>> query) {
     greedy_query_t<data_type> tmp(cluster_id, candidate_queue, query);
@@ -466,7 +466,7 @@ template <typename data_type> class GreedySearchQuery {
       candidate_queue_position, candidate_queue_size, K, L;
   // cand size means numbers of candidates, not number of bytes
   uint32_t dim;
-  std::byte cluster_id;
+  uint8_t cluster_id;
   std::vector<uint32_t> candidate_queue;
 public:
   GreedySearchQuery(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
@@ -482,9 +482,9 @@ public:
     this->K = metadata[2];
     this->L = metadata[3];
     this->candidate_queue_size = metadata[4];
-    this->cluster_id = *reinterpret_cast<const std::byte *>(
+    this->cluster_id = *reinterpret_cast<const uint8_t *>(
         buffer.get() + metadata_position +
-        greedy_query_t<data_type>::get_metadata_size() - sizeof(std::byte));
+        greedy_query_t<data_type>::get_metadata_size() - sizeof(uint8_t));
     this->embeddings_position = embeddings_position; 
     this->candidate_queue_position = candidate_queue_position;
     this->dim = emb_dim;
@@ -516,7 +516,7 @@ public:
 
   uint64_t get_dim() { return this->dim; }
 
-  std::byte get_cluster_id() { return this->cluster_id; }
+  uint8_t get_cluster_id() { return this->cluster_id; }
   
 };
 

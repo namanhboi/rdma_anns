@@ -45,15 +45,15 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         // if we are doing global baseline then we just put the starting points from
     // the cluster with the most starting points into the candidate queue
     // if we are doing cotra then we follow paper.
-    std::unordered_map<std::byte, std::vector<uint32_t>>
+    std::unordered_map<uint8_t, std::vector<uint32_t>>
     determine_candidate_queues(
-			       std::unordered_map<std::byte, std::vector<uint32_t>> &starting_points) {
-      std::unordered_map<std::byte, std::vector<uint32_t>>
+			       std::unordered_map<uint8_t, std::vector<uint32_t>> &starting_points) {
+      std::unordered_map<uint8_t, std::vector<uint32_t>>
       candidate_queues_per_cluster;
 #ifdef GLOBAL_BASELINE
       // choose the cluster with the most candidate points
       int max_size = 0;
-      std::byte chosen_cluster;
+      uint8_t chosen_cluster;
       for (const auto &[cluster_id, starting_points_ptr] : starting_points) {
         if (starting_points_ptr.size() > max_size) {
           max_size = starting_points_ptr.size();
@@ -84,7 +84,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
         lock.unlock();
         // do search here
-        std::unordered_map<std::byte, std::vector<uint32_t>>
+        std::unordered_map<uint8_t, std::vector<uint32_t>>
         candidate_queues;
         try {
           candidate_queues = head_index_search(query);
@@ -94,7 +94,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           throw e;
         }
 	// std::cout << "done getting a candidate queue" << std::endl;
-        std::unordered_map<std::byte, std::vector<uint32_t>>
+        std::unordered_map<uint8_t, std::vector<uint32_t>>
             final_candidate_queue =
               determine_candidate_queues(candidate_queues);
 	// std::cout << "done determining candidate quuee" << std::endl;
@@ -107,7 +107,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // searches the head index and returns a the (cluster (where the node
     // belongs + node id), with this info, you can trigger computation on next
     // udl. K = 1 for search
-    std::unordered_map<std::byte, std::vector<uint32_t>>
+    std::unordered_map<uint8_t, std::vector<uint32_t>>
     head_index_search(std::shared_ptr<EmbeddingQuery<data_type>> &query) {
       std::vector<uint32_t> search_id_results(parent->K);
       std::vector<float> search_dist_results(parent->K);
@@ -121,15 +121,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 							  search_id_results.data());
       // std::cout << "done search on query " << query->get_query_id() << std::endl;
 
-      std::unordered_map<std::byte, std::vector<uint32_t>> res;
-      std::byte cluster_0 = static_cast<std::byte>(0);
+      std::unordered_map<uint8_t, std::vector<uint32_t>> res;
+      uint8_t cluster_0 = 0;
       res[cluster_0] = std::vector<uint32_t>();
       for (int i = 0; i < parent->K; i++) {
-        // std::byte cluster_id =
-        // parent->cluster_assignment[search_id_results[i]]; // need to put in
-        // the mapping first mate
-	// std::cout << "putting " << i << std::endl;
-	std::byte cluster_id = static_cast<std::byte>(0);
+	uint8_t cluster_id = (0);
         if (res.count(cluster_id) == 0) {
           res[cluster_id] = std::vector<uint32_t>();
         }
@@ -180,7 +176,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::thread real_thread;
     bool running = false;
 
-    std::unordered_map<std::byte,
+    std::unordered_map<uint8_t,
                        std::unique_ptr<std::vector<
                            std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
                                      std::vector<uint32_t>>>>>
@@ -194,7 +190,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       // TODO
       std::unique_lock<std::mutex> lock(cluster_queue_mutex, std::defer_lock);
-      std::unordered_map<std::byte, std::chrono::steady_clock::time_point>
+      std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
       wait_time;
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
       while (running) {
@@ -216,7 +212,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           break;
 
         std::unordered_map<
-            std::byte, std::unique_ptr<std::vector<
+            uint8_t, std::unique_ptr<std::vector<
                            std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
                                      std::vector<uint32_t>>>>>
         to_send;
@@ -264,7 +260,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         std::unordered_map<
             std::uint32_t,
             std::unique_ptr<std::vector<std::tuple<
-                std::byte, std::shared_ptr<EmbeddingQuery<data_type>>,
+                uint8_t, std::shared_ptr<EmbeddingQuery<data_type>>,
                 std::vector<uint32_t>>>>>
         queries_by_client_id;
         for (auto &[cluster_id, queries_and_cand_q] : to_send) {
@@ -273,11 +269,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             if (queries_by_client_id.count(client_node_id) == 0) {
               queries_by_client_id[client_node_id] =
                   std::make_unique<std::vector<std::tuple<
-                      std::byte, std::shared_ptr<EmbeddingQuery<data_type>>,
+                      uint8_t, std::shared_ptr<EmbeddingQuery<data_type>>,
 							  std::vector<uint32_t>>>>();
               queries_by_client_id[client_node_id]->reserve(parent->max_batch_size);
             }
-            std::tuple<std::byte, std::shared_ptr<EmbeddingQuery<data_type>>,
+            std::tuple<uint8_t, std::shared_ptr<EmbeddingQuery<data_type>>,
                        std::vector<uint32_t>>
                 query_tuple = std::make_tuple(cluster_id, std::move(query),
                                               candidate_queue);
@@ -298,7 +294,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             GreedySearchQueryBatcher<data_type> batcher(
 							std::get<1>(queries->at(0))->get_dim());
             for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
-              std::byte cluster_id = std::get<0>(queries->at(i));
+              uint8_t cluster_id = std::get<0>(queries->at(i));
 	      batcher.add_query(cluster_id, std::get<2>(queries->at(i)), std::move(std::get<1>(queries->at(i))));
             }
             batcher.serialize();
@@ -335,7 +331,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     }
 
 
-    void push(const std::unordered_map<std::byte, std::vector<uint32_t>>
+    void push(const std::unordered_map<uint8_t, std::vector<uint32_t>>
                   &candidate_queues,
               std::shared_ptr<EmbeddingQuery<data_type>> query) {
       std::unique_lock<std::mutex> lock(cluster_queue_mutex);
@@ -367,7 +363,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   std::vector<uint32_t> id_mapping;
   // each byte represents the cluster assignment of the corresponding graph
   // vector id from the id_mapping. 
-  std::vector<std::byte> cluster_assignment; //TODO
+  std::vector<uint8_t> cluster_assignment; //TODO
 
   // data here: num_pts (uint32_t), num_dim (uint32_t), data....
   // std::string data_store_key = "/anns/head_index/data_store";
