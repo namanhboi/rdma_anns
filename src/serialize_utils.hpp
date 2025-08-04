@@ -2,10 +2,8 @@
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include <cstdint>
 #include <cstring>
-#include <queue>
 #include <memory>
 #include <stdexcept>
-#include <unordered_map>
 #include <cascade/service_client_api.hpp>
 #include "neighbor.h"
 
@@ -150,8 +148,10 @@ public:
   }
 
   static uint32_t get_header_size() { return sizeof(uint32_t) * 2; }
-  
 
+  EmbeddingQueryBatcher() {
+    this->query_emb_size = 0;
+  }
   EmbeddingQueryBatcher(uint32_t emb_dim, uint64_t size_hint) {
     this->dimension = emb_dim;
     this->query_emb_size = emb_dim * sizeof(data_type);
@@ -391,6 +391,7 @@ public:
   uint32_t query_emb_size;
   std::shared_ptr<derecho::cascade::Blob> blob;
 
+  GreedySearchQueryBatcher() : dimension(0) {}
   GreedySearchQueryBatcher(uint32_t emb_dim, uint64_t size_hint = 1000) {
     dimension = emb_dim;
     this->query_emb_size = emb_dim * sizeof(data_type);
@@ -709,7 +710,8 @@ class ComputeQueryBatcher {
   std::shared_ptr<derecho::cascade::Blob> blob;
 
 public:
-  ComputeQueryBatcher(uint32_t size_hint = 100) { queries.reserve(100); }
+  ComputeQueryBatcher() {}
+  ComputeQueryBatcher(uint32_t size_hint) { queries.reserve(size_hint); }
   
   void push(compute_query_t &compute_query) {
     queries.emplace_back(compute_query);
@@ -940,8 +942,11 @@ public:
 class ComputeResultBatcher {
   std::shared_ptr<derecho::cascade::Blob> blob;
   std::vector<compute_result_t> results;
+
 public:
-  ComputeResultBatcher(uint32_t size_hint = 100) { results.reserve(size_hint); }
+  ComputeResultBatcher() {}
+  
+  ComputeResultBatcher(uint32_t size_hint) { results.reserve(size_hint); }
 
   void push(const compute_result_t &result) { results.emplace_back(result); }
 
@@ -1229,39 +1234,6 @@ public:
   }    
 };  
 
-
-
-
-// template<typename data_type>
-// struct global_search_message {
-//   message_type msg_type;
-//   union {
-//     greedy_query_t<data_type> search_query;
-//     compute_query_t compute_query;
-//     compute_result_t compute_result;
-//     std::shared_ptr<EmbeddingQuery<data_type>> emb_query;
-//   } msg;
-
-
-//   global_search_message(const std::shared_ptr<EmbeddingQuery<data_type>> &emb_query) {
-//     this->msg_type = message_type::QUERY_EMB;
-//     this->msg.emb_query = emb_query;
-//   }
-//   global_search_message(const compute_result_t &compute_result) {
-//     this->msg_type = message_type::COMPUTE_RES;
-//     this->msg.compute_result = compute_result;
-//   }
-//   global_search_message(const compute_query_t &compute_query) {
-//     this->msg_type = message_type::COMPUTE_QUERY;
-//     this->msg.compute_query = compute_query;
-//   }
-//   global_search_message(const greedy_query_t<data_type> &search_query) {
-//     this->msg_type = message_type::SEARCH_QUERY;
-//     this->msg.search_query = search_query;
-//   }
-// };
-
-
 template <typename data_type>
 class GlobalSearchMessageBatcher {
   // Usage: used to batch messages together and send to another cluster or to
@@ -1294,7 +1266,7 @@ class GlobalSearchMessageBatcher {
   }
 
 
-  static uint32_t get_header_size() { return sizeof(uint32_t) * 3; }
+
 
   std::shared_ptr<derecho::cascade::Blob> blob;
 
@@ -1303,8 +1275,6 @@ class GlobalSearchMessageBatcher {
   ComputeQueryBatcher compute_queries_batcher;
   ComputeResultBatcher compute_results_batcher;
 
-  
-    
   // std::vector<global_search_message<data_type>> messages;
   uint32_t query_emb_dim; // this is only used for head search udl
   // sending stuff to global search udl
@@ -1320,6 +1290,7 @@ public:
       EmbeddingQueryBatcher<data_type>(emb_dim, size_hint);
   }
 
+  static uint32_t get_header_size() { return sizeof(uint32_t) * 3; }
   void push_search_query(greedy_query_t<data_type> search_query) {
     this->search_queries_batcher.add_query(search_query);
   }
@@ -1395,12 +1366,10 @@ template <typename data_type> class GlobalSearchMessageBatchManager {
 
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
-
-
-  GreedySearchQueryBatchManager<data_type> greedy_search_manager;
-  ComputeQueryBatchManager compute_query_manager;
-  ComputeResultBatchManager compute_result_manager;
-  EmbeddingQueryBatchManager<data_type> embedding_query_manager;
+  std::unique_ptr<GreedySearchQueryBatchManager<data_type>> greedy_search_manager;
+  std::unique_ptr<ComputeQueryBatchManager> compute_query_manager;
+  std::unique_ptr<ComputeResultBatchManager> compute_result_manager;
+  std::unique_ptr<EmbeddingQueryBatchManager<data_type>> embedding_query_manager;
   
 public:
   GlobalSearchMessageBatchManager(const uint8_t *buffer, uint64_t buffer_size, uint32_t emb_dim) {
@@ -1417,44 +1386,42 @@ public:
     uint32_t compute_results_position = header[1];
     uint32_t compute_queries_position = header[2];
 
-    embedding_query_manager = EmbeddingQueryBatchManager<data_type>(
+    embedding_query_manager = std::make_unique<EmbeddingQueryBatchManager<data_type>>(
 									      this->buffer, this->buffer_size, embedding_queries_position);
-    greedy_search_manager = GreedySearchQueryBatchManager<data_type>(
+    greedy_search_manager = std::make_unique<GreedySearchQueryBatchManager<data_type>>(
 									       this->buffer, this->buffer_size, search_queries_position);
-    compute_result_manager = ComputeResultBatchManager(
+    compute_result_manager = std::make_unique<ComputeResultBatchManager>(
 								 this->buffer, this->buffer_size, compute_results_position);
-    compute_query_manager = ComputeQueryBatchManager(
-							       this->buffer, this->buffer_size, compute_queries_position);
+    compute_query_manager = std::make_unique<ComputeQueryBatchManager>(
+								       this->buffer, this->buffer_size, compute_queries_position);
   }
 
   // const std::vector<
   const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &
   get_embedding_queries() const {
-    return this->embedding_query_manager.get_queries();
+    return this->embedding_query_manager->get_queries();
   }
 
   const std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &
   get_greedy_search_queries() const {
-      return this->greedy_search_manager.get_queries();
+      return this->greedy_search_manager->get_queries();
   }
   const std::vector<compute_query_t> &get_compute_queries() {
-    return this->compute_query_manager.get_queries();
+    return this->compute_query_manager->get_queries();
   }
 
   const std::vector<ComputeResult> &get_compute_results() {
-    return this->compute_result_manager.get_results();
+    return this->compute_result_manager->get_results();
   }
 
 
   uint32_t get_num_messages() const {
-    return this->embedding_query_manager.get_num_queries() +
-           this->greedy_search_manager.get_num_queries() +
-           this->compute_query_manager.get_num_queries() +
-           this->compute_result_manager.get_num_results();
+    return this->embedding_query_manager->get_num_queries() +
+           this->greedy_search_manager->get_num_queries() +
+           this->compute_query_manager->get_num_queries() +
+           this->compute_result_manager->get_num_results();
   }    
 };  
-
-
 
 uint8_t get_cluster_id(const std::string &key);
 

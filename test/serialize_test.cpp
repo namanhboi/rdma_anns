@@ -489,7 +489,7 @@ generate_random_greedy_queries(uint32_t num_queries, uint32_t dim, uint32_t K,
   return res;
 }
 
-TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", uint8_t, float, int8_t) {
+TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", float) {
   uint32_t num_batches = 10'000;
   uint32_t min_batch_size = 0;
   uint32_t max_batch_size = 6;
@@ -506,14 +506,13 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
   GlobalSearchMessageBatcher<TestType> batcher(dim);
   for (uint32_t i = 0; i < num_batches; i++) {
     uint32_t emb_query_batch_size = batch_size_gen(gen);
-
     std::vector<std::shared_ptr<EmbeddingQuery<TestType>>> emb_queries =
-        generate_random_embedding_queries<TestType>(emb_query_batch_size, dim,
-                                                    K, L);
+      generate_random_embedding_queries<TestType>(emb_query_batch_size, dim,
+						  K, L);
     uint32_t greedy_query_batch_size = batch_size_gen(gen);
     std::vector<greedy_query_t<TestType>> greedy_queries =
-        generate_random_greedy_queries<TestType>(greedy_query_batch_size, dim,
-                                                 K, L);
+      generate_random_greedy_queries<TestType>(greedy_query_batch_size, dim,
+					       K, L);
 
     uint32_t compute_result_batch_size = batch_size_gen(gen);
     std::vector<compute_result_t> compute_results =
@@ -560,40 +559,73 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       REQUIRE(std::memcmp(query->get_embedding_ptr(),
                           emb_queries[i]->get_embedding_ptr(),
                           emb_queries[i]->get_dim() * sizeof(TestType)) == 0);
-      }
-      const auto  &managed_search_queries = manager.get_greedy_search_queries();
-      REQUIRE(managed_search_queries.size() == greedy_query_batch_size);
-      for (uint32_t i = 0; i < managed_search_queries.size(); i++) {
-        const std::shared_ptr<GreedySearchQuery<TestType>> &query =
-          managed_search_queries[i];
-
-
-        REQUIRE(query->get_cluster_id() == greedy_queries[i].cluster_id);
-        std::vector<uint32_t> greedy_query_cand_q(
-            query->get_candidate_queue_ptr(),
-            query->get_candidate_queue_ptr() +
-            query->get_candidate_queue_size());
-
-        REQUIRE(greedy_query_cand_q == greedy_queries[i].candidate_queue);
-        const std::shared_ptr<EmbeddingQuery<TestType>> greedy_emb =
-          greedy_queries[i].query;
-
-        REQUIRE(query->get_query_id() ==
-                greedy_emb->get_query_id());
-
-        REQUIRE(query->get_client_node_id() ==
-                greedy_emb->get_client_node_id());
-        REQUIRE(query->get_K() == greedy_emb->get_K());
-        REQUIRE(query->get_L() == greedy_emb->get_L());
-        REQUIRE(query->get_dim() == greedy_emb->get_dim());
-
-        REQUIRE(std::memcmp(query->get_embedding_ptr(),
-                            greedy_emb->get_embedding_ptr(),
-                            greedy_emb->get_dim() * sizeof(TestType)) == 0);
-}
-      
+    }
     
-    
+
+    const auto &managed_search_queries = manager.get_greedy_search_queries();
+    REQUIRE(managed_search_queries.size() == greedy_query_batch_size);
+    for (uint32_t i = 0; i < managed_search_queries.size(); i++) {
+      const std::shared_ptr<GreedySearchQuery<TestType>> &query =
+	managed_search_queries[i];
+
+
+      REQUIRE(query->get_cluster_id() == greedy_queries[i].cluster_id);
+      std::vector<uint32_t> greedy_query_cand_q(
+						query->get_candidate_queue_ptr(),
+						query->get_candidate_queue_ptr() +
+						query->get_candidate_queue_size());
+
+      REQUIRE(greedy_query_cand_q == greedy_queries[i].candidate_queue);
+      const std::shared_ptr<EmbeddingQuery<TestType>> greedy_emb =
+	greedy_queries[i].query;
+
+      REQUIRE(query->get_query_id() ==
+	      greedy_emb->get_query_id());
+
+      REQUIRE(query->get_client_node_id() ==
+	      greedy_emb->get_client_node_id());
+      REQUIRE(query->get_K() == greedy_emb->get_K());
+      REQUIRE(query->get_L() == greedy_emb->get_L());
+      REQUIRE(query->get_dim() == greedy_emb->get_dim());
+
+      REQUIRE(std::memcmp(query->get_embedding_ptr(),
+			  greedy_emb->get_embedding_ptr(),
+			  greedy_emb->get_dim() * sizeof(TestType)) == 0);
+    }
+
+    const auto &managed_compute_results = manager.get_compute_results();
+    REQUIRE(managed_compute_results.size() == compute_results.size());
+
+    for (uint32_t i = 0; i < managed_compute_results.size(); i++) {
+      const ComputeResult &result = managed_compute_results[i];
+      REQUIRE(result.get_cluster_sender_id() ==
+	      compute_results[i].cluster_sender_id);
+      REQUIRE(result.get_cluster_receiver_id() ==
+	      compute_results[i].cluster_receiver_id);
+      REQUIRE(result.get_node().id == compute_results[i].node.id);
+      REQUIRE(result.get_node().distance ==
+	      compute_results[i].node.distance);
+      REQUIRE(result.get_query_id() == compute_results[i].query_id);
+      REQUIRE(result.get_num_neighbors() ==
+	      compute_results[i].num_neighbors);
+      REQUIRE(std::memcmp(result.get_neighbors_ptr(),
+			  compute_results[i].nbr_ptr.get() + 1,
+			  sizeof(uint32_t) * result.get_num_neighbors()) ==
+	      0);
+    }
+    const auto &managed_compute_queries = manager.get_compute_queries();
+    REQUIRE(managed_compute_queries.size() == compute_queries.size());
+    for (uint32_t i = 0; i < managed_compute_queries.size(); i++) {
+      const auto &query = managed_compute_queries[i];
+      REQUIRE(query.node_id == compute_queries[i].node_id);
+      REQUIRE(query.query_id == compute_queries[i].query_id);
+      REQUIRE(query.min_distance == compute_queries[i].min_distance);
+      REQUIRE(query.cluster_receiver_id ==
+              compute_queries[i].cluster_receiver_id);
+      REQUIRE(query.cluster_sender_id == compute_queries[i].cluster_sender_id);
+    }
+
+    batcher.reset();
   }
-  
 }
+

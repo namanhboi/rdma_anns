@@ -469,14 +469,10 @@ check upon each new iteration of the search loop.
         
 
         if (distance >= query.min_distance) {
-          compute_result_t res = {
-            .cluster_sender_id = parent->cluster_id,
-            .cluster_receiver_id = query.cluster_sender_id,
-            .node = node,
-            .query_id = query.query_id,
-            .num_neighbors = num_nbrs,
-            .nbr_ptr = std::move(nbr_ptr)
-          };
+          compute_result_t res(parent->cluster_id, query.cluster_sender_id,
+                               node, query.query_id, num_nbrs,
+                               nbr_ptr);
+          
           parent->batch_thread->push_compute_res(res);
         }
       }
@@ -518,15 +514,12 @@ check upon each new iteration of the search loop.
       return empty;
     }
 
-    std::unordered_map<
-        uint8_t, std::unique_ptr<std::vector<global_search_message<data_type>>>>
+    std::unordered_map<uint8_t,
+                       std::unique_ptr<GlobalSearchMessageBatcher<data_type>>>
         cluster_messages;
-
-
-
     //key is client_id
     std::unordered_map<uint32_t,
-                       std::unique_ptr<std::vector<ann_search_result_t>>>
+                       std::unique_ptr<ANNSearchResultBatcher>>
         search_results;
     std::condition_variable_any messages_cv;
     std::mutex messages_mutex;
@@ -541,37 +534,36 @@ check upon each new iteration of the search loop.
       wait_time;
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
 
-      while (running) {
-        lock.lock();
-        if (is_empty(cluster_messages) && is_empty(search_results)) {
-          messages_cv.wait_for(lock, batch_time);
-        }
-        if (!running)
-          break;
+      // while (running) {
+      //   lock.lock();
+      //   if (is_empty(cluster_messages) && is_empty(search_results)) {
+      //     messages_cv.wait_for(lock, batch_time);
+      //   }
+      //   if (!running)
+      //     break;
         
-	// BELOW HERE I NEED TO TAKE A LOOK AT, NEED FIXING
+      // 	// BELOW HERE I NEED TO TAKE A LOOK AT, NEED FIXING
 
-	//key is cluster_id
-        std::unordered_map<
-            uint8_t,
-            std::unique_ptr<std::vector<global_search_message<data_type>>>>
-        to_send;
+      // 	//key is cluster_id
+      //   std::unordered_map<
+      //       uint8_t, std::unique_ptr<GlobalSearchMessageBatcher<data_type>>>
+      //   to_send;
 
-        auto now = std::chrono::steady_clock::now();
+      //   auto now = std::chrono::steady_clock::now();
         
-	for (auto &[cluster_id, messages_ptr] : cluster_messages) {
-          if (wait_time.count(cluster_id) == 0) {
-	    wait_time[cluster_id] = now;
-          }
-          if (messages_ptr->size() >= parent->min_batch_size ||
-              (now - wait_time[cluster_id] >= batch_time)) {
-            to_send[cluster_id] = std::move(cluster_messages[cluster_id]);
-            cluster_messages[cluster_id] = std::make_unique<
-							    std::vector<global_search_message<data_type>>>();
-            cluster_messages[cluster_id].reserve(parent->max_batch_size);
-          }
-        }
-        lock.unlock();
+      // 	for (auto &[cluster_id, messages_ptr] : cluster_messages) {
+      //     if (wait_time.count(cluster_id) == 0) {
+      // 	    wait_time[cluster_id] = now;
+      //     }
+      //     if (messages_ptr->size() >= parent->min_batch_size ||
+      //         (now - wait_time[cluster_id] >= batch_time)) {
+      //       to_send[cluster_id] = std::move(cluster_messages[cluster_id]);
+      //       cluster_messages[cluster_id] = std::make_unique<
+      // 							    std::vector<global_search_message<data_type>>>();
+      //       cluster_messages[cluster_id].reserve(parent->max_batch_size);
+      //     }
+      //   }
+      //   lock.unlock();
 //TODO
         
 	// //key is client node id
@@ -598,55 +590,49 @@ check upon each new iteration of the search loop.
 
         // done with all data prep, now time to send batches of messages. Need
         // to finish serializaiton part first.
-        
-
-
-
-        
       }
 
-    }
-    
   public:
-    void push_message(uint8_t cluster_receiver_id,
-                      global_search_message<data_type> &msg) {
-      std::scoped_lock<std::mutex> lock(messages_mutex);
-      if (cluster_messages.count(cluster_receiver_id) == 0) {
-        cluster_messages[cluster_receiver_id] =
-          std::make_unique<std::vector<global_search_message<data_type>>>();
-        cluster_messages[cluster_receiver_id]->reserve(parent->max_batch_size);
-      }
-      cluster_messages[cluster_receiver_id]->push_back(msg);
-    }
+// need to redo this @.@
     void push_compute_query(uint32_t node_id, uint32_t query_id,
                             float min_distance, uint8_t cluster_receiver_id) {
-      global_search_message<data_type> msg = {
-          .msg_type = COMPUTE_QUERY,
-          .compute_query = {.node_id = node_id,
-                            .query_id = query_id,
-                            .min_distance = min_distance,
-                            .cluster_sender_id = parent->cluster_id,
-                            .cluster_receiver_id = cluster_receiver_id}};
-      push_message(cluster_receiver_id, msg);
+      std::scoped_lock<std::mutex> lock(messages_mutex);
+      compute_query_t query(node_id, query_id, min_distance, parent->cluster_id,
+                            cluster_receiver_id);
+
+      if (cluster_messages.count(cluster_receiver_id) == 0) {
+        cluster_messages[cluster_receiver_id] =
+            std::make_unique<GlobalSearchMessageBatcher<data_type>>(
+								    parent->dim);
+      }
+      cluster_messages[cluster_receiver_id]->push_compute_query(query);
     }
+
     void push_compute_res(compute_result_t res) {
-      global_search_message<data_type> msg = {.msg_type = COMPUTE_RES,
-                                              .msg = res};
-      push_message(res.cluster_receiver_id, msg);
+      std::scoped_lock<std::mutex> lock(messages_mutex);      
+      if (cluster_messages.count(res.cluster_receiver_id) == 0) {
+        cluster_messages[res.cluster_receiver_id] =
+            std::make_unique<GlobalSearchMessageBatcher<data_type>>(
+								    parent->dim);
+      }
+      cluster_messages[res.cluster_receiver_id]->push_compute_res(res);
     }
 
     void push_ann_result(uint32_t query_id, uint32_t client_id, uint32_t K,
                          uint32_t L, std::shared_ptr<uint32_t[]> search_result,
                          uint8_t cluster_id) {
+      std::scoped_lock<std::mutex> lock(messages_mutex);
       ann_search_result_t search_res = {.query_id = query_id,
                                         .client_id = client_id,
                                         .K = K,
                                         .L = L,
-                                        .search_result =
-                                            std::move(search_result),
+                                        .search_result = search_result,
                                         .cluster_id = cluster_id};
-      std::scoped_lock<std::mutex> lock(messages_mutex);
-      search_results[client_id]->emplace_back(std::move(search_res));
+      if (search_results.count(client_id) == 0) {
+        search_results[client_id] = std::make_unique<ANNSearchResultBatcher>(
+									     parent->max_batch_size + 1);
+      }
+      search_results[client_id]->push(search_res);
     }      
   };
 
