@@ -33,6 +33,60 @@ stuff to be sent to the batcher to serialize.
    into a blob and sent to the appropriate object pool to trigger whatever udl
 */
 
+
+
+/*
+ * EmbeddingQuery encapsulates a single embedding query that is part of a batch.
+ * Operations are performed on demand and directly from the buffer of the whole
+ * batch.
+ *
+ *
+ */
+template<typename data_type>
+class EmbeddingQuery {
+public:
+  std::shared_ptr<uint8_t[]> buffer; // this ptr is the start of a batch of queries, not just this one
+  uint64_t buffer_size;
+  uint32_t query_id;
+  uint32_t client_node_id, embeddings_position, embeddings_size;
+  uint32_t dim;
+  uint32_t K;
+  uint32_t L;
+  
+
+  EmbeddingQuery(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
+                 uint32_t metadata_position, uint32_t embeddings_position, uint32_t emb_dim) {
+    this->buffer = buffer;
+    this->buffer_size = buffer_size;
+    const uint32_t *metadata = reinterpret_cast<const uint32_t *>(
+							    buffer.get() + metadata_position);
+    this->query_id = metadata[0];
+    this->client_node_id = metadata[1];
+    this->K = metadata[2];
+    this->L = metadata[3];
+    this->embeddings_position = embeddings_position;
+
+    this->dim = emb_dim;
+  }
+  uint64_t get_query_id() { return this->query_id; }
+
+  uint32_t get_K() { return this->K; }
+
+  uint32_t get_L() {
+    return this->L;
+  }
+  uint32_t get_client_node_id() { return this->client_node_id; }
+
+  const data_type *get_embedding_ptr() {
+    if (this->embeddings_position >= this->buffer_size) throw std::runtime_error("embeddings_position " + std::to_string(this->embeddings_position) +  " > " + std::to_string(this->buffer_size));
+    return reinterpret_cast<const data_type*>(this->buffer.get() + this->embeddings_position);
+  }
+
+  uint64_t get_dim() { return this->dim; }
+  
+};
+
+
 template <typename data_type>
 struct query_t {
   uint32_t query_id;
@@ -41,6 +95,16 @@ struct query_t {
   uint32_t dimension;
   uint32_t K;
   uint32_t L;
+
+
+  query_t(const std::shared_ptr<EmbeddingQuery<data_type>> &query_ptr) {
+    this->query_id = query_ptr->get_query_id();
+    this->client_node_id = query_ptr->get_client_node_id();
+    this->query_emb = query_ptr->get_embedding_ptr();
+    this->dimension = query_ptr->get_dim();
+    this->K = query_ptr->get_K();
+    this->L = query_ptr->get_L();
+  }
 
   query_t(uint32_t query_id, uint32_t client_node_id,
           const data_type *query_emb, uint32_t dimension, uint32_t K,
@@ -150,56 +214,7 @@ public:
   }    
 };
 
-/*
- * EmbeddingQuery encapsulates a single embedding query that is part of a batch.
- * Operations are performed on demand and directly from the buffer of the whole
- * batch.
- *
- *
- */
-template<typename data_type>
-class EmbeddingQuery {
-public:
-  std::shared_ptr<uint8_t[]> buffer; // this ptr is the start of a batch of queries, not just this one
-  uint64_t buffer_size;
-  uint32_t query_id;
-  uint32_t client_node_id, embeddings_position, embeddings_size;
-  uint32_t dim;
-  uint32_t K;
-  uint32_t L;
-  
 
-  EmbeddingQuery(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
-                 uint32_t metadata_position, uint32_t embeddings_position, uint32_t emb_dim) {
-    this->buffer = buffer;
-    this->buffer_size = buffer_size;
-    const uint32_t *metadata = reinterpret_cast<const uint32_t *>(
-							    buffer.get() + metadata_position);
-    this->query_id = metadata[0];
-    this->client_node_id = metadata[1];
-    this->K = metadata[2];
-    this->L = metadata[3];
-    this->embeddings_position = embeddings_position;
-
-    this->dim = emb_dim;
-  }
-  uint64_t get_query_id() { return this->query_id; }
-
-  uint32_t get_K() { return this->K; }
-
-  uint32_t get_L() {
-    return this->L;
-  }
-  uint32_t get_client_node_id() { return this->client_node_id; }
-
-  const data_type *get_embedding_ptr() {
-    if (this->embeddings_position >= this->buffer_size) throw std::runtime_error("embeddings_position " + std::to_string(this->embeddings_position) +  " > " + std::to_string(this->buffer_size));
-    return reinterpret_cast<const data_type*>(this->buffer.get() + this->embeddings_position);
-  }
-
-  uint64_t get_dim() { return this->dim; }
-  
-};
 
 /*
  EmbeddingQueryBatchManager perform operations on the whole embedding query
@@ -276,20 +291,17 @@ public:
     this->embeddings_position =
         data_position + EmbeddingQueryBatcher<data_type>::get_header_size() +
         this->metadata_size * this->num_queries;
-    
-
   }
 
   
   const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &get_queries() {
-    if (this->queries.empty()) {
-      // std::cout << "creating queries" << std::endl;
+    if (queries.empty())
       this->create_queries();
-    }
-    // std::cout << "num queries " << queries.size() << std::endl;
+
+    assert(queries.size() == num_queries);
     return queries;
   }
-  uint32_t get_num_queries() {
+  uint32_t get_num_queries() const {
     return this->num_queries;
   }
 
@@ -385,8 +397,8 @@ public:
     queries.reserve(size_hint);
   }
 
-  void add_query(greedy_query_t<data_type> query) {
-    queries.push_back(query);
+  void add_query(greedy_query_t<data_type> &query) {
+    queries.emplace_back(query);
   }
   void add_query(uint8_t cluster_id,
                  std::vector<uint32_t> candidate_queue,
@@ -589,16 +601,19 @@ public:
     this->embedding_size = sizeof(data_type) * this->emb_dim;
     this->metadata_size = greedy_query_t<data_type>::get_metadata_size();
     this->metadata_position = data_position + this->header_size;
-    this->embeddings_position = metadata_position + this->metadata_size * this->num_queries;
+    this->embeddings_position =
+      metadata_position + this->metadata_size * this->num_queries;
+
   }
   
   const std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &get_queries() {
-    if (this->queries.empty()) {
-      this->create_queries();
-    }
+    if (queries.empty())
+      create_queries();
+
+    assert(queries.size() == num_queries);
     return queries;
   }
-  uint32_t get_num_queries() {
+  uint32_t get_num_queries() const {
     return this->num_queries;
   }
 
@@ -765,7 +780,7 @@ public:
     this->num_queries =
       *reinterpret_cast<const uint32_t *>(buffer.get() + data_position);
     create_queries(buffer.get(), buffer_size);
-    
+    assert(num_queries == queries.size());
   }
   // missing constructor
   ComputeQueryBatchManager(const uint8_t *buffer, uint64_t buffer_size) {
@@ -774,16 +789,18 @@ public:
       *reinterpret_cast<const uint32_t *>(buffer + data_position);
 
     create_queries(buffer, buffer_size);
+    assert(num_queries == queries.size());
     // copying here is not necessary since all the compute queries only involve
     // scalar values that can be copied
   }
 
   const std::vector<compute_query_t> &get_queries() {
-    if (this->queries.empty()) {
-      throw std::runtime_error("compute query batch manager empty queries");
-    }
     return queries;
-  }    
+  }
+
+  uint32_t get_num_queries()  const {
+    return this->num_queries;
+  }
 
 };
 
@@ -977,13 +994,13 @@ public:
 class ComputeResultBatchManager {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
-  uint32_t num_queries;
+  uint32_t num_results;
   uint32_t data_position;
 
   std::vector<ComputeResult> results;
   void create_results() {
     uint32_t offset = data_position + ComputeResultBatcher::get_header_size();
-    for (uint32_t i = 0; i < num_queries; i++) {
+    for (uint32_t i = 0; i < num_results; i++) {
       results.emplace_back(buffer, buffer_size, offset);
       offset += results[i].get_serialize_size();
     }
@@ -995,7 +1012,7 @@ public:
     this->buffer = buffer;
     this->buffer_size = buffer_size;
     this->data_position = data_position;
-    this->num_queries = *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
+    this->num_results = *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
   ComputeResultBatchManager(const uint8_t *buffer, uint64_t buffer_size) {
     std::shared_ptr<uint8_t[]> copy(new uint8_t[buffer_size]);
@@ -1003,15 +1020,19 @@ public:
     this->buffer = std::move(copy);
     this->buffer_size = buffer_size;
     this->data_position = 0;
-    this->num_queries =
+    this->num_results =
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
 
   const std::vector<ComputeResult> &get_results() {
-    if (this->results.empty()) {
+    if (results.empty()) {
       create_results();
     }
+    assert(results.size() == num_results);
     return results;
+  }
+  uint32_t get_num_results() const {
+    return this->num_results;
   }    
   
 };  
@@ -1195,11 +1216,15 @@ public:
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
 
-
+  uint32_t get_num_results() const{
+    return this->num_results;
+  }
   const std::vector<ANNSearchResult>& get_results() {
     if (this->results.empty()) {
       create_results();
     }
+
+    assert(results.size() == num_results);
     return results;
   }    
 };  
@@ -1207,17 +1232,34 @@ public:
 
 
 
-template<typename data_type>
-struct global_search_message {
-  message_type msg_type;
-  union msg {
-    greedy_query_t<data_type> search_query;
-    compute_query_t compute_query;
-    compute_result_t compute_result;
-    ann_search_result_t search_res;
-    std::shared_ptr<EmbeddingQuery<data_type>> emb_query;
-  };
-};
+// template<typename data_type>
+// struct global_search_message {
+//   message_type msg_type;
+//   union {
+//     greedy_query_t<data_type> search_query;
+//     compute_query_t compute_query;
+//     compute_result_t compute_result;
+//     std::shared_ptr<EmbeddingQuery<data_type>> emb_query;
+//   } msg;
+
+
+//   global_search_message(const std::shared_ptr<EmbeddingQuery<data_type>> &emb_query) {
+//     this->msg_type = message_type::QUERY_EMB;
+//     this->msg.emb_query = emb_query;
+//   }
+//   global_search_message(const compute_result_t &compute_result) {
+//     this->msg_type = message_type::COMPUTE_RES;
+//     this->msg.compute_result = compute_result;
+//   }
+//   global_search_message(const compute_query_t &compute_query) {
+//     this->msg_type = message_type::COMPUTE_QUERY;
+//     this->msg.compute_query = compute_query;
+//   }
+//   global_search_message(const greedy_query_t<data_type> &search_query) {
+//     this->msg_type = message_type::SEARCH_QUERY;
+//     this->msg.search_query = search_query;
+//   }
+// };
 
 
 template <typename data_type>
@@ -1227,23 +1269,21 @@ class GlobalSearchMessageBatcher {
   // will use this class for the head index udl as well to batch the greedy
   // search queries.
   // data layout: header || query embeddings for 2ndary partitions || greedy
-  // search queries || greedy search results ||compute result || compute query
-
-  uint32_t greedy_queries_position;
-  uint32_t search_results_position;
-  uint32_t compute_results_position;
-  uint32_t compute_queries_position;
-
+  // search queries || compute result || compute query
 
   void write_header(uint8_t *buffer) {
-    uint32_t offset = 0;
-    std::memcpy(buffer + offset, &greedy_queries_position,
-                sizeof(greedy_queries_position));
-    offset += sizeof(greedy_queries_position);
-
-    std::memcpy(buffer + offset, &search_results_position,
-                sizeof(search_results_position));
-    offset += sizeof(search_results_position);
+    uint32_t search_queries_position =
+        GlobalSearchMessageBatcher<data_type>::get_header_size() +
+        query_embeddings_batcher.get_serialize_size();
+    uint32_t compute_results_position =
+      search_queries_position + search_queries_batcher.get_serialize_size();
+    uint32_t compute_queries_position =
+      compute_results_position + compute_results_batcher.get_serialize_size();
+    
+    uint32_t offset = 0;    
+    std::memcpy(buffer + offset, &search_queries_position,
+                sizeof(search_queries_position));
+    offset += sizeof(search_queries_position);
 
     std::memcpy(buffer + offset, &compute_results_position,
                 sizeof(compute_results_position));
@@ -1253,19 +1293,22 @@ class GlobalSearchMessageBatcher {
                 sizeof(compute_queries_position));
   }
 
-  static uint32_t get_header_size() { return sizeof(uint32_t) * 4; }
+
+  static uint32_t get_header_size() { return sizeof(uint32_t) * 3; }
 
   std::shared_ptr<derecho::cascade::Blob> blob;
 
+  EmbeddingQueryBatcher<data_type> query_embeddings_batcher;
   GreedySearchQueryBatcher<data_type> search_queries_batcher;
   ComputeQueryBatcher compute_queries_batcher;
   ComputeResultBatcher compute_results_batcher;
-  EmbeddingQueryBatcher<data_type> query_embeddings_batcher;
+
   
     
   // std::vector<global_search_message<data_type>> messages;
   uint32_t query_emb_dim; // this is only used for head search udl
   // sending stuff to global search udl
+public:
   
   GlobalSearchMessageBatcher(uint32_t emb_dim, uint32_t size_hint = 100) {
     this->query_emb_dim = emb_dim;
@@ -1277,52 +1320,73 @@ class GlobalSearchMessageBatcher {
       EmbeddingQueryBatcher<data_type>(emb_dim, size_hint);
   }
 
-  void push_message(global_search_message<data_type> &message) {
-    switch (message.msg_type) {
-    case QUERY_EMB:
-      // EmbeddingQuery<data_type>
+  void push_search_query(greedy_query_t<data_type> search_query) {
+    this->search_queries_batcher.add_query(search_query);
+  }
 
-      break;
-    case SEARCH_QUERY:
-      // search_queries.push_back(message.msg);
-      break;
-    case COMPUTE_QUERY:
-      // compute_queries.push_back(message.msg);
-      break;
-    case COMPUTE_RES:
-      // compute_results.push_back(message.msg);
-      break;
-    default:
-      break;
+  void push_compute_query(compute_query_t compute_query) {
+    this->compute_queries_batcher.push(compute_query);
+  }
+
+  void push_compute_result(compute_result_t compute_result) {
+    this->compute_results_batcher.push(compute_result);
+  }
+  void push_embedding_query(
+			    std::shared_ptr<EmbeddingQuery<data_type>> emb_query) {
+    query_t<data_type> q(emb_query);
+    this->query_embeddings_batcher.add_query(q);
+  }
+      
+  size_t get_serialize_size() {
+    size_t total_size =
+      GlobalSearchMessageBatcher<data_type>::get_header_size();
+    total_size += search_queries_batcher.get_serialize_size();
+    total_size += compute_queries_batcher.get_serialize_size();
+    total_size += compute_results_batcher.get_serialize_size();
+    total_size += query_embeddings_batcher.get_serialize_size();
+    return total_size;
+  }
+
+
+  void write_serialize(uint8_t *buffer) {
+    uint32_t offset = 0;
+    write_header(buffer + offset);
+    offset += GlobalSearchMessageBatcher<data_type>::get_header_size();
+    
+    query_embeddings_batcher.write_serialize(buffer + offset);
+    offset += query_embeddings_batcher.get_serialize_size();
+
+    search_queries_batcher.write_serialize(buffer + offset);
+    offset += search_queries_batcher.get_serialize_size();
+
+    compute_results_batcher.write_serialize(buffer + offset);
+    offset += compute_results_batcher.get_serialize_size();
+
+    compute_queries_batcher.write_serialize(buffer + offset);
+    offset += compute_queries_batcher.get_serialize_size();
+    if (offset != get_serialize_size()) {
+      throw std::runtime_error(
+			       "serializatoin error: offset not equal to get_serialize_size");
     }
   }
 
+  void serialize() {
+    size_t total_size = get_serialize_size();
 
-  size_t get_serialize_size() {
-    // size_t total_size = this->header.size();
-    // total_size +=
-    // query_embeddings_batcher.get_serialize_size(query_embeddings); total_size
-    // += search_queries_batcher.get_serialize_size(search_queries);
-    return 0;
+    this->blob = std::make_shared<derecho::cascade::Blob>(
+        [&](uint8_t *buffer, size_t size) {
+          write_serialize(buffer);
+          return size;
+}, total_size);
   }
-
-
-  void write_serialize() {}
-
-  void serialize() {}
   
-
   std::shared_ptr<derecho::cascade::Blob> get_blob() { return blob; }
   void reset() {
     blob.reset();
-    // search_queries.clear();
-    // compute_queries.clear();
-    // compute_results.clear();
-    // search_results.clear();
-    // query_embeddings.clear();
-    // header.greedy_queries_position = 0;
-    // header.compute_result_position = 0;
-    // header.compute_query_position = 0;
+    query_embeddings_batcher.reset();
+    search_queries_batcher.reset();
+    compute_queries_batcher.reset();
+    compute_results_batcher.reset();
   }
 };
 
@@ -1333,31 +1397,61 @@ template <typename data_type> class GlobalSearchMessageBatchManager {
   uint64_t buffer_size;
 
 
-  GreedySearchQueryBatchManager<data_type> greedy_search_bm;
-  ComputeQueryBatchManager compute_query_bm;
-  ComputeResultBatchManager compute_result_bm;
-  ANNSearchResultBatchManager search_result_bm;
-  EmbeddingQueryBatchManager<data_type> embedding_query_bm;
+  GreedySearchQueryBatchManager<data_type> greedy_search_manager;
+  ComputeQueryBatchManager compute_query_manager;
+  ComputeResultBatchManager compute_result_manager;
+  EmbeddingQueryBatchManager<data_type> embedding_query_manager;
   
 public:
-  GlobalSearchMessageBatchManager(const uint8_t *buffer, uint64_t buffer_size) {
+  GlobalSearchMessageBatchManager(const uint8_t *buffer, uint64_t buffer_size, uint32_t emb_dim) {
     std::shared_ptr<uint8_t[]> copy(new uint8_t[buffer_size]);
     std::memcpy(copy.get(), buffer, buffer_size);
     this->buffer = std::move(copy);
     this->buffer_size = buffer_size;
 
-    // greedy_search_bm = std::move(GreedySearchQueryBatchManager<data_type>(
-									  // this->buffer, this->buffer_size));
 
-    
+    const uint32_t *header = reinterpret_cast<const uint32_t *>(this->buffer.get());
+    uint32_t embedding_queries_position =
+      GlobalSearchMessageBatcher<data_type>::get_header_size();
+    uint32_t search_queries_position = header[0];
+    uint32_t compute_results_position = header[1];
+    uint32_t compute_queries_position = header[2];
+
+    embedding_query_manager = EmbeddingQueryBatchManager<data_type>(
+									      this->buffer, this->buffer_size, embedding_queries_position);
+    greedy_search_manager = GreedySearchQueryBatchManager<data_type>(
+									       this->buffer, this->buffer_size, search_queries_position);
+    compute_result_manager = ComputeResultBatchManager(
+								 this->buffer, this->buffer_size, compute_results_position);
+    compute_query_manager = ComputeQueryBatchManager(
+							       this->buffer, this->buffer_size, compute_queries_position);
   }
 
-  
+  // const std::vector<
+  const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &
+  get_embedding_queries() const {
+    return this->embedding_query_manager.get_queries();
+  }
+
+  const std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &
+  get_greedy_search_queries() const {
+      return this->greedy_search_manager.get_queries();
+  }
+  const std::vector<compute_query_t> &get_compute_queries() {
+    return this->compute_query_manager.get_queries();
+  }
+
+  const std::vector<ComputeResult> &get_compute_results() {
+    return this->compute_result_manager.get_results();
+  }
 
 
-  
-
-
+  uint32_t get_num_messages() const {
+    return this->embedding_query_manager.get_num_queries() +
+           this->greedy_search_manager.get_num_queries() +
+           this->compute_query_manager.get_num_queries() +
+           this->compute_result_manager.get_num_results();
+  }    
 };  
 
 

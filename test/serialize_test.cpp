@@ -1,3 +1,4 @@
+#include <catch2/catch_template_test_macros.hpp>
 #include <cascade/service_client_api.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include "../benchmark/benchmark_dataset.hpp"
@@ -178,6 +179,28 @@ TEST_CASE("Testing GreedySearchQuery serialization and deserialization on sift d
   }
 }
 
+
+std::vector<compute_query_t>
+generate_random_compute_queries(uint32_t num_queries) {
+  std::vector<compute_query_t> generated;
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(0, 255);
+
+  std::uniform_real_distribution<float> distance_gen(
+						     0.0, std::numeric_limits<float>::max());
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+  for (uint32_t i = 0; i < num_queries; i++) {
+    compute_query_t query(node_id_gen(gen), node_id_gen(gen),
+                          distance_gen(gen), cluster_id_gen(gen),
+                          cluster_id_gen(gen));
+    generated.push_back(query);
+  }
+  return generated;
+}  
+
 TEST_CASE("Testing serialization of compute queries") {
   uint32_t num_queries = 10'000;
 
@@ -233,6 +256,37 @@ TEST_CASE("Testing serialization of compute queries") {
     start_batch_index += batch_size;
   }
 }
+
+
+
+std::vector<compute_result_t>
+generate_random_compute_results(uint32_t num_results, uint32_t R) {
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator  
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(0, 255);
+
+  std::uniform_real_distribution<float> distance_gen(
+						     0.0, std::numeric_limits<float>::max());
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+  std::vector<compute_result_t> generated;
+  for (uint32_t i = 0; i < num_results; i++) {
+    std::vector<uint32_t> neighbors = generate_list_uint32_t(R);
+    uint32_t *nbrs = reinterpret_cast<uint32_t *>(
+						  malloc(sizeof(uint32_t) * (neighbors.size() + 1)));
+    nbrs[0] = static_cast<uint32_t>(neighbors.size());
+    std::memcpy(nbrs + 1, neighbors.data(),
+                sizeof(uint32_t) * neighbors.size());
+    std::shared_ptr<const uint32_t> nbr_ptr(nbrs, std::free);
+    compute_result_t res(cluster_id_gen(gen), cluster_id_gen(gen),
+                         {node_id_gen(gen), distance_gen(gen)},
+                         node_id_gen(gen), neighbors.size(), nbr_ptr);
+    generated.push_back(res);
+  }
+
+  return generated;
+}
+
 
 TEST_CASE("Testing serialization of compute result") {
   uint32_t num_queries = 10'000;
@@ -374,4 +428,172 @@ TEST_CASE("Serialization of ann search result") {
     start_batch_index += batch_size;
   }
 
+}
+
+
+
+template <typename data_type>
+std::vector<std::shared_ptr<EmbeddingQuery<data_type>>>
+generate_random_embedding_queries(uint32_t num_queries, uint32_t dim, uint32_t K, uint32_t L) {
+  std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> res;
+
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+
+  std::uniform_int_distribution<uint8_t> uint8_t_gen(
+						     std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+
+
+  EmbeddingQueryBatcher<data_type> batcher(dim, num_queries + 1);
+
+  std::shared_ptr<data_type> emb_data(new data_type[dim * num_queries]);
+  std::vector<uint8_t> tmp(num_queries * dim * sizeof(data_type));
+  std::generate(tmp.begin(), tmp.end(), [&]() { return uint8_t_gen(gen); });
+  std::memcpy(emb_data.get(), tmp.data(), tmp.size());
+
+  for (uint32_t i = 0; i < num_queries; i++) {
+    query_t<data_type> query(node_id_gen(gen), node_id_gen(gen),
+                             emb_data.get() + i * dim, dim, K, L);
+    batcher.add_query(query);
+  }
+  std::shared_ptr<uint8_t[]> buffer(new uint8_t[batcher.get_serialize_size()]);
+  batcher.write_serialize(buffer.get());
+
+  EmbeddingQueryBatchManager<data_type> manager(buffer.get(),
+                                                batcher.get_serialize_size());
+  res = manager.get_queries();
+  return res;
+}
+
+template <typename data_type>
+std::vector<greedy_query_t<data_type>>
+generate_random_greedy_queries(uint32_t num_queries, uint32_t dim, uint32_t K,
+                        uint32_t L) {
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(
+							std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+
+  std::vector<greedy_query_t<data_type>> res;
+  std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> emb_queries =
+    generate_random_embedding_queries<data_type>(num_queries, dim, K, L);
+
+
+  for (uint32_t i = 0; i < num_queries; i++) {
+    greedy_query_t<data_type> query(cluster_id_gen(gen),
+                                    generate_list_uint32_t(L), emb_queries[i]);
+    res.push_back(query);
+  }
+  return res;
+}
+
+TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", uint8_t, float, int8_t) {
+  uint32_t num_batches = 10'000;
+  uint32_t min_batch_size = 0;
+  uint32_t max_batch_size = 6;
+
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<> batch_size_gen(min_batch_size,
+                                                 max_batch_size);
+  uint32_t dim = 128;
+  uint32_t K = 10;
+  uint32_t R = 32;
+  uint32_t L = 20;
+  
+  GlobalSearchMessageBatcher<TestType> batcher(dim);
+  for (uint32_t i = 0; i < num_batches; i++) {
+    uint32_t emb_query_batch_size = batch_size_gen(gen);
+
+    std::vector<std::shared_ptr<EmbeddingQuery<TestType>>> emb_queries =
+        generate_random_embedding_queries<TestType>(emb_query_batch_size, dim,
+                                                    K, L);
+    uint32_t greedy_query_batch_size = batch_size_gen(gen);
+    std::vector<greedy_query_t<TestType>> greedy_queries =
+        generate_random_greedy_queries<TestType>(greedy_query_batch_size, dim,
+                                                 K, L);
+
+    uint32_t compute_result_batch_size = batch_size_gen(gen);
+    std::vector<compute_result_t> compute_results =
+      generate_random_compute_results(compute_result_batch_size, R);
+    
+    uint32_t compute_query_batch_size = batch_size_gen(gen);
+    std::vector<compute_query_t> compute_queries =
+      generate_random_compute_queries(compute_query_batch_size);
+
+    for (const std::shared_ptr<EmbeddingQuery<TestType>> &emb_query : emb_queries) {
+      batcher.push_embedding_query(emb_query);
+    }
+    for (const auto &search_q : greedy_queries) {
+      batcher.push_search_query(search_q);
+    }
+    for (const auto &compute_res : compute_results) {
+      batcher.push_compute_result(compute_res);
+    }
+    for (const auto &compute_query : compute_queries) {
+      batcher.push_compute_query(compute_query);
+    }
+
+    std::shared_ptr<uint8_t[]> buffer(
+				      new uint8_t[batcher.get_serialize_size()]);
+    
+
+    batcher.write_serialize(buffer.get());
+
+
+    GlobalSearchMessageBatchManager<TestType> manager(
+						      buffer.get(), batcher.get_serialize_size(), dim);
+    const auto &managed_emb_queries = manager.get_embedding_queries();
+
+    REQUIRE(managed_emb_queries.size() == emb_query_batch_size);
+    for (uint32_t i = 0; i < managed_emb_queries.size(); i++) {
+      const std::shared_ptr<EmbeddingQuery<TestType>> &query = managed_emb_queries[i];
+      REQUIRE(query->get_query_id() == emb_queries[i]->get_query_id());
+      REQUIRE(query->get_client_node_id() ==
+              emb_queries[i]->get_client_node_id());
+      REQUIRE(query->get_K() == emb_queries[i]->get_K());
+      REQUIRE(query->get_L() == emb_queries[i]->get_L());
+      REQUIRE(query->get_dim() == emb_queries[i]->get_dim());
+
+      REQUIRE(std::memcmp(query->get_embedding_ptr(),
+                          emb_queries[i]->get_embedding_ptr(),
+                          emb_queries[i]->get_dim() * sizeof(TestType)) == 0);
+      }
+      const auto  &managed_search_queries = manager.get_greedy_search_queries();
+      REQUIRE(managed_search_queries.size() == greedy_query_batch_size);
+      for (uint32_t i = 0; i < managed_search_queries.size(); i++) {
+        const std::shared_ptr<GreedySearchQuery<TestType>> &query =
+          managed_search_queries[i];
+
+
+        REQUIRE(query->get_cluster_id() == greedy_queries[i].cluster_id);
+        std::vector<uint32_t> greedy_query_cand_q(
+            query->get_candidate_queue_ptr(),
+            query->get_candidate_queue_ptr() +
+            query->get_candidate_queue_size());
+
+        REQUIRE(greedy_query_cand_q == greedy_queries[i].candidate_queue);
+        const std::shared_ptr<EmbeddingQuery<TestType>> greedy_emb =
+          greedy_queries[i].query;
+
+        REQUIRE(query->get_query_id() ==
+                greedy_emb->get_query_id());
+
+        REQUIRE(query->get_client_node_id() ==
+                greedy_emb->get_client_node_id());
+        REQUIRE(query->get_K() == greedy_emb->get_K());
+        REQUIRE(query->get_L() == greedy_emb->get_L());
+        REQUIRE(query->get_dim() == greedy_emb->get_dim());
+
+        REQUIRE(std::memcmp(query->get_embedding_ptr(),
+                            greedy_emb->get_embedding_ptr(),
+                            greedy_emb->get_dim() * sizeof(TestType)) == 0);
+}
+      
+    
+    
+  }
+  
 }
