@@ -72,15 +72,15 @@ TEST_CASE("Testing EmbeddingQuery serialization and deserialization on sift data
   }
 }
 
-std::vector<uint32_t> generate_candidate_queue(uint32_t L) {
+std::vector<uint32_t> generate_list_uint32_t(uint32_t L, bool exact_size = false) {
   std::random_device rd; // obtain a random number from hardware
   std::mt19937 gen(rd()); // seed the generator
   std::uniform_int_distribution<uint32_t> node_id_gen(
 						      0, std::numeric_limits<uint32_t>::max());
   std::uniform_int_distribution<uint32_t> num_cand_gen(0, L);
 
-  uint32_t num_cand = num_cand_gen(gen);
-  std::cout << num_cand << std::endl;
+  uint32_t num_cand = exact_size ? L : num_cand_gen(gen) ;
+  // std::cout << num_cand << std::endl;
   std::set<uint32_t> ids;
   while (ids.size() < num_cand) {
     ids.insert(node_id_gen(gen));
@@ -136,7 +136,7 @@ TEST_CASE("Testing GreedySearchQuery serialization and deserialization on sift d
     const auto emb_queries = manager.get_queries();
     REQUIRE(emb_queries.size() == batch_size);
     for (uint32_t i = 0; i < emb_queries.size(); i++) {
-      std::vector<uint32_t> greedy_cand_q = generate_candidate_queue(L);
+      std::vector<uint32_t> greedy_cand_q = generate_list_uint32_t(L);
 
       uint8_t greedy_cluster_id = cluster_id_gen(gen);
       greedy_cluster_ids.emplace_back(greedy_cluster_id);
@@ -178,6 +178,200 @@ TEST_CASE("Testing GreedySearchQuery serialization and deserialization on sift d
   }
 }
 
+TEST_CASE("Testing serialization of compute queries") {
+  uint32_t num_queries = 10'000;
+
+  uint32_t min_batch_size = 1;
+  uint32_t max_batch_size = 10;
+
+  size_t start_batch_index = 0;
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<> batch_size_gen(min_batch_size, max_batch_size);
+
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(0, 255);
+
+  std::uniform_real_distribution<float> distance_gen(
+						     0.0, std::numeric_limits<float>::max());
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+
+  ComputeQueryBatcher batcher(max_batch_size + 1);
+  while (start_batch_index < num_queries) {
+    uint32_t num_queries_left = num_queries - start_batch_index;
+    uint32_t rand_batch_size = batch_size_gen(gen);
+    uint32_t batch_size = std::min(num_queries_left, rand_batch_size);
 
 
+    std::vector<compute_query_t> generated;
+    
+    for (uint32_t i = 0; i < batch_size; i++) {
+      compute_query_t query(node_id_gen(gen), node_id_gen(gen),
+                            distance_gen(gen), cluster_id_gen(gen),
+                            cluster_id_gen(gen));
+      generated.push_back(query);
+      batcher.push(query);
+    }
 
+    std::shared_ptr<uint8_t[]> buffer(
+				      new uint8_t[batcher.get_serialize_size()]);
+    batcher.write_serialize(buffer.get());
+    
+    ComputeQueryBatchManager manager(buffer.get(),
+                                     batcher.get_serialize_size());
+    const auto &queries = manager.get_queries();
+    REQUIRE(queries.size() == batch_size);
+    for (uint32_t i = 0; i < queries.size(); i++) {
+      REQUIRE(queries[i].node_id == generated[i].node_id);
+      REQUIRE(queries[i].query_id == generated[i].query_id);
+      REQUIRE(queries[i].min_distance == generated[i].min_distance);
+      REQUIRE(queries[i].cluster_receiver_id ==
+              generated[i].cluster_receiver_id);
+      REQUIRE(queries[i].cluster_sender_id == generated[i].cluster_sender_id);
+    }
+    batcher.reset();
+    start_batch_index += batch_size;
+  }
+}
+
+TEST_CASE("Testing serialization of compute result") {
+  uint32_t num_queries = 10'000;
+  uint32_t R = 32;
+  uint32_t min_batch_size = 1;
+  uint32_t max_batch_size = 10;
+
+  size_t start_batch_index = 0;
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<> batch_size_gen(min_batch_size, max_batch_size);
+
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(0, 255);
+
+  std::uniform_real_distribution<float> distance_gen(
+						     0.0, std::numeric_limits<float>::max());
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+
+
+  ComputeResultBatcher batcher(max_batch_size + 1);
+  while (start_batch_index < num_queries) {
+    uint32_t num_queries_left = num_queries - start_batch_index;
+    uint32_t rand_batch_size = batch_size_gen(gen);
+    uint32_t batch_size = std::min(num_queries_left, rand_batch_size);
+
+    std::vector<compute_result_t> generated;
+    for (uint32_t i = 0; i < batch_size; i++) {
+      std::vector<uint32_t> neighbors = generate_list_uint32_t(R);
+      uint32_t *nbrs = reinterpret_cast<uint32_t *>(
+						    malloc(sizeof(uint32_t) * (neighbors.size() + 1)));
+      nbrs[0] = static_cast<uint32_t>(neighbors.size());
+      std::memcpy(nbrs + 1, neighbors.data(),
+                  sizeof(uint32_t) * neighbors.size());
+      std::shared_ptr<const uint32_t> nbr_ptr(nbrs, std::free);
+      compute_result_t res(cluster_id_gen(gen), cluster_id_gen(gen),
+                           {node_id_gen(gen), distance_gen(gen)},
+                           node_id_gen(gen), neighbors.size(), nbr_ptr);
+      generated.push_back(res);
+      batcher.push(res);
+    }
+
+    std::shared_ptr<uint8_t[]> buffer(
+				      new uint8_t[batcher.get_serialize_size()]);
+    batcher.write_serialize(buffer.get());
+
+    ComputeResultBatchManager manager(buffer.get(),
+                                      batcher.get_serialize_size());
+
+    const auto &results  = manager.get_results();
+
+    REQUIRE(results.size() == batch_size);
+
+    for (uint32_t i = 0; i < results.size(); i++) {
+      const auto & result = results[i];
+      REQUIRE(result.get_cluster_sender_id() == generated[i].cluster_sender_id);
+      REQUIRE(result.get_cluster_receiver_id() ==
+              generated[i].cluster_receiver_id);
+      REQUIRE(result.get_node().id == generated[i].node.id);
+      REQUIRE(result.get_node().distance == generated[i].node.distance);
+      REQUIRE(result.get_query_id() == generated[i].query_id);
+      REQUIRE(result.get_num_neighbors() == generated[i].num_neighbors);
+      REQUIRE(std::memcmp(result.get_neighbors_ptr(),
+                          generated[i].nbr_ptr.get() + 1,
+                          sizeof(uint32_t) * result.get_num_neighbors()) == 0);
+    }
+
+    batcher.reset();
+    start_batch_index += batch_size;
+  }
+
+}
+
+TEST_CASE("Serialization of ann search result") {
+  uint32_t num_queries = 10'000;
+  uint32_t K = 10;
+  uint32_t L = 20;
+  uint32_t min_batch_size = 1;
+  uint32_t max_batch_size = 10;
+
+  size_t start_batch_index = 0;
+  std::random_device rd; // obtain a random number from hardware
+  std::mt19937 gen(rd()); // seed the generator
+  std::uniform_int_distribution<> batch_size_gen(min_batch_size, max_batch_size);
+
+  std::uniform_int_distribution<uint8_t> cluster_id_gen(0, 255);
+
+  std::uniform_real_distribution<float> distance_gen(
+						     0.0, std::numeric_limits<float>::max());
+  std::uniform_int_distribution<uint32_t> node_id_gen(
+						      0, std::numeric_limits<uint32_t>::max());
+
+  ANNSearchResultBatcher batcher(max_batch_size);
+  while (start_batch_index < num_queries) {
+    uint32_t num_queries_left = num_queries - start_batch_index;
+    uint32_t rand_batch_size = batch_size_gen(gen);
+    uint32_t batch_size = std::min(num_queries_left, rand_batch_size);
+
+    std::vector<ann_search_result_t> generated;
+    for (uint32_t i = 0; i < batch_size; i++) {
+      std::vector<uint32_t> rand_search_results =
+        generate_list_uint32_t(K, true);
+      REQUIRE(rand_search_results.size() == K);
+      std::shared_ptr<uint32_t[]> tmp(new uint32_t[rand_search_results.size()]);
+      std::memcpy(tmp.get(), rand_search_results.data(),
+                  sizeof(uint32_t) * rand_search_results.size());
+      ann_search_result_t res = {
+        node_id_gen(gen),
+        node_id_gen(gen),
+        K,
+        L,
+        tmp,
+        cluster_id_gen(gen)
+      };
+
+      generated.push_back(res);
+      batcher.push(res);
+    }
+
+    std::shared_ptr<uint8_t[]> buffer(
+				      new uint8_t[batcher.get_serialize_size()]);
+    batcher.write_serialize(buffer.get());
+
+    ANNSearchResultBatchManager manager(buffer.get(), batcher.get_serialize_size());
+    const auto &results = manager.get_results();
+    REQUIRE(results.size() == batch_size);
+    for (uint32_t i = 0; i < results.size(); i++) {
+      const auto &result = results[i];
+      REQUIRE(result.get_query_id() == generated[i].query_id);
+      REQUIRE(result.get_client_id() == generated[i].client_id);
+      REQUIRE(result.get_K() == generated[i].K);
+      REQUIRE(result.get_L() == generated[i].L);
+      REQUIRE(result.get_cluster_id() == generated[i].cluster_id);
+      REQUIRE(std::memcmp(result.get_search_results_ptr(),
+                          generated[i].search_result.get(),
+                          sizeof(uint32_t) * K) == 0);
+    }
+    batcher.reset();
+    start_batch_index += batch_size;
+  }
+
+}

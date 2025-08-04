@@ -631,7 +631,10 @@ struct compute_query_t {
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
 
-  compute_query_t() {}
+  compute_query_t()
+      : node_id(0), query_id(0), min_distance(0), cluster_sender_id(0),
+      cluster_receiver_id(0) {}
+  
   compute_query_t(uint32_t node_id, uint32_t query_id, float min_distance,
                   uint8_t cluster_sender_id, uint8_t cluster_receiver_id)
       : node_id{node_id}, query_id{query_id}, min_distance{min_distance},
@@ -654,7 +657,7 @@ struct compute_query_t {
     this->cluster_receiver_id = *(buffer + offset);
     offset += sizeof(cluster_receiver_id);
 
-    if (offset >= buffer_size) {
+    if (offset > buffer_size) {
       throw std::runtime_error(
           "compute_query_t: offset >= buffer_size: " + std::to_string(offset) +
           " " + std::to_string(buffer_size));
@@ -792,7 +795,27 @@ struct compute_result_t {
   uint32_t query_id;
   uint32_t num_neighbors;
   std::shared_ptr<const uint32_t>
-      nbr_ptr; // result of transferring ownership from blob
+      nbr_ptr; // result of transferring ownership from blob note, must have
+  // associated std::free. Also, first uin32_t in sequence is equal to number of
+  // neighbors
+
+  compute_result_t()
+      : cluster_sender_id(0), cluster_receiver_id(0), node({0, 0}), query_id(0),
+      num_neighbors(0), nbr_ptr(nullptr) {}
+
+  compute_result_t(uint8_t cluster_sender_id, uint8_t cluster_receiever_id,
+                   diskann::Neighbor node, uint32_t query_id,
+                   uint32_t num_neighbors,
+                   std::shared_ptr<const uint32_t> nbr_ptr)
+      : cluster_sender_id(cluster_sender_id),
+        cluster_receiver_id(cluster_receiever_id), node(node),
+        query_id(query_id), num_neighbors(num_neighbors) {
+    if (!std::get_deleter<decltype(std::free) *>(nbr_ptr)) {
+      std::invalid_argument("nbr_ptr doesn't have std::free as deleter");
+    }
+    this->nbr_ptr = nbr_ptr;
+  }
+
 
   size_t get_serialize_size() const {
     return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
@@ -801,6 +824,9 @@ struct compute_result_t {
   }
 
   void write_serialize(uint8_t *buffer) const {
+    if (!std::get_deleter<decltype(std::free) *>(nbr_ptr)) {
+      std::invalid_argument("nbr_ptr doesn't have std::free as deleter");
+    }
     uint32_t offset = 0;
     std::memcpy(buffer, &cluster_sender_id, sizeof(cluster_sender_id));
     offset += sizeof(cluster_sender_id);
@@ -880,10 +906,16 @@ public:
            sizeof(node.id) + sizeof(node.distance) + sizeof(query_id) +
            sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors;
   }
+
+  const uint32_t *get_neighbors_ptr() const { return neighbors; }
+
+
+  uint8_t get_cluster_sender_id() const { return cluster_sender_id; }
+  uint8_t get_cluster_receiver_id() const { return cluster_receiver_id; }
+  diskann::Neighbor get_node() const { return node; }
+  uint32_t get_query_id() const { return query_id; }
+  uint32_t get_num_neighbors() const { return num_neighbors; }
   
-  const uint32_t *get_neighbors_ptr() {
-    return neighbors;
-  }    
 };
 
 
@@ -1110,13 +1142,20 @@ public:
 
 
   }
-  const uint32_t* get_search_results_ptr() {
+  const uint32_t* get_search_results_ptr() const {
     return this->search_results;
   }
 
   size_t get_serialize_size() const {
     return sizeof(query_id) + sizeof(client_id) + sizeof(K) + sizeof(L) + sizeof(cluster_id) + sizeof(uint32_t) * K;
   }
+
+  uint32_t get_query_id() const {return query_id;}
+  uint32_t get_client_id() const {return client_id;}
+  uint32_t get_K() const { return K;}
+  uint32_t get_L() const {return L;}
+  uint8_t get_cluster_id() const { return cluster_id; }
+  
   
 };  
 
@@ -1155,6 +1194,14 @@ public:
     this->num_results =
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
+
+
+  const std::vector<ANNSearchResult>& get_results() {
+    if (this->results.empty()) {
+      create_results();
+    }
+    return results;
+  }    
 };  
 
 
