@@ -16,6 +16,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include "index_factory.h"
+#include "udl_path_and_index.hpp"
+
 namespace derecho {
 namespace cascade {
 
@@ -99,7 +101,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               determine_candidate_queues(candidate_queues);
 	// std::cout << "done determining candidate quuee" << std::endl;
         parent->batch_thread->push(final_candidate_queue, std::move(query));
-	std::cout << "pushed a batch" << std::endl;
+	// std::cout << "pushed a batch" << std::endl;
       }
 
     }
@@ -109,22 +111,20 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // udl. K = 1 for search
     std::unordered_map<uint8_t, std::vector<uint32_t>>
     head_index_search(std::shared_ptr<EmbeddingQuery<data_type>> &query) {
-      std::vector<uint32_t> search_id_results(parent->K);
-      std::vector<float> search_dist_results(parent->K);
+      std::vector<uint32_t> search_id_results(query->get_K());
+      std::vector<float> search_dist_results(query->get_L());
       // std::cout << "start search on query " << query->get_query_id()
       // << std::endl;
       const data_type *emb = query->get_embedding_ptr();
       
       if (emb == nullptr) throw std::runtime_error("embedding nullptr");
       auto [hops, dist_cmps] = parent->head_index->search(
-          emb, parent->K, parent->L,
-							  search_id_results.data());
-      // std::cout << "done search on query " << query->get_query_id() << std::endl;
+							  emb, query->get_K(), query->get_L(), search_id_results.data());
 
       std::unordered_map<uint8_t, std::vector<uint32_t>> res;
       uint8_t cluster_0 = 0;
       res[cluster_0] = std::vector<uint32_t>();
-      for (int i = 0; i < parent->K; i++) {
+      for (int i = 0; i < query->get_K(); i++) {
 	uint8_t cluster_id = (0);
         if (res.count(cluster_id) == 0) {
           res[cluster_id] = std::vector<uint32_t>();
@@ -233,29 +233,34 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         lock.unlock();
 
 #ifndef HEAD_INDEX_TEST
-        // need to fix
-        for (auto &[cluster_id, queries_and_cand_q] : to_send) {
-          uint64_t num_sent = 0;
-          uint64_t total = queries_and_cand_q->size();
-          while (num_sent < total) {
-            uint64_t left = total - num_sent;
-            uint64_t batch_size = std::min(parent->max_batch_size, left);
-            GreedySearchQueryBatcher<data_type> batcher(
-							queries_and_cand_q->at(0).first->get_dim());
-            for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
-	      batcher.add_query(cluster_id, std::move(queries_and_cand_q->at(i).second), queries_and_cand_q->at(i).first);
-            }
-            batcher.serialize();
-            ObjectWithStringKey obj;
-            obj.blob = std::move(*batcher.get_blob());
-            obj.previous_version = INVALID_VERSION;
-	    obj.previous_version_by_key = INVALID_VERSION;
-            obj.key = parent->emit_key_prefix + "/cluster" +
-                      std::to_string(static_cast<int>(cluster_id));
-            typed_ctxt->get_service_client_ref().put_and_forget(obj);
-            num_sent += batch_size;
-          }
-        }
+        // this is the actual data sending pipeline to the global search udl
+        // haven't implemented it fr yet
+
+        // for (auto &[cluster_id, queries_and_cand_q] : to_send) {
+        //   uint64_t num_sent = 0;
+        //   uint64_t total = queries_and_cand_q->size();
+        //   while (num_sent < total) {
+        //     uint64_t left = total - num_sent;
+        //     uint64_t batch_size = std::min(parent->max_batch_size, left);
+        //     GreedySearchQueryBatcher<data_type> batcher(
+        // 						queries_and_cand_q->at(0).first->get_dim());
+        //     for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
+        //       batcher.add_query(cluster_id,
+        //       std::move(queries_and_cand_q->at(i).second),
+        //       queries_and_cand_q->at(i).first);
+        //     }
+        //     batcher.serialize();
+        //     ObjectWithStringKey obj;
+        //     obj.blob = std::move(*batcher.get_blob());
+        //     obj.previous_version = INVALID_VERSION;
+        //     obj.previous_version_by_key = INVALID_VERSION;
+        //     obj.key = parent->emit_key_prefix + "/cluster" +
+        //               std::to_string(static_cast<int>(cluster_id));
+        //     typed_ctxt->get_service_client_ref().put_and_forget(obj);
+        //     num_sent += batch_size;
+        //   }
+        // }
+
 #else
         std::unordered_map<std::uint32_t,
                            std::unique_ptr<std::vector<greedy_query_t<data_type>>>>
@@ -284,16 +289,15 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	      batcher.push_search_query(std::move(queries->at(i)));
             }
             batcher.serialize();
-            std::string client_id_pool_path = parent->notification_test_prefix +
-                                              "/" +
-                                              std::to_string(client_node_id);
-            std::cout << "notifying " << client_id_pool_path << std::endl;
+            std::string client_id_pool_path =
+              RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(client_node_id);
+            
+            
+            // std::cout << "notifying " << client_id_pool_path << std::endl;
             typed_ctxt->get_service_client_ref().notify(
 							*(batcher.get_blob()), client_id_pool_path, client_node_id);
             num_sent += batch_size;
-            std::cout << " done notifying " << client_id_pool_path << std::endl;
           }
-          std::cout << "done sending queries for this batch" << std::endl;
         }
 #endif        
       }
@@ -333,8 +337,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       cluster_queue_cv.notify_all();
     }
   };
-  uint32_t L = 20;
-  uint32_t K = 10;
   uint32_t num_pts;
   uint32_t max_deg;
   uint32_t dim;
@@ -366,7 +368,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
   std::string head_index_prefix = "/anns/head_index";
   
-  std::string notification_test_prefix = "/anns/head_index_results";
   std::string emit_key_prefix = "/anns/graph"; // will need to look into this,
   
   uint64_t min_batch_size = 1;
@@ -376,7 +377,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   std::string index_path;
 
 
-  bool retrieve_and_cache_head_index_fs(DefaultCascadeContextType *typed_ctxt) {
+  void retrieve_and_cache_head_index_fs(DefaultCascadeContextType *typed_ctxt) {
     diskann::Metric metric = diskann::Metric::L2;
     const size_t num_frozen_pts = diskann::get_graph_num_frozen_points(index_path);
 
@@ -398,8 +399,10 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     auto index_factory = diskann::IndexFactory(config);
     head_index = index_factory.create_instance();
-    head_index->load(index_path.c_str(), num_search_threads, L);
-    std::cout << "Index loaded" << std::endl;
+    head_index->load(index_path.c_str(), num_search_threads, 20);
+    std::cout << "Index loaded from "  <<index_path << std::endl;
+
+    // need to load in mapping and stuff
     cached_head_index = true;
   }
 
@@ -538,7 +541,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    std::cout << "Head index called " << std::endl;
+    // std::cout << "Head index called " << std::endl;
     if (cached_head_index == false) {
       retrieve_and_cache_head_index_fs(typed_ctxt);
     }

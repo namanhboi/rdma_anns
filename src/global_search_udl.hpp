@@ -1,6 +1,5 @@
 #include <cascade/object.hpp>
 #include <chrono>
-#include <concepts>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include "in_mem_data_store.h"
 #include "in_mem_graph_store.h"
@@ -22,6 +21,8 @@
 #include <stdexcept>
 #include "tsl/robin_set.h"
 #include <boost/dynamic_bitset.hpp>
+#include "udl_path_and_index.hpp"
+
 
 #define MAX_POINTS_FOR_USING_BITSET 10000000
 
@@ -59,16 +60,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       this->dim = dim;
       this->cluster_id = cluster_id;
 
-      // retrieve data like mappings, etc...
-      // TODO
-      std::string mapping_key = parent->cluster_data_prefix + "_mapping";
+      std::string mapping_key = UDL2_DATA_PREFIX "/mapping";
       auto result = typed_ctxt->get_service_client_ref().get(mapping_key, true);
       auto &reply = result.get().begin()->second.get();
       Blob blob = std::move(const_cast<Blob &>(reply.blob));
       blob.memory_mode = object_memory_mode_t::EMPLACED; // memory now owned by us
       std::unique_ptr<const uint8_t, decltype(&std::free)> tmp(
 							 (blob.bytes), std::free);
-
       node_id_cluster_mapping = std::move(tmp);
     }
 
@@ -123,8 +121,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       return emb_data;
     }
   
-      
-
     /**
        does greedy search on the global graph index.
        the server that is doing the search is called the primary partition while
@@ -655,12 +651,9 @@ check upon each new iteration of the search loop.
   uint32_t K;
   uint32_t L;
 
-  std::string cluster_data_prefix;
-  std::string cluster_search_prefix;
   std::unique_ptr<diskann::Distance<data_type>> dist_fn;
-
-  
-  
+  std::string cluster_data_prefix = UDL2_DATA_PREFIX;
+  std::string cluster_search_prefix = UDL2_PATHNAME;
   
 
 public:
@@ -674,9 +667,8 @@ public:
     std::cout << "Global index called " << std::endl;
     if (!initialized_index) {
       cluster_id = get_cluster_id(key_string);
-      // cluster_prefix = GLOBAL_SEARCH_SEARCH_PREFIX "/cluster
-      cluster_data_prefix = GLOBAL_SEARCH_DATA_PREFIX "/cluster_" + std::to_string(cluster_id);
-      cluster_search_prefix = GLOBAL_SEARCH_SEARCH_PREFIX "/cluster_" + std::to_string(cluster_id);
+      cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
+      cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
       dist_fn.reset(
           (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));

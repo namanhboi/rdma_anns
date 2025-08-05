@@ -609,9 +609,8 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       REQUIRE(result.get_num_neighbors() ==
 	      compute_results[i].num_neighbors);
       REQUIRE(std::memcmp(result.get_neighbors_ptr(),
-			  compute_results[i].nbr_ptr.get() + 1,
-			  sizeof(uint32_t) * result.get_num_neighbors()) ==
-	      0);
+                          compute_results[i].nbr_ptr.get() + 1,
+                          sizeof(uint32_t) * result.get_num_neighbors()) == 0);
     }
     const auto &managed_compute_queries = manager.get_compute_queries();
     REQUIRE(managed_compute_queries.size() == compute_queries.size());

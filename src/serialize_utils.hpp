@@ -7,16 +7,6 @@
 #include <cascade/service_client_api.hpp>
 #include "neighbor.h"
 
-
-// 
-
-#define HEAD_INDEX_OBJECT_POOL "/head_index"
-#define GLOBAL_SEARCH_OBJECT_POOL "/anns"
-#define GLOBAL_SEARCH_DATA_PREFIX "/anns/data"
-// example data: /anns/data/cluster_i_nbr_j, /anns/data/cluster_i_emb_j, /anns/data/cluster_i_mapping
-
-#define GLOBAL_SEARCH_SEARCH_PREFIX "/anns/search"
-
 /**
    Explanation about the naming conventions in this file:
    - greedy_query_t, query_t,... : this is the intermedidate representation of
