@@ -27,6 +27,8 @@
 #include "index_config.h"
 #include "utils.h"
 #include "benchmark_dataset.hpp"
+#include "../src/udl_path_and_index.hpp"
+
 #define NUM_THREADS 16
 
 #define HEAD_INDEX_R 32

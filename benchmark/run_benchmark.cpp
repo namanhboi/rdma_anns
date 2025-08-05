@@ -109,11 +109,20 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
 
     std::shared_ptr<GreedySearchQuery<data_type>> greedy_search_q =
       client.get_result(query_id);
+    std::cout << query_id << " " << query_index << std::endl;
 
-    if (greedy_search_q->get_cluster_id() != cluster_0) throw std::runtime_error("query cluster " + std::to_string(static_cast<uint32_t>(greedy_search_q->get_cluster_id())));
-    if (greedy_search_q->get_query_id() != query_index) throw std::runtime_error("query bad id " + std::to_string(greedy_search_q->get_query_id()));
-    if (greedy_search_q->get_candidate_queue_size() != HEAD_INDEX_K) bad_queries.push_back(query_index);
-    // std::cout << "total size " << greedy_search_q->get_candidate_queue_size() << std::endl;
+    if (greedy_search_q->get_cluster_id() != cluster_0)
+      throw std::runtime_error("query cluster " +
+                               std::to_string(static_cast<uint32_t>(
+								    greedy_search_q->get_cluster_id())));
+    if (greedy_search_q->get_query_id() != query_index)
+      throw std::runtime_error("query bad id " +
+                               std::to_string(greedy_search_q->get_query_id()) +
+                               std::to_string(query_index));
+
+    if (greedy_search_q->get_candidate_queue_size() != HEAD_INDEX_K)
+      bad_queries.push_back(query_index);
+
     std::memcpy(query_result + query_index * HEAD_INDEX_K,
                 greedy_search_q->get_candidate_queue_ptr(),
                 greedy_search_q->get_candidate_queue_size() * sizeof(uint32_t));
@@ -183,8 +192,6 @@ int main(int argc, char **argv) {
       "number of quries to wamrup system")(
       "K", po::value<uint32_t>(&K)->required(), "recall at")(
 							     "L", po::value<uint32_t>(&L)->required(), "candidate queue size");
-  
-  
   
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);

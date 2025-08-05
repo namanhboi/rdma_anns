@@ -14,11 +14,11 @@
 #include <unordered_map>
 #include <shared_mutex>
 #include "../src/serialize_utils.hpp"
+#include "../src/udl_path_and_index.hpp"
+
+
 using namespace derecho::cascade;
 
-#define UDL1_PATH "/anns/head_index_search"
-// need to create this object pool in data loading phase
-#define UDL1_SUBGROUP_INDEX 0
 
 #define CLIENT_MAX_WAIT_TIME 60
 
@@ -74,16 +74,16 @@ class BenchmarkClient {
         lock.unlock();
 
         if (send_count > 0) {
-          std::cout << "hello" << std::endl;
+          // std::cout << "hello" << std::endl;
           batcher.serialize();
 
           ObjectWithStringKey obj;
-          obj.key = UDL1_PATH "/" + std::to_string(node_id) + "_" +
+          obj.key = UDL1_PATHNAME "/" + std::to_string(node_id) + "_" +
                     std::to_string(batch_id);
-          std::cout << "query key " << obj.key << std::endl;
+          // std::cout << "query key " << obj.key << std::endl;
           obj.blob = std::move(*batcher.get_blob());
           capi.trigger_put(obj);
-          std::cout << "Done with obj" << std::endl;
+          // std::cout << "Done with obj" << std::endl;
 
           batch_size[batch_id] = send_count;
           batch_id++; // shouldn't this be in the critical section
@@ -326,21 +326,20 @@ public:
              uint32_t num_result_threads) {
     this->dim = dim;
     this->num_result_threads = num_result_threads;
-    std::cout << " creatig object pool to search " << UDL1_PATH << std::endl;
+    std::cout << " creatig object pool to search " << UDL1_OBJ_POOL << std::endl;
 
     auto res_search =
         capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-									    UDL1_PATH, UDL1_SUBGROUP_INDEX);
+									    UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX);
 
     std::string result_pool_name =
-      "/anns/head_index_results/" + std::to_string(my_id);
+      RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(my_id);
     std::cout << " creatig object pool to recieve results " << result_pool_name
     << std::endl;
 
     auto res =
         capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-									    result_pool_name, UDL1_SUBGROUP_INDEX, HASH, {});
-    // need to look into this.
+									    result_pool_name, RESULTS_OBJ_POOL_SUBGROUP_INDEX, HASH, {});
 
     for (auto &reply_future : res.get())
       reply_future.second.get();

@@ -1,1 +1,1 @@
-./run_benchmark -Q /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query.fbin -T float -G /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query_learn_gt100
+./run_benchmark -Q /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query.fbin -T float -G /home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/sift_query_learn_gt100 -K 10 -L 20
