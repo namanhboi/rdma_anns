@@ -153,14 +153,13 @@ class BenchmarkClient {
           continue;
         }
 
-        GreedySearchQueryBatchManager<data_type> manager(pending.first.get(),
-                                                         pending.second);
-	for (auto &greedy_query : manager.get_queries()) {
+        GlobalSearchMessageBatchManager<data_type> manager(
+							   pending.first.get(), pending.second, parent->dim);
+	for (auto &greedy_query : manager.get_greedy_search_queries()) {
           parent->result_received(greedy_query);
         }
       }
     }
-
   public:
     NotificationThread(BenchmarkClient<data_type> *parent) {
       this->parent = parent;

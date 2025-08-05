@@ -489,7 +489,7 @@ generate_random_greedy_queries(uint32_t num_queries, uint32_t dim, uint32_t K,
   return res;
 }
 
-TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", float) {
+TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", float, uint8_t, int8_t) {
   uint32_t num_batches = 10'000;
   uint32_t min_batch_size = 0;
   uint32_t max_batch_size = 6;
