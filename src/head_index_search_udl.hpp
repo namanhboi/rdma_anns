@@ -268,10 +268,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                 std::make_unique<std::vector<greedy_query_t<data_type>>>();
               queries_by_client_id[client_node_id]->reserve(parent->max_batch_size);
             }
-            std::tuple<uint8_t, std::shared_ptr<EmbeddingQuery<data_type>>,
-                       std::vector<uint32_t>>
-                query_tuple = std::make_tuple(cluster_id, std::move(query),
-                                              candidate_queue);
             queries_by_client_id[client_node_id]->emplace_back(
 							       cluster_id, std::move(candidate_queue), std::move(query));
           }
@@ -343,7 +339,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   uint32_t max_deg;
   uint32_t dim;
   uint32_t aligned_dim;  
-  uint32_t start_node = 353;
 
   std::unique_ptr<diskann::AbstractIndex> head_index;
   bool cached_head_index = false; // if head index is loaded into mem or not
@@ -405,6 +400,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     head_index = index_factory.create_instance();
     head_index->load(index_path.c_str(), num_search_threads, L);
     std::cout << "Index loaded" << std::endl;
+    cached_head_index = true;
   }
 
 
@@ -578,8 +574,6 @@ public:
     try{
       if (config.contains("dim"))
         this->dim = config["dim"].get<int>();
-      if (config.contains("start_node")) this->start_node = config["start_node"].get<uint32_t>();
-
       if (config.contains("num_search_threads")) {
         this->num_search_threads = config["num_search_threads"].get<int>();
       }

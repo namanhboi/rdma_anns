@@ -15,7 +15,7 @@
             "min_batch_size":1,
             "max_batch_size":100,
             "batch_time_us":1000,
-            "emit_key_prefix":"/anns/graph"
+	    "index_path": "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/index_sift_learn_R32_L50_A1.2"
           }],
         "destinations": [{}]
       }
