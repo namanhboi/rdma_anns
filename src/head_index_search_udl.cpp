@@ -44,7 +44,6 @@ get_observer(ICascadeContext *ctxt, const nlohmann::json &config) {
   }
 }
 
-
 }}
 
   

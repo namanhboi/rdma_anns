@@ -1,7 +1,9 @@
 #include "serialize_utils.hpp"
+#include "udl_path_and_index.hpp"
+
 
 uint8_t get_cluster_id(const std::string &key) {
-  std::string cluster_prefix = GLOBAL_SEARCH_SEARCH_PREFIX "/cluster_";
+  std::string cluster_prefix = UDL2_PATHNAME "/cluster_";
   if (key.rfind(cluster_prefix, 0) != 0) {
     // doesn't start with the correct prefix
     throw std::invalid_argument(key + " doesn't have the correct prefix " +

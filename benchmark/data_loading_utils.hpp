@@ -1,4 +1,3 @@
-#include <coroutine>
 #include <cstring>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include "abstract_data_store.h"
@@ -28,6 +27,7 @@
 #include "utils.h"
 #include "benchmark_dataset.hpp"
 #include "../src/udl_path_and_index.hpp"
+#include <filesystem>
 
 #define NUM_THREADS 16
 
@@ -46,7 +46,8 @@
 // need to make sure that this is the case in the layout.json file
 
 
-#define MAX_DEGREE 32
+#define MAX_DEGREE 64
+// will need to revisit this later
 #define GRAPH_CLUSTER_PREFIX "/anns/cluster_"
 #define HEAD_INDEX_PREFIX "/anns/head_index"
 #define PQ_PREFIX "/anns/pq"
@@ -607,3 +608,61 @@ get_index(const std::string &in_mem_index_path) {
   delete[] data_store_data;
   return head_index;
 }
+
+template <typename data_type>
+Clusters get_clusters_from_diskann_graph(const std::string &index_path_prefix,
+                                         uint32_t num_clusters) {
+  AdjGraph adj;
+  std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+  std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex(
+								 new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
+  
+  int res = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+  if (res != 0)
+    throw std::runtime_error("error loading diskann data, error: " +
+                             std::to_string(res));
+
+  convert_diskann_graph_to_adjgraph<data_type>(_pFlashIndex, adj, MAX_DEGREE);
+  
+  return get_clusters_from_adjgraph(adj, num_clusters);
+}
+
+/**
+   DEPRECATED: write which nodes belong to each cluster.
+*/
+void write_cluster_bin_file(const Clusters &clusters,
+                            const std::string &output_clusters);
+/**
+   parse file from write_cluster_bin_file
+
+*/
+std::vector<std::vector<uint32_t>> parse_cluster_bin_file(const std::string &cluster_file);
+
+
+/**
+   for each node, write which cluster it belongs to
+*/
+void write_cluster_assignment_bin_file(const Clusters &clusters,
+                            const std::string &output_cluster_assignment);
+
+std::vector<uint8_t>
+parse_cluster_assignment_bin_file(const std::string& cluster_assignment_bin_file);
+
+
+
+/**
+   for each cluster, write all the nodes that belong to it in a file:
+   cluster_i_nodes.bin
+*/
+void write_cluster_nodes_bin_file(const Clusters &clusters,
+                                      const std::string &output_folder);
+
+
+void write_cluster_data_folder(const Clusters &clusters,
+                               const std::string &output_folder);
+
+
+
+
+std::vector<uint32_t>
+parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file);

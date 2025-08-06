@@ -35,7 +35,7 @@ notify, we don't have to do any replication in a shard i hope?
 #define UDL2_DATA_PREFIX "/anns/global/data"
 #define UDL2_PATHNAME "/anns/global/search"
 // put greedy search queries (defined in serialize utils) here:
-// /anns/global/search/query_i to trigger global search
+// /anns/global/search/cluste_/query_i to trigger global search
 
 #define RESULTS_OBJ_POOL_SUBGROUP_INDEX 1
 #define RESULTS_OBJ_POOL_PREFIX "/anns/results"

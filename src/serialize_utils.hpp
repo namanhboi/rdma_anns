@@ -1255,9 +1255,6 @@ class GlobalSearchMessageBatcher {
                 sizeof(compute_queries_position));
   }
 
-
-
-
   std::shared_ptr<derecho::cascade::Blob> blob;
 
   EmbeddingQueryBatcher<data_type> query_embeddings_batcher;

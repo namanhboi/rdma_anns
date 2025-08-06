@@ -326,6 +326,8 @@ public:
              uint32_t num_result_threads) {
     this->dim = dim;
     this->num_result_threads = num_result_threads;
+
+    
     std::cout << " creatig object pool to search " << UDL1_OBJ_POOL << std::endl;
 
     auto res_search =
