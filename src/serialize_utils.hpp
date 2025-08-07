@@ -1,4 +1,4 @@
-
+#pragma once
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include <cstdint>
 #include <cstring>
@@ -6,6 +6,14 @@
 #include <stdexcept>
 #include <cascade/service_client_api.hpp>
 #include "neighbor.h"
+
+
+
+/** free const pointers, will be used as deleter for std::shared_ptr when you
+ * get() a blob*/
+
+void free_const(const void* ptr) noexcept;
+
 
 /**
    Explanation about the naming conventions in this file:
@@ -496,9 +504,9 @@ public:
   }
   uint64_t get_query_id() { return this->query_id; }
 
-  uint32_t get_K() { return this->K; }
+  uint32_t get_K()const { return this->K; }
 
-  uint32_t get_L() { return this->L; }
+  uint32_t get_L() const{ return this->L; }
   
   uint32_t get_client_node_id() { return this->client_node_id; }
 
@@ -636,16 +644,19 @@ struct compute_query_t {
   float min_distance;
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
+  uint32_t receiver_thread_id;
 
   compute_query_t()
       : node_id(0), query_id(0), min_distance(0), cluster_sender_id(0),
-      cluster_receiver_id(0) {}
-  
+      cluster_receiver_id(0), receiver_thread_id(0) {}
+
   compute_query_t(uint32_t node_id, uint32_t query_id, float min_distance,
-                  uint8_t cluster_sender_id, uint8_t cluster_receiver_id)
+                  uint8_t cluster_sender_id, uint8_t cluster_receiver_id,
+                  uint32_t receiver_thread_id)
       : node_id{node_id}, query_id{query_id}, min_distance{min_distance},
         cluster_sender_id{cluster_sender_id},
-        cluster_receiver_id{cluster_receiver_id} {}
+        cluster_receiver_id{cluster_receiver_id},
+        receiver_thread_id(receiver_thread_id) {}
   compute_query_t(const uint8_t* buffer, uint64_t buffer_size,
                   uint32_t data_position) {
     uint32_t offset = data_position;
@@ -662,6 +673,8 @@ struct compute_query_t {
     offset += sizeof(cluster_sender_id);
     this->cluster_receiver_id = *(buffer + offset);
     offset += sizeof(cluster_receiver_id);
+    this->receiver_thread_id = *(buffer + offset);
+    offset += sizeof(receiver_thread_id);
 
     if (offset > buffer_size) {
       throw std::runtime_error(
@@ -672,7 +685,7 @@ struct compute_query_t {
 
   size_t get_serialize_size() const {
     return sizeof(node_id) + sizeof(query_id) + sizeof(min_distance) +
-           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id);
+           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id);
   }
 
   void write_serialize(uint8_t *buffer) const {
@@ -691,6 +704,9 @@ struct compute_query_t {
 
     std::memcpy(buffer + offset, &cluster_receiver_id, sizeof(cluster_receiver_id));
     offset += sizeof(cluster_receiver_id);
+    
+    std::memcpy(buffer + offset, &receiver_thread_id, sizeof(receiver_thread_id));
+    offset += sizeof(receiver_thread_id);
         
   }    
 };
@@ -800,41 +816,42 @@ public:
 struct compute_result_t {
   uint8_t cluster_sender_id; 
   uint8_t cluster_receiver_id;
+  uint32_t receiver_thread_id;
   diskann::Neighbor node;
   uint32_t query_id;
   uint32_t num_neighbors;
   std::shared_ptr<const uint32_t>
       nbr_ptr; // result of transferring ownership from blob note, must have
-  // associated std::free. Also, first uin32_t in sequence is equal to number of
+  // associated free_const. Also, first uin32_t in sequence is equal to number of
   // neighbors
 
   compute_result_t()
-      : cluster_sender_id(0), cluster_receiver_id(0), node({0, 0}), query_id(0),
-      num_neighbors(0), nbr_ptr(nullptr) {}
+      : cluster_sender_id(0), cluster_receiver_id(0), receiver_thread_id(0),
+      node({0, 0}), query_id(0), num_neighbors(0), nbr_ptr(nullptr) {}
 
   compute_result_t(uint8_t cluster_sender_id, uint8_t cluster_receiever_id,
-                   diskann::Neighbor node, uint32_t query_id,
-                   uint32_t num_neighbors,
+                   uint32_t receiver_thread_id, diskann::Neighbor node,
+                   uint32_t query_id, uint32_t num_neighbors,
                    std::shared_ptr<const uint32_t> nbr_ptr)
       : cluster_sender_id(cluster_sender_id),
-        cluster_receiver_id(cluster_receiever_id), node(node),
-        query_id(query_id), num_neighbors(num_neighbors) {
-    if (!std::get_deleter<decltype(std::free) *>(nbr_ptr)) {
-      std::invalid_argument("nbr_ptr doesn't have std::free as deleter");
+        cluster_receiver_id(cluster_receiever_id), receiver_thread_id(receiver_thread_id),
+        node(node), query_id(query_id), num_neighbors(num_neighbors) {
+    if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
+      std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
     }
     this->nbr_ptr = nbr_ptr;
   }
 
 
   size_t get_serialize_size() const {
-    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
+    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id) + 
            sizeof(node.id) + sizeof(node.distance) + sizeof(query_id) +
            sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors;
   }
 
   void write_serialize(uint8_t *buffer) const {
-    if (!std::get_deleter<decltype(std::free) *>(nbr_ptr)) {
-      std::invalid_argument("nbr_ptr doesn't have std::free as deleter");
+    if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
+      std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
     }
     uint32_t offset = 0;
     std::memcpy(buffer, &cluster_sender_id, sizeof(cluster_sender_id));
@@ -843,6 +860,10 @@ struct compute_result_t {
     std::memcpy(buffer + offset, &cluster_receiver_id,
                 sizeof(cluster_receiver_id));
     offset += sizeof(cluster_receiver_id);
+
+    std::memcpy(buffer + offset, &receiver_thread_id,
+                sizeof(receiver_thread_id));
+    offset += sizeof(receiver_thread_id);
 
     std::memcpy(buffer + offset, &node.id, sizeof(node.id));
     offset += sizeof(node.id);
@@ -867,14 +888,21 @@ class ComputeResult {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
   
-  uint8_t cluster_sender_id; 
+  uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
+  uint32_t receiver_thread_id;
+  
   diskann::Neighbor node;
   uint32_t query_id;
   uint32_t num_neighbors;
   const uint32_t* neighbors;
 
 public:
+  ComputeResult()
+      : buffer(nullptr), buffer_size(0), cluster_sender_id(0),
+        cluster_receiver_id(0), receiver_thread_id(0), node({0, 0.0}),
+        query_id(0), num_neighbors(0), neighbors(nullptr) {}
+  
   ComputeResult(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
                 uint32_t data_position) {
     this->buffer = buffer;
@@ -890,6 +918,9 @@ public:
 
     this->cluster_receiver_id = *(buffer.get() + offset);
     offset += sizeof(cluster_receiver_id);
+
+    this->receiver_thread_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(receiver_thread_id);
 
     uint32_t node_id =
       *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
@@ -912,6 +943,7 @@ public:
   }
   size_t get_serialize_size() const {
     return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
+           sizeof(receiver_thread_id) +
            sizeof(node.id) + sizeof(node.distance) + sizeof(query_id) +
            sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors;
   }
@@ -924,6 +956,8 @@ public:
   diskann::Neighbor get_node() const { return node; }
   uint32_t get_query_id() const { return query_id; }
   uint32_t get_num_neighbors() const { return num_neighbors; }
+
+  uint32_t get_receiver_thread_id() const {return receiver_thread_id;}
   
 };
 

@@ -79,14 +79,18 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       while (running) {
         lock.lock();
 
-        if (query_queue.empty()) {
+        while (query_queue.empty()) {
 	  query_queue_cv.wait(lock);
         }
-        
         if (!running)
           break;
 	std::shared_ptr<EmbeddingQuery<data_type>> query = query_queue.front();
         query_queue.pop();
+        if (query == nullptr) {
+          throw std::runtime_error(
+              "encounter nullptr query even thought running = true, meaning it "
+              "didn't come from signal stop");
+        }
         lock.unlock();
 
 	std::vector<uint32_t> search_results;

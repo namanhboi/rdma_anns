@@ -193,9 +193,10 @@ generate_random_compute_queries(uint32_t num_queries) {
   std::uniform_int_distribution<uint32_t> node_id_gen(
 						      0, std::numeric_limits<uint32_t>::max());
   for (uint32_t i = 0; i < num_queries; i++) {
-    compute_query_t query(node_id_gen(gen), node_id_gen(gen),
-                          distance_gen(gen), cluster_id_gen(gen),
-                          cluster_id_gen(gen));
+    compute_query_t query(node_id_gen(gen), node_id_gen(gen), distance_gen(gen),
+                          cluster_id_gen(gen), cluster_id_gen(gen),
+                          node_id_gen(gen));
+    
     generated.push_back(query);
   }
   return generated;
@@ -231,7 +232,7 @@ TEST_CASE("Testing serialization of compute queries") {
     for (uint32_t i = 0; i < batch_size; i++) {
       compute_query_t query(node_id_gen(gen), node_id_gen(gen),
                             distance_gen(gen), cluster_id_gen(gen),
-                            cluster_id_gen(gen));
+                            cluster_id_gen(gen), node_id_gen(gen));
       generated.push_back(query);
       batcher.push(query);
     }
@@ -275,10 +276,13 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
     uint32_t *nbrs = reinterpret_cast<uint32_t *>(
 						  malloc(sizeof(uint32_t) * (neighbors.size() + 1)));
     nbrs[0] = static_cast<uint32_t>(neighbors.size());
+
     std::memcpy(nbrs + 1, neighbors.data(),
                 sizeof(uint32_t) * neighbors.size());
-    std::shared_ptr<const uint32_t> nbr_ptr(nbrs, std::free);
+    const uint32_t * const_nbrs = const_cast<const uint32_t*>(nbrs);
+    std::shared_ptr<const uint32_t> nbr_ptr(const_nbrs, free_const);
     compute_result_t res(cluster_id_gen(gen), cluster_id_gen(gen),
+                         node_id_gen(gen),
                          {node_id_gen(gen), distance_gen(gen)},
                          node_id_gen(gen), neighbors.size(), nbr_ptr);
     generated.push_back(res);
@@ -321,8 +325,9 @@ TEST_CASE("Testing serialization of compute result") {
       nbrs[0] = static_cast<uint32_t>(neighbors.size());
       std::memcpy(nbrs + 1, neighbors.data(),
                   sizeof(uint32_t) * neighbors.size());
-      std::shared_ptr<const uint32_t> nbr_ptr(nbrs, std::free);
-      compute_result_t res(cluster_id_gen(gen), cluster_id_gen(gen),
+      const uint32_t * const_nbrs = const_cast<const uint32_t*>(nbrs);
+      std::shared_ptr<const uint32_t> nbr_ptr(const_nbrs, free_const);
+      compute_result_t res(cluster_id_gen(gen), cluster_id_gen(gen), node_id_gen(gen),
                            {node_id_gen(gen), distance_gen(gen)},
                            node_id_gen(gen), neighbors.size(), nbr_ptr);
       generated.push_back(res);
@@ -345,6 +350,8 @@ TEST_CASE("Testing serialization of compute result") {
       REQUIRE(result.get_cluster_sender_id() == generated[i].cluster_sender_id);
       REQUIRE(result.get_cluster_receiver_id() ==
               generated[i].cluster_receiver_id);
+      REQUIRE(result.get_receiver_thread_id() ==
+              generated[i].receiver_thread_id);
       REQUIRE(result.get_node().id == generated[i].node.id);
       REQUIRE(result.get_node().distance == generated[i].node.distance);
       REQUIRE(result.get_query_id() == generated[i].query_id);
@@ -600,8 +607,13 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       const ComputeResult &result = managed_compute_results[i];
       REQUIRE(result.get_cluster_sender_id() ==
 	      compute_results[i].cluster_sender_id);
+
       REQUIRE(result.get_cluster_receiver_id() ==
-	      compute_results[i].cluster_receiver_id);
+              compute_results[i].cluster_receiver_id);
+      
+      REQUIRE(result.get_receiver_thread_id() ==
+              compute_results[i].receiver_thread_id);
+
       REQUIRE(result.get_node().id == compute_results[i].node.id);
       REQUIRE(result.get_node().distance ==
 	      compute_results[i].node.distance);

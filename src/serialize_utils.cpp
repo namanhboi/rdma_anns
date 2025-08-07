@@ -16,3 +16,6 @@ uint8_t get_cluster_id(const std::string &key) {
   return static_cast<uint8_t>(num);
 }
 
+void free_const(const void* ptr) noexcept {
+    free(const_cast<void*>(ptr));
+}
