@@ -327,13 +327,6 @@ public:
     this->dim = dim;
     this->num_result_threads = num_result_threads;
 
-    
-    std::cout << " creatig object pool to search " << UDL1_OBJ_POOL << std::endl;
-
-    auto res_search =
-        capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-									    UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX);
-
     std::string result_pool_name =
       RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(my_id);
     std::cout << " creatig object pool to recieve results " << result_pool_name
