@@ -2,6 +2,7 @@
   This file is used to load in all the data necessary to run a benchmark.
 */
 #include "data_loading_utils.hpp"
+#include "defaults.h"
 #include "defs.h"
 #include "metis_io.h"
 #include <boost/program_options.hpp>
@@ -120,35 +121,41 @@ int main(int argc, char **argv) {
   if (data_type != "uint8" && data_type != "int8" && data_type != "float")
     throw std::invalid_argument("wrong data_type");
 
+
+
+  ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
+  create_object_pools(capi);
+
   Clusters clusters;
   if (data_type == "uint8") {
     Clusters clusters = get_clusters_from_diskann_graph<uint8_t>(
 								 index_path_prefix, num_clusters);
+    std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+    std::unique_ptr<diskann::PQFlashIndex<uint8_t>> _pFlashIndex(
+								 new diskann::PQFlashIndex<uint8_t>(reader, diskann::Metric::L2));
+
+
+    int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);    
   } else if (data_type == "int8") {
     Clusters clusters = get_clusters_from_diskann_graph<int8_t>(
 								index_path_prefix, num_clusters);
+    std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+    std::unique_ptr<diskann::PQFlashIndex<int8_t>> _pFlashIndex(
+								new diskann::PQFlashIndex<int8_t>(reader, diskann::Metric::L2));
+    int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);        
   } else if (data_type == "float") {
-    Clusters clusters = get_clusters_from_diskann_graph<float>(
-								 index_path_prefix, num_clusters);
+    Clusters clusters =
+      get_clusters_from_diskann_graph<float>(index_path_prefix, num_clusters);
+      std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+      std::unique_ptr<diskann::PQFlashIndex<float>> _pFlashIndex(
+								 new diskann::PQFlashIndex<float>(reader, diskann::Metric::L2));
+      int _ =
+        _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+      load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);    
   }
-  
-  write_cluster_data_folder(clusters, clusters_folder);
-  std::string cluster_assignment_bin_file =
-    clusters_folder + "/cluster_assignment_all.bin";
 
-  std::vector<uint8_t> cluster_assignment =
-    parse_cluster_assignment_bin_file(cluster_assignment_bin_file);
-  for (uint32_t cluster_id = 0; cluster_id < clusters.size(); cluster_id++) {
-    for (uint32_t &node : clusters[cluster_id]) {
-      assert(cluster_assignment[node] == cluster_id);
-    }
-    std::string cluster_nodes_bin_file = clusters_folder + "/cluster_" +
-                                         std::to_string(cluster_id) +
-                                         "_nodes.bin";
-    std::vector<uint32_t> parsed_cluster_nodes =
-      parse_cluster_nodes_bin_file(cluster_nodes_bin_file);
-    assert(parsed_cluster_nodes == clusters[cluster_id]);
-  }
-  std::cout << "everything is correct" << std::endl;
+  
   return 0;
 }

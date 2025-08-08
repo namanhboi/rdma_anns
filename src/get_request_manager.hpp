@@ -27,8 +27,8 @@ public:
     for (auto it = _get_requests.begin(); it != _get_requests.end();) {
       uint64_t id = it->first;
       auto &request = it->second;
-      if (request->is_ready()) {
-        auto &reply = request->get().begin()->second.get();
+      if (request.is_ready()) {
+        auto &reply = request.get().begin()->second.get();
         derecho::cascade::Blob blob =
           std::move(const_cast<derecho::cascade::Blob &>(reply.blob));
         blob.memory_mode = derecho::cascade::object_memory_mode_t::
@@ -55,7 +55,7 @@ public:
     for (auto it = _get_requests.begin(); it != _get_requests.end();) {
       uint64_t id = it->first;
       auto &request = it->second;
-      auto &reply = request->get().begin()->second.get();
+      auto &reply = request.get().begin()->second.get();
       derecho::cascade::Blob blob =
         std::move(const_cast<derecho::cascade::Blob &>(reply.blob));
       blob.memory_mode = derecho::cascade::object_memory_mode_t::

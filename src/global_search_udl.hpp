@@ -70,9 +70,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       return cluster_assignment[node_id] == this->cluster_id;
     }
 
-    
-
-
     /** get neighbor of a node in the cluster
         returns shared ptr with deleter free_const pointing to the number of neighbors (first uint32_t) and the neighbors of the requested node (rest of the uint32_ts)
 	this method is only for retrieving neighbors of nodes that are in this cluster.
@@ -180,7 +177,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       };
 
       // Lambda to batch compute query<-> node distances
-      auto compute_dists = [this, &query](const std::vector<std::shared_ptr<const data_type>> &embs,
+      auto compute_dists = [this, query](const std::vector<std::shared_ptr<const data_type>> &embs,
 					 std::vector<float> &dists_out					 ) {
 	for (size_t i = 0; i < embs.size(); i++) {
           dists_out.push_back(parent->dist_fn->compare(
@@ -193,7 +190,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
       std::vector<std::shared_ptr<const data_type>> init_embs =
         retrieve_local_embeddings(init_node_ids, typed_ctxt);
-      std::vector<float> init_distances;
+      std::vector<float> init_distances(init_embs.size());
 
       compute_dists(init_embs, init_distances);
       for (uint32_t i = 0; i < query->get_candidate_queue_size(); i++) {
@@ -210,13 +207,14 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
       std::vector<float> secondary_dist;
 
-      GetRequestManager<float, derecho::cascade::ObjectWithStringKey>
+      GetRequestManager<data_type, derecho::cascade::ObjectWithStringKey>
       emb_get_request_manager;
-      
 
-      // GetRequestManager<uint32_t,
-                        // decltype(typed_ctxt->get_service_client_ref().get)>
-      // nbr_get_request_manager;
+
+      std::unordered_map<uint32_t,
+                         std::shared_ptr<derecho::rpc::QueryResults<const ObjectWithStringKey>>>
+      nbr_get_requests;
+      
 
       while (candidate_queue.has_unexpanded_node()) {
 	diskann::Neighbor node =  candidate_queue.closest_unexpanded();
@@ -227,15 +225,26 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
         secondary_dist.clear();
 
-	if (!is_in_cluster(node_id)) {
-          throw std::runtime_error(
-				   "Node id " + std::to_string(node_id) + " not in cluster " +
-				   std::to_string(this->cluster_id) + " " + __PRETTY_FUNCTION__ + " " +
-				   __FILE__);
-	}
 
-        std::shared_ptr<const uint32_t> neighbors =
-          get_neighbors(node_id, typed_ctxt);
+        std::shared_ptr<const uint32_t> neighbors;
+        if (!is_in_cluster(node_id)) {
+          // if node_id not in cluster then the get request for its neighbors
+          // has already been sent and the future obj resides in
+          // nbr_get_requests
+          if (nbr_get_requests[node_id] == nullptr) {
+            throw std::runtime_error("request for neighbor not issued even "
+                                     "though this is the candidate node");
+          }
+          auto &reply = nbr_get_requests[node_id]->get().begin()->second.get();
+          Blob nbr_blob = std::move(const_cast<Blob &>(reply.blob));
+          nbr_blob.memory_mode =
+            derecho::cascade::object_memory_mode_t::EMPLACED;
+          std::shared_ptr<const uint32_t> tmp(reinterpret_cast<const uint32_t *>(nbr_blob.bytes), free_const);
+          neighbors = std::move(tmp);
+        } else {
+          neighbors = get_neighbors(node_id, typed_ctxt);
+        }
+        
         uint32_t num_nbrs = neighbors.get()[0];
         const uint32_t *neighbors_ptr = neighbors.get() + 1;
 	for (size_t i = 0; i < num_nbrs; i++) {
@@ -244,46 +253,52 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           if (nbr_cluster_id == this->cluster_id) {
             if (is_not_visited(nbr_node_id)) {
               primary_node_ids.push_back(nbr_node_id);
+              mark_visited(nbr_node_id);
             }
           } else {
-            // need to get the neighbors embeddings
-            const std::string &emb_key = UDL2_DATA_PREFIX "/cluster_" +
-                                         std::to_string(nbr_cluster_id) +
-                                         "_emb_" + std::to_string(nbr_node_id);
-            emb_get_request_manager.submit_request(
-                nbr_node_id, typed_ctxt->get_service_client_ref().get(
-								      emb_key, CURRENT_VERSION, true));
+            if (is_not_visited(nbr_node_id)) {
+              const std::string &emb_key = parent->cluster_data_prefix +
+                                           "_emb_" +
+                                           std::to_string(nbr_node_id);
+              emb_get_request_manager.submit_request(
+                  nbr_node_id, typed_ctxt->get_service_client_ref().get(
+									emb_key, CURRENT_VERSION, true));
+              // there is probably a better way to do this without sending a
+              // request for the neighbors of a a neighboring node
+              const std::string &nbr_key = parent->cluster_data_prefix +
+                                           "_nbr_" +
+                                           std::to_string(nbr_node_id);
+              nbr_get_requests[nbr_node_id] = std::make_shared<
+                  derecho::rpc::QueryResults<const ObjectWithStringKey>>(
+                  std::move(typed_ctxt->get_service_client_ref().get(
+								     nbr_key, CURRENT_VERSION, true)));
+              mark_visited(nbr_node_id);
+            }
           }
         }
-
-        // Mark nodes visited
-        for (auto id : primary_node_ids) {
-	  mark_visited(id);
-        }
-
         std::vector<std::shared_ptr<const data_type>> embs =
           retrieve_local_embeddings(primary_node_ids, typed_ctxt);
-	primary_dist.resize(embs.size());
+	primary_dist.reserve(embs.size());
         compute_dists(embs, primary_dist);
         cmps += primary_dist.size();
         for (size_t m = 0; m < primary_node_ids.size(); m++) {
 	  candidate_queue.insert(diskann::Neighbor(primary_node_ids[m], primary_dist[m]));
         }
 
-        std::pair<std::vector<uint64_t>,
-                  std::vector<std::shared_ptr<const data_type>>>
-            data_secondary_partition =
+        // get embedding data of whichever requests has arrived.
+        const std::pair<std::vector<uint64_t>,
+                        std::vector<std::shared_ptr<const data_type>>>
+            &data_secondary_partition =
               emb_get_request_manager.get_available_requests();
-        const std::vector<uint64_t> id = data_secondary_partition.first;
-        const std::vector<std::shared_ptr<const data_type>> embeddings = data_secondary_partition.second;
+        const std::vector<uint64_t> &id = data_secondary_partition.first;
+        const std::vector<std::shared_ptr<const data_type>> &embeddings = data_secondary_partition.second;
 	
-        secondary_dist.resize(embeddings.size());
+        secondary_dist.reserve(embeddings.size());
         compute_dists(embeddings, secondary_dist);
         cmps += secondary_dist.size();
         for (size_t m = 0; m < embeddings.size(); m++) {
 	  candidate_queue.insert(diskann::Neighbor(id[m], secondary_dist[m]));
         }
-                        
       }
       for (size_t i = 0; i < std::min(K, (uint32_t)candidate_queue.size()); i++) {
         indices[i] = candidate_queue[i].id;
@@ -291,8 +306,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           distances[i] = candidate_queue[i].distance;
       }
       return std::make_pair(hops, cmps);
-
-      
     }
 
 
@@ -309,8 +322,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
        For this, we need to know which nodes are local and which are not. Also
        there should be a queue where the 2nd partitions can send back results which we
        will check upon each new iteration of the search loop.
-
-
      */
     std::pair<uint32_t, uint32_t> search_task_push(
         DefaultCascadeContextType *typed_ctxt,
@@ -521,9 +532,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             typed_ctxt, query, compute_res_queues[query_id], this->my_thread_id,
 					      K, L, result.get(), nullptr);
 #elif GLOBAL_BASELINE
-	        // parent->index->search_global_baseline(
-            // typed_ctxt, query, compute_res_queues[query_id], this->my_thread_id,
-					      // K, L, result.get(), nullptr);
+	parent->index->search_global_baseline(typed_ctxt, query, K, L, result.get(), nullptr);
 #endif
         parent->batch_thread->push_ann_result(
             query->get_query_id(), query->get_client_node_id(), K, L,
@@ -802,7 +811,7 @@ push the compute result to the queue for that query id.
         search_results[client_id] = std::make_unique<ANNSearchResultBatcher>(
 									     parent->max_batch_size + 1);
       }
-      search_results[client_id]->push(search_res);
+      search_results[client_id]->push(std::move(search_res));
     }
 
     void start(DefaultCascadeContextType *typed_ctxt) {
@@ -907,6 +916,8 @@ public:
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
     std::cout << "Global index called " << std::endl;
+    // can probably optimize this part by doing shared ptr for compute query and
+    // compute result
     if (!initialized_index) {
       cluster_id = get_cluster_id(key_string);
       cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
@@ -924,26 +935,28 @@ public:
     }
 
     GlobalSearchMessageBatchManager<data_type> manager(object.blob.bytes, object.blob.size, this->dim);
-    for (const std::shared_ptr<GreedySearchQuery<data_type>> &search_query : manager.get_greedy_search_queries()) {
+    for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
+         manager.get_greedy_search_queries()) {
       validate_search_query(search_query);
-      search_threads[next_search_thread]->push_search_query(search_query);
+      search_threads[next_search_thread]->push_search_query(std::move(search_query));
       next_search_thread = (next_search_thread + 1) % num_search_threads;
     }
 
-    for (const std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
+    for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
          manager.get_embedding_queries()) {
       validate_emb_query(emb_query);
-      distance_compute_thread->push_embedding_query(emb_query);
+      distance_compute_thread->push_embedding_query(std::move(emb_query));
     }
 
-    for (const compute_query_t &query : manager.get_compute_queries()) {
+    for (compute_query_t &query : manager.get_compute_queries()) {
       validate_compute_query(query);
-      distance_compute_thread->push_compute_query(query);
+      distance_compute_thread->push_compute_query(std::move(query));
     }
 
-    for (const ComputeResult &result : manager.get_compute_results()) {
+    for (ComputeResult &result : manager.get_compute_results()) {
       validate_compute_result(result);
-      search_threads[result.get_receiver_thread_id()]->push_compute_res(result);
+      search_threads[result.get_receiver_thread_id()]->push_compute_res(
+									std::move(result));
     }
   }
   static void initialize() {

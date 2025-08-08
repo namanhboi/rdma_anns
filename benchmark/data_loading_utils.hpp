@@ -46,7 +46,7 @@
 // need to make sure that this is the case in the layout.json file
 
 
-#define MAX_DEGREE 64
+#define MAX_DEGREE 32
 // will need to revisit this later
 #define GRAPH_CLUSTER_PREFIX "/anns/cluster_"
 #define HEAD_INDEX_PREFIX "/anns/head_index"
@@ -61,12 +61,18 @@ using namespace parlayANN;
 AdjGraph convert_graph_to_adjgraph(Graph<unsigned int> &G);
 Clusters get_clusters_from_adjgraph(AdjGraph &adj, int num_clusters);
 
+/** create object pools for udl1 and udl2 */
+void create_object_pools(ServiceClientAPI &capi);
+
+
 /**
    This loads the prebuilt diskann graph on ssd into cascade according to the
    clusters.
-   Each cluster is its own object pool and all of these object pools will be on
-   the same subgroup. Hopefully they can each be a shard because of their
-   affinity set regex.
+   The embedding of vector j of clusters i will be in
+   /anns/global/data/cluster_i_emb_j
+   The neighbors of vector j of cluster j will be in
+   /anns/global/data/cluster_i_nbr_j
+   - First uint32_t of neighbors blob is number of neighbors, rest is the neighbor ids
  */
 template <typename data_type>
 void load_diskann_graph_into_cascade(
@@ -75,12 +81,9 @@ void load_diskann_graph_into_cascade(
     const Clusters &clusters, int max_degree) {
   int dimension = _pFlashIndex->get_data_dim();
   std::vector<int> non_max_neighbor_nodes;
-  // for now, 
-  for (int i = 0; i < clusters.size(); i++) {
-    std::string cluster_folder = GRAPH_CLUSTER_PREFIX + std::to_string(i);
-    capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-        cluster_folder, WHOLE_GRAPH_SUBGROUP_INDEX, HASH, {}, "cluster[0-9]+");
 
+  for (int i = 0; i < clusters.size(); i++) {
+    std::string cluster_folder = UDL2_DATA_PREFIX "/cluster_" + std::to_string(i);
     data_type *coord_ptr = new data_type[dimension * clusters[i].size()];
     std::vector<data_type *> tmp_coord_buffer;
 
@@ -92,34 +95,61 @@ void load_diskann_graph_into_cascade(
       tmp_nbr_buffer.emplace_back(0, neighbors_ptr + j * max_degree);
     }
 
-    _pFlashIndex->read_nodes(
-        clusters[i], tmp_coord_buffer,
-        tmp_nbr_buffer); // after this, all data is in tmp_coord_buffer and
-                         // tmp_nbr_buffer
-    for (int j = 0; j < tmp_nbr_buffer.size(); j++) {
-      if (tmp_nbr_buffer[j].first != 32)
-        non_max_neighbor_nodes.push_back(j);
-    }
+    _pFlashIndex->read_nodes(clusters[i], tmp_coord_buffer, tmp_nbr_buffer);
+
+
     parlay::parallel_for(0, clusters[i].size(), [&](size_t j) {
       uint32_t vector_id = clusters[i][j];
-      size_t num_byte_emb = sizeof(data_type) * dimension;
-      size_t num_byte_neighbors =
-          sizeof(unsigned int) * tmp_nbr_buffer[j].first;
-      size_t num_byte_object = num_byte_emb + num_byte_neighbors;
-      std::vector<std::byte> data(num_byte_object);
-      std::memcpy(data.data(), tmp_coord_buffer[j], num_byte_emb);
-      std::memcpy(data.data() + dimension * sizeof(data_type),
-                  tmp_nbr_buffer[j].second, num_byte_neighbors);
-      ObjectWithStringKey vector_data;
-      vector_data.key = cluster_folder + "/vector_" + std::to_string(vector_id);
-      vector_data.previous_version = INVALID_VERSION;
-      vector_data.previous_version_by_key = INVALID_VERSION;
-      vector_data.blob =
-          Blob(reinterpret_cast<const uint8_t *>(data.data()), num_byte_object);
-      auto result = capi.put(vector_data, false);
-      for (auto &reply_future : result.get()) {
-        auto reply = reply_future.second.get();
-      }
+      size_t nbr_blob_size =
+        sizeof(uint32_t) * tmp_nbr_buffer[j].first + sizeof(uint32_t);
+
+      Blob nbr_blob(
+          [&](uint8_t *buffer, const std::size_t size) {
+            std::memcpy(buffer, &tmp_nbr_buffer[j].first,
+                        sizeof(tmp_nbr_buffer[j].first));
+            std::memcpy(buffer, tmp_nbr_buffer[j].second,
+                        sizeof(uint32_t) * tmp_nbr_buffer[j].first);
+            return size;
+          },
+		    nbr_blob_size);
+      ObjectWithStringKey nbr_obj;
+      nbr_obj.key = cluster_folder + "_nbr_" + std::to_string(vector_id);
+      nbr_obj.previous_version = INVALID_VERSION;
+      nbr_obj.previous_version_by_key = INVALID_VERSION;
+      nbr_obj.blob = std::move(nbr_blob);
+      capi.put_and_forget(nbr_obj, false);
+
+      size_t emb_blob_size = sizeof(data_type) * dimension;
+      Blob emb_blob([&](uint8_t *buffer, const std::size_t size) {
+        std::memcpy(buffer, tmp_coord_buffer[j], emb_blob_size);
+        return size;
+          },
+		    emb_blob_size);
+      ObjectWithStringKey emb_obj;
+      emb_obj.key = cluster_folder + "_emb_" + std::to_string(vector_id);
+      emb_obj.previous_version = INVALID_VERSION;
+      emb_obj.previous_version_by_key = INVALID_VERSION;
+      emb_obj.blob = std::move(nbr_blob);
+      capi.put_and_forget(emb_obj, false);
+
+      // size_t num_byte_emb = sizeof(data_type) * dimension;
+      // size_t num_byte_neighbors =
+      //     sizeof(uint32_t) * tmp_nbr_buffer[j].first;
+      // size_t num_byte_object = num_byte_emb + num_byte_neighbors;
+      // std::vector<std::byte> data(num_byte_object);
+      // std::memcpy(data.data(), tmp_coord_buffer[j], num_byte_emb);
+      // std::memcpy(data.data() + dimension * sizeof(data_type),
+      //             tmp_nbr_buffer[j].second, num_byte_neighbors);
+      // ObjectWithStringKey vector_data;
+      // vector_data.key = cluster_folder + "/vector_" + std::to_string(vector_id);
+      // vector_data.previous_version = INVALID_VERSION;
+      // vector_data.previous_version_by_key = INVALID_VERSION;
+      // vector_data.blob =
+      //     Blob(reinterpret_cast<const uint8_t *>(data.data()), num_byte_object);
+      // auto result = capi.put(vector_data, false);
+      // for (auto &reply_future : result.get()) {
+      //   auto reply = reply_future.second.get();
+      // }
     });
     std::cout << "Done with cluster " << i << "/" << clusters.size() - 1
               << std::endl;

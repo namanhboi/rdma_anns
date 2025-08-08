@@ -34,9 +34,14 @@ notify, we don't have to do any replication in a shard i hope?
 #define UDL2_OBJ_POOL "/anns/global"
 #define UDL2_DATA_PREFIX "/anns/global/data"
 #define UDL2_PATHNAME "/anns/global/search"
+// both UDL2_DATA_PREFIX and UDL2_PATHNAME are a part of the same object pool /anns/global
+
 // put greedy search queries (defined in serialize utils) here:
 // /anns/global/search/cluste_/query_i to trigger global search
 
 #define RESULTS_OBJ_POOL_SUBGROUP_INDEX 1
 #define RESULTS_OBJ_POOL_PREFIX "/anns/results"
 // each client will have a separate object pool: /anns/results/{client_id}
+
+
+#define AFFINITY_SET_REGEX "cluster_[0-9]+"

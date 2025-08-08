@@ -104,7 +104,6 @@ std::vector<std::vector<uint32_t>> parse_cluster_bin_file(const std::string &clu
   return clusters;
 }
 
-
 void write_cluster_nodes_bin_file(const Clusters &clusters,
                                       const std::string &output_folder) {
   for (uint32_t i = 0; i < clusters.size(); i++) {
@@ -158,3 +157,13 @@ parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file) {
   in.read((char*) nodes.data(), sizeof(uint32_t) * num_nodes);
   return nodes;
 }
+
+
+void create_object_pools(ServiceClientAPI &capi) {
+  capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+								      UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
+
+  capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+								      UDL2_OBJ_POOL, UDL2_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
+}
+

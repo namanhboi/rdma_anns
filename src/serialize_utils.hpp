@@ -292,7 +292,7 @@ public:
   }
 
   
-  const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &get_queries() {
+  std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &get_queries() {
     if (queries.empty())
       this->create_queries();
 
@@ -605,7 +605,7 @@ public:
 
   }
   
-  const std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &get_queries() {
+  std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &get_queries() {
     if (queries.empty())
       create_queries();
 
@@ -802,7 +802,7 @@ public:
     // scalar values that can be copied
   }
 
-  const std::vector<compute_query_t> &get_queries() {
+  std::vector<compute_query_t> &get_queries() {
     return queries;
   }
 
@@ -1053,7 +1053,7 @@ public:
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
 
-  const std::vector<ComputeResult> &get_results() {
+  std::vector<ComputeResult> &get_results() {
     if (results.empty()) {
       create_results();
     }
@@ -1112,7 +1112,7 @@ public:
     search_results.reserve(size_hint);
   }
 
-  void push(const ann_search_result_t &res) { search_results.emplace_back(res); }
+  void push(ann_search_result_t res) { search_results.emplace_back(res); }
 
   static size_t get_header_size() { return sizeof(uint32_t);}
 
@@ -1418,20 +1418,20 @@ public:
   }
 
   // const std::vector<
-  const std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &
+  std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &
   get_embedding_queries() const {
     return this->embedding_query_manager->get_queries();
   }
 
-  const std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &
+  std::vector<std::shared_ptr<GreedySearchQuery<data_type>>> &
   get_greedy_search_queries() const {
       return this->greedy_search_manager->get_queries();
   }
-  const std::vector<compute_query_t> &get_compute_queries() {
+  std::vector<compute_query_t> &get_compute_queries() {
     return this->compute_query_manager->get_queries();
   }
 
-  const std::vector<ComputeResult> &get_compute_results() {
+  std::vector<ComputeResult> &get_compute_results() {
     return this->compute_result_manager->get_results();
   }
 
