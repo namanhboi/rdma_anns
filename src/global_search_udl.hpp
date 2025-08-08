@@ -732,12 +732,31 @@ push the compute result to the queue for that query id.
      batches stuff based on where the cluster is
   */
   class BatchingThread {
+
+    enum class message_type : uint8_t { COMPUTE_RESULT, COMPUTE_QUERY };
+
+    /**
+       this struct is for inter-node communication and to simplify the process
+       of batching and serializing these inter-node messages. I added this to
+       make doing max_batch_size easier.
+
+       In the future, it will also support candidate queue for cotra search modex.
+    */
+    struct message {
+      message_type msg_type;
+      union {
+        compute_result_t compute_result;
+        compute_query_t compute_query;
+      } msg;
+    };
+    
     GlobalSearchOCDPO<data_type> *parent;
     uint64_t thread_id;
     std::thread real_thread;
-    
+
     template <typename K, typename V>
-    bool is_empty(const std::unordered_map<K, std::unique_ptr<std::vector<V>>> &map) {
+    bool
+    is_empty(const std::unordered_map<K, std::vector<V>> &map) {
       bool empty = true;
       for (auto &item : map) {
         if (!item.second->empty()) {
@@ -749,26 +768,133 @@ push the compute result to the queue for that query id.
     }
 
     std::unordered_map<uint8_t,
-                       std::unique_ptr<GlobalSearchMessageBatcher<data_type>>>
+                       std::unique_ptr<std::vector<message>>>
         cluster_messages;
     //key is client_id
     std::unordered_map<uint32_t,
-                       std::unique_ptr<ANNSearchResultBatcher>>
+                       std::unique_ptr<std::vector<ann_search_result_t>>>
         search_results;
     std::condition_variable_any messages_cv;
     std::mutex messages_mutex;
 
     bool running = false;
 
-    // TODO: fix it to include search_results consideration.
-    // the batching for sending results could probably be better. Should ask alicia 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       std::unique_lock<std::mutex> lock(messages_mutex);
       std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
-      wait_time;
+      wait_time_messages;
+      std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
+      wait_time_results;
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
+      GlobalSearchMessageBatcher<data_type> message_batcher(parent->dim);
+      ANNSearchResultBatcher result_batcher;
       
+      while (running) {
+        lock.lock();
+        while (is_empty(cluster_messages) && is_empty(search_results)) {
+          messages_cv.wait_for(lock, batch_time);
+        }
+        if (!running) {
+	  break;
+        }
+
+        std::unordered_map<uint8_t, std::unique_ptr<std::vector<message>>>
+        messages_to_send;
+
+        std::unordered_map<uint32_t,
+                           std::unique_ptr<std::vector<ann_search_result_t>>>
+        results_to_send;
+
+	auto now = std::chrono::steady_clock::now();
+        for (auto &[cluster_id, messages] : cluster_messages) {
+          if (wait_time_messages.count(cluster_id) == 0) {
+            wait_time_messages[cluster_id] = now;
+          }
+          if (messages->size() >= parent->min_batch_size ||
+              ((now - wait_time_messages[cluster_id]) >= batch_time)) {
+            messages_to_send[cluster_id] = std::move(messages);
+            cluster_messages[cluster_id] =
+              std::make_unique<std::vector<message>>();
+            cluster_messages[cluster_id]->reserve(parent->max_batch_size);
+          }
+        }
+
+        for (auto &[client_id, results] : search_results) {
+          if (wait_time_messages.count(client_id) == 0) {
+            wait_time_results[client_id] = now;
+          }
+          if (results->size() >= parent->min_batch_size ||
+              ((now - wait_time_results[client_id]) >= batch_time)) {
+            results_to_send[client_id] = std::move(results);
+            search_results[client_id] =
+              std::make_unique<std::vector<ann_search_result_t>>();
+          }
+        }
+        lock.unlock();
+
+        for (auto &[cluster_id, messages] : messages_to_send) {
+          uint64_t num_sent = 0;
+          uint64_t total = messages->size();
+
+          while (num_sent < total) {
+            uint32_t left = total - num_sent;
+            uint32_t batch_size = std::min(parent->max_batch_size, left);
+            for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
+              if (messages->at(i).msg_type == message_type::COMPUTE_RESULT) {
+
+                message_batcher.push_compute_result(
+						    std::move(messages->at(i).msg.compute_result));
+              } else if (messages->at(i).msg_type ==
+                         message_type::COMPUTE_QUERY) {
+
+                message_batcher.push_compute_query(
+						   std::move(messages->at(i).msg.compute_query));
+              } 
+            }
+            message_batcher.serialize();
+            ObjectWithStringKey obj;
+            obj.blob = std::move(*message_batcher.get_blob());
+            obj.previous_version = INVALID_VERSION;
+            obj.previous_version_by_key = INVALID_VERSION;
+
+            // send data to the correct cluster, send using pathname because
+            // that is how you trigger the udl handler
+            obj.key = UDL2_PATHNAME "/cluster_" + std::to_string(cluster_id);
+            typed_ctxt->get_service_client_ref().trigger_put(obj);
+            num_sent += batch_size;
+            message_batcher.reset();
+          }
+        }
+        for (auto &[client_id, results] : results_to_send) {
+          uint64_t num_sent = 0;
+          uint64_t total = results->size();
+
+          while (num_sent < total) {
+            uint32_t left = total - num_sent;
+            uint32_t batch_size = std::min(parent->max_batch_size, left);
+            for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
+              result_batcher.push(std::move(results->at(i)));
+            }
+            
+            result_batcher.serialize();
+            // need to notify the client.
+
+            std::string client_id_pool_path =
+              RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(client_id);
+            typed_ctxt->get_service_client_ref().notify(
+							*(result_batcher.get_blob()), client_id_pool_path, client_id);
+
+            num_sent += batch_size;
+            result_batcher.reset();
+          }          
+	}
       }
+
+
+
+      
+    }
+    
 
   public:
     BatchingThread(uint64_t thread_id, GlobalSearchOCDPO *parent) : thread_id(thread_id),parent(parent) {}
@@ -828,6 +954,7 @@ push the compute result to the queue for that query id.
     void signal_stop() {
       std::scoped_lock<std::mutex> l(messages_mutex);
       running = false;
+      search_results[0]->push({});
       messages_cv.notify_all();
     }
     

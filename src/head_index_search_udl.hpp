@@ -180,7 +180,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           }
         }
 
-        if(empty){
+        if (empty){
             cluster_queue_cv.wait_for(lock,batch_time);
         }
 

@@ -39,7 +39,7 @@ notify, we don't have to do any replication in a shard i hope?
 // put greedy search queries (defined in serialize utils) here:
 // /anns/global/search/cluste_/query_i to trigger global search
 
-#define RESULTS_OBJ_POOL_SUBGROUP_INDEX 1
+#define RESULTS_OBJ_POOL_SUBGROUP_INDEX 0
 #define RESULTS_OBJ_POOL_PREFIX "/anns/results"
 // each client will have a separate object pool: /anns/results/{client_id}
 

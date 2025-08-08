@@ -209,6 +209,10 @@ public:
   void reset() {
     blob.reset();
     queries.clear();
+  }
+
+  bool is_empty() {
+    return queries.empty();
   }    
 };
 
@@ -468,6 +472,10 @@ public:
   void reset() {
     blob.reset();
     queries.clear();
+  }
+
+  bool is_empty() {
+    return queries.empty();
   }    
 };
 
@@ -763,6 +771,10 @@ public:
   void reset() {
     blob.reset();
     queries.clear();
+  }
+  bool is_empty() {
+    return queries.empty();
+
   }    
 };
 
@@ -1016,6 +1028,10 @@ public:
   void reset() {
     blob.reset();
     results.clear();
+  }
+
+  bool is_empty() {
+    return results.empty();
   }    
 };
 
@@ -1155,9 +1171,14 @@ public:
     blob.reset();
     search_results.clear();
   }
-  size_t get_count() {
+  size_t get_count() { return search_results.size(); }
+
+  bool is_empty() { return search_results.empty(); }
+
+  uint32_t get_num_results() {
     return search_results.size();
   }    
+
 };
 
 class ANNSearchResult {
@@ -1380,6 +1401,13 @@ public:
     compute_queries_batcher.reset();
     compute_results_batcher.reset();
   }
+
+  bool is_empty() {
+    return query_embeddings_batcher.is_empty() &&
+           search_queries_batcher.is_empty() &&
+           compute_queries_batcher.is_empty() &&
+           compute_results_batcher.is_empty();
+  }    
 };
 
 
@@ -1441,7 +1469,9 @@ public:
            this->greedy_search_manager->get_num_queries() +
            this->compute_query_manager->get_num_queries() +
            this->compute_result_manager->get_num_results();
-  }    
+  }
+
+
 };  
 
 uint8_t get_cluster_id(const std::string &key);
