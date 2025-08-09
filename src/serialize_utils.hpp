@@ -48,6 +48,23 @@ public:
   uint32_t dim;
   uint32_t K;
   uint32_t L;
+
+  // this constructor is used to easily test udl2
+  EmbeddingQuery(const uint8_t *emb_buffer, uint64_t emb_buffer_size,
+                 uint32_t query_id, uint32_t client_node_id, uint32_t K,
+                 uint32_t L, uint32_t emb_dim) {
+    std::shared_ptr<uint8_t[]> tmp(new uint8_t[emb_buffer_size]);
+    std::memcpy(tmp.get(), emb_buffer, emb_buffer_size);
+    this->buffer = std::move(tmp);
+
+    this->buffer_size = emb_buffer_size;
+    this->query_id = query_id;
+    this->client_node_id = client_node_id;
+    this->K = K;
+    this->L = L;
+    this->dim = emb_dim;
+    this->embeddings_position = 0;
+  }
   
 
   EmbeddingQuery(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
@@ -64,7 +81,7 @@ public:
 
     this->dim = emb_dim;
   }
-  uint64_t get_query_id() { return this->query_id; }
+  uint32_t get_query_id() { return this->query_id; }
 
   uint32_t get_K() { return this->K; }
 
@@ -360,8 +377,8 @@ struct greedy_query_t {
     offset += sizeof(cand_q_size);
 
     std::memcpy(buffer + offset, &cluster_id, sizeof(cluster_id));
-    
   }
+  uint32_t get_query_id() { return query->get_query_id(); }
   uint32_t get_query_emb_size() {
     return this->query->get_dim() * sizeof(data_type);
   }
@@ -400,14 +417,14 @@ public:
     queries.reserve(size_hint);
   }
 
-  void add_query(greedy_query_t<data_type> &query) {
-    queries.emplace_back(query);
+  void add_query(greedy_query_t<data_type> query) {
+    queries.emplace_back(std::move(query));
   }
   void add_query(uint8_t cluster_id,
                  std::vector<uint32_t> candidate_queue,
                  std::shared_ptr<EmbeddingQuery<data_type>> query) {
     greedy_query_t<data_type> tmp(cluster_id, candidate_queue, query);
-    queries.push_back(tmp);
+    queries.emplace_back(std::move(tmp));
   }
 
   static uint32_t get_header_size() { return sizeof(uint32_t) * 2; }
@@ -634,15 +651,6 @@ public:
   
 };
 
-
-enum message_type : uint8_t {
-  QUERY_EMB,   // this is sent to the secondary partitions from the head index
-                // udl to do distance calculations with. Is just a EmbeddingQuery
-  SEARCH_QUERY, // this is sent to the primary partitions from the head index
-                // udl to do search
-  COMPUTE_QUERY,
-  COMPUTE_RES
-};
 
 
 // since this struct is so small, no need for a ComputeQuery class for deserialization
@@ -1191,8 +1199,12 @@ class ANNSearchResult {
   uint32_t L;
   const uint32_t *search_results;
   uint8_t cluster_id;
-  
+
 public:
+  ANNSearchResult()
+      : buffer(nullptr), buffer_size(0), query_id(0), client_id(0), K(0), L(0),
+      search_results(nullptr), cluster_id(0) {}
+  
   ANNSearchResult(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
                   uint32_t data_location) {
     this->buffer = buffer;
@@ -1334,7 +1346,7 @@ public:
 
   static uint32_t get_header_size() { return sizeof(uint32_t) * 3; }
   void push_search_query(greedy_query_t<data_type> search_query) {
-    this->search_queries_batcher.add_query(search_query);
+    this->search_queries_batcher.add_query(std::move(search_query));
   }
 
   void push_compute_query(compute_query_t compute_query) {

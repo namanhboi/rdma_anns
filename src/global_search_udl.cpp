@@ -8,17 +8,20 @@ namespace cascade {
   std::string get_description() { return MY_DESC; }
 
   void initialize(ICascadeContext *ctxt) {
-  if (std::string(DATA_TYPE) == "float") {
-    GlobalSearchOCDPO<float>::initialize();
-    std::cout << "done initializing head index udl" << std::endl;
-  } else if (std::string(DATA_TYPE) == "uint8_t") {
-    GlobalSearchOCDPO<uint8_t>::initialize();
-  } else if (std::string(DATA_TYPE) == "int8_t") {
-    GlobalSearchOCDPO<int8_t>::initialize();
-  } else {
-    throw std::runtime_error("DATA_TYPE macro in global_search_udl.hpp has weird value: " DATA_TYPE);
+    if (std::string(DATA_TYPE) == "float") {
+      GlobalSearchOCDPO<float>::initialize();
+
+    } else if (std::string(DATA_TYPE) == "uint8_t") {
+      GlobalSearchOCDPO<uint8_t>::initialize();
+    } else if (std::string(DATA_TYPE) == "int8_t") {
+      GlobalSearchOCDPO<int8_t>::initialize();
+    } else {
+      throw std::runtime_error("DATA_TYPE macro in global_search_udl.hpp has weird value: " DATA_TYPE);
+    }
+    std::cout << "done initializing global search udl" << std::endl;
   }
-  }
+  
+  
 
 
   std::shared_ptr<OffCriticalDataPathObserver>

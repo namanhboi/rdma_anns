@@ -16,15 +16,16 @@
 #define DEFAULT_WARMUP 0
 
 
-#define HEAD_INDEX_K 10
 namespace po = boost::program_options;
-
+/**
+   the last 2 parameters are purely used to test udl2
+*/
 template <typename data_type>
 void benchmark(const std::string &query_file, const std::string &gt_file,
                uint32_t batch_min_size, uint32_t batch_max_size,
                uint32_t batch_time_us, uint32_t num_result_threads,
-               uint32_t num_warmup, uint32_t send_rate, uint32_t K,
-               uint32_t L) {
+               uint32_t num_warmup, uint32_t send_rate, uint32_t K, uint32_t L,
+               uint8_t cluster_id = 0, uint32_t start_node_id = 0) {
   
   BenchmarkDataset<data_type> dataset(query_file, gt_file);
   BenchmarkClient<data_type> client(num_warmup);
@@ -44,12 +45,16 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     auto warmup_start = std::chrono::steady_clock::now();
     auto extra_time = std::chrono::nanoseconds(0);
     for (uint64_t i = 0; i < num_warmup; i++) {
-      std::cout << "start sending query " << i << std::endl;
       auto start = std::chrono::steady_clock::now();
       uint64_t next_query_index = dataset.get_next_query_index();
       const data_type *query_emb = dataset.get_query(next_query_index);
+      std::cout << query_emb << std::endl;
+#ifdef TEST_UDL2
+      uint64_t query_id =
+        client.query(query_emb, K, L, cluster_id, start_node_id);
+#else
       uint64_t query_id = client.query(query_emb, K, L);
-            
+#endif       
       auto end = std::chrono::steady_clock::now();
       if (rate_control) {
         auto elapsed = end - start + extra_time;
@@ -79,7 +84,14 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     }
     uint64_t next_query_index = dataset.get_next_query_index();
     const data_type *query_emb = dataset.get_query(next_query_index);
+    std::cout << query_emb << std::endl;
+#ifdef TEST_UDL2
+    uint64_t query_id =
+      client.query(query_emb, K, L, cluster_id, start_node_id);
+
+#else
     uint64_t query_id = client.query(query_emb, K, L);
+#endif       
     query_id_to_index[query_id] = next_query_index;
             
     auto end = std::chrono::steady_clock::now();
@@ -101,12 +113,12 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
 
   // recall calculation
   std::cout << "starting calculation" <<std::endl;
-  uint32_t query_result[num_queries * HEAD_INDEX_K];
-  data_type query_data[num_queries * dataset.query_dim];
+  uint32_t *query_result = new uint32_t[num_queries * K];
+  data_type *query_data = new data_type[num_queries * dataset.query_dim];
   std::vector<uint32_t> bad_queries;
   uint8_t cluster_0;
   for (auto &[query_id, query_index] : query_id_to_index) {
-
+#ifdef TEST_UDL1
     std::shared_ptr<GreedySearchQuery<data_type>> greedy_search_q =
       client.get_result(query_id);
     std::cout << query_id << " " << query_index << std::endl;
@@ -120,33 +132,43 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
                                std::to_string(greedy_search_q->get_query_id()) +
                                std::to_string(query_index));
 
-    if (greedy_search_q->get_candidate_queue_size() != HEAD_INDEX_K)
+    if (greedy_search_q->get_candidate_queue_size() != K)
       bad_queries.push_back(query_index);
 
-    std::memcpy(query_result + query_index * HEAD_INDEX_K,
+    std::memcpy(query_result + query_index * K,
                 greedy_search_q->get_candidate_queue_ptr(),
                 greedy_search_q->get_candidate_queue_size() * sizeof(uint32_t));
     std::memcpy(query_data + query_index * dataset.query_dim,
                 greedy_search_q->get_embedding_ptr(),
                 sizeof(data_type) * dataset.query_dim);
+#else
+    ANNSearchResult result = client.get_result(query_id);
+    std::cout << query_id << " " << query_index << std::endl;
+    std::memcpy(query_result + query_index * K,
+                result.get_search_results_ptr(), K * sizeof(uint32_t));
+#endif
   }
   std::cout << "done with copying data" << std::endl;
   std::cout << dataset.query_dim << " " << dataset.query_aligned_dim << std::endl;
-  // verify the validity of queries
+
+#ifdef TEST_UDL1
   for (uint64_t i = 0; i < num_queries * dataset.query_dim; i++) {
     if (query_data[i] != dataset.query_data[i])
       throw std::runtime_error("query data doesn't match byte " +
                                std::to_string(i));
   }
-
-  
-  double recall = diskann::calculate_recall(
-      dataset.get_num_queries(), dataset.gt_ids, dataset.gt_dists,
-					    dataset.gt_dim, query_result, HEAD_INDEX_K, HEAD_INDEX_K);
+#endif
+  double recall = diskann::calculate_recall(dataset.get_num_queries(),
+                                            dataset.gt_ids, dataset.gt_dists,
+                                            dataset.gt_dim, query_result, K, K);
 
   std::cout << "recall is " << recall << std::endl;
   std::cout << "bad queries number: " << bad_queries.size() << std::endl;
-  for (auto query_id : bad_queries) std::cout << query_id << std::endl;
+
+  delete[] query_result;
+  delete[] query_data;
+
+  
 }
 
 
@@ -163,6 +185,8 @@ int main(int argc, char **argv) {
   uint32_t num_result_threads;
   uint32_t num_warmup;
   uint32_t K, L;
+  uint8_t cluster_id;
+  uint32_t start_node_id;
 
   desc.add_options()("help,h", "show help message")(
       "query_file,Q", po::value<std::string>(&query_file)->required(),
@@ -191,7 +215,13 @@ int main(int argc, char **argv) {
       po::value<uint32_t>(&num_warmup)->default_value(DEFAULT_WARMUP),
       "number of quries to wamrup system")(
       "K", po::value<uint32_t>(&K)->required(), "recall at")(
-							     "L", po::value<uint32_t>(&L)->required(), "candidate queue size");
+      "L", po::value<uint32_t>(&L)->required(), "candidate queue size")(
+      "cluster_id", po::value<uint8_t>(&cluster_id)->default_value(0),
+      "cluster id to send queries to test udl2")(
+      "start_node_id", po::value<uint32_t>(&start_node_id)->default_value(0),
+      "start node id to send queries to test udl2, should be in the cluster "
+      "with id cluster_id");
+  
   
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -206,11 +236,17 @@ int main(int argc, char **argv) {
 
 
   if (data_type == "float") {
-    benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
+    benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size,
+                     batch_time_us, num_result_threads, num_warmup, send_rate,
+                     K, L, cluster_id, start_node_id);
   } else if (data_type == "uint8_t") {
-    benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
+    benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size,
+                       batch_time_us, num_result_threads, num_warmup, send_rate,
+                       K, L, cluster_id, start_node_id);
   } else if (data_type == "int8_t") {
-    benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size, batch_time_us, num_result_threads, num_warmup, send_rate, K, L);
+    benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size,
+                      batch_time_us, num_result_threads, num_warmup, send_rate,
+                      K, L, cluster_id, start_node_id);
   }
   
 }

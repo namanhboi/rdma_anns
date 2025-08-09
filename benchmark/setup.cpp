@@ -20,6 +20,12 @@
 #include <utils/point_range.h>
 #include <vector>
 
+/**
+   this file currently load a prebuilt diskann index and run a clustering
+   algorithm on it to create disjoint clusters. It then load these clusters onto
+   cascade.
+ */
+
 namespace po = boost::program_options;
 using namespace derecho::cascade;
 using namespace parlayANN;
@@ -121,15 +127,14 @@ int main(int argc, char **argv) {
   if (data_type != "uint8" && data_type != "int8" && data_type != "float")
     throw std::invalid_argument("wrong data_type");
 
-
-
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   create_object_pools(capi);
 
   Clusters clusters;
   if (data_type == "uint8") {
-    Clusters clusters = get_clusters_from_diskann_graph<uint8_t>(
+    clusters = get_clusters_from_diskann_graph<uint8_t>(
 								 index_path_prefix, num_clusters);
+    WriteClusters(clusters, "clusters.txt");
     std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
     std::unique_ptr<diskann::PQFlashIndex<uint8_t>> _pFlashIndex(
 								 new diskann::PQFlashIndex<uint8_t>(reader, diskann::Metric::L2));
@@ -138,24 +143,29 @@ int main(int argc, char **argv) {
     int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
     load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);    
   } else if (data_type == "int8") {
-    Clusters clusters = get_clusters_from_diskann_graph<int8_t>(
+    clusters = get_clusters_from_diskann_graph<int8_t>(
 								index_path_prefix, num_clusters);
+    WriteClusters(clusters, "clusters.txt");
     std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
     std::unique_ptr<diskann::PQFlashIndex<int8_t>> _pFlashIndex(
 								new diskann::PQFlashIndex<int8_t>(reader, diskann::Metric::L2));
     int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
     load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);        
   } else if (data_type == "float") {
-    Clusters clusters =
+    clusters =
       get_clusters_from_diskann_graph<float>(index_path_prefix, num_clusters);
-      std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
-      std::unique_ptr<diskann::PQFlashIndex<float>> _pFlashIndex(
-								 new diskann::PQFlashIndex<float>(reader, diskann::Metric::L2));
-      int _ =
-        _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
-      load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);    
+    std::cout << "num clustesr " << clusters.size() << std::endl;
+    std::cout << "size of cluster 0 "<< clusters[0].size() << std::endl;    
+    WriteClusters(clusters, "clusters.txt");
+    std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+    std::unique_ptr<diskann::PQFlashIndex<float>> _pFlashIndex(
+							       new diskann::PQFlashIndex<float>(reader, diskann::Metric::L2));
+    int _ =
+      _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);
   }
-
-  
+  std::cout << "num clustesr " << clusters.size() << std::endl;
+  std::cout << "size of cluster 0 "<< clusters[0].size() << std::endl;
+  write_cluster_data_folder(clusters, clusters_folder);
   return 0;
 }

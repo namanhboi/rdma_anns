@@ -20,7 +20,23 @@
 	    "cluster_assignment_path" : "/home/nam/workspace/rdma_anns/build/benchmark/clusters.bin"
           }],
         "destinations": [{}]
-      }
+      },
+      {
+        "pathname": "/anns/global/search",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["837425c0-a204-435c-bf6f-00ae40c8039f"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [
+          {
+            "dim":128,
+            "num_search_threads":1,
+            "min_batch_size":1,
+            "max_batch_size":100,
+            "batch_time_us":1000,
+	    "cluster_assignment_bin_file" : "/home/nam/workspace/rdma_anns/build/cfg/n2/clusters_data/cluster_assignment_all.bin"
+          }],
+        "destinations": [{}]
+      }      
     ]
   }
 

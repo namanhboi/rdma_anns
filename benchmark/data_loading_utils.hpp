@@ -98,6 +98,24 @@ void load_diskann_graph_into_cascade(
     _pFlashIndex->read_nodes(clusters[i], tmp_coord_buffer, tmp_nbr_buffer);
 
 
+    for (uint32_t i = 0; i < 100; i++) {
+      for (uint32_t j = 0; j < dimension; j++) {
+        std::cout << tmp_coord_buffer[i][j] << " " << std::endl;
+      }
+      std::cout << std::endl;
+    }
+    std::unique_ptr<diskann::Distance<data_type>> dist_fn(
+        (diskann::Distance<data_type> *)
+            diskann::get_distance_function<data_type>(diskann::Metric::L2));
+    std::cout << "sample distance "
+    << dist_fn->compare(tmp_coord_buffer[0], tmp_coord_buffer[1],
+                                32);
+    
+    std::cout << "cluster folder is " << cluster_folder << std::endl;
+    
+
+
+
     parlay::parallel_for(0, clusters[i].size(), [&](size_t j) {
       uint32_t vector_id = clusters[i][j];
       size_t nbr_blob_size =
@@ -107,7 +125,7 @@ void load_diskann_graph_into_cascade(
           [&](uint8_t *buffer, const std::size_t size) {
             std::memcpy(buffer, &tmp_nbr_buffer[j].first,
                         sizeof(tmp_nbr_buffer[j].first));
-            std::memcpy(buffer, tmp_nbr_buffer[j].second,
+            std::memcpy(buffer + sizeof(tmp_nbr_buffer[j].first), tmp_nbr_buffer[j].second,
                         sizeof(uint32_t) * tmp_nbr_buffer[j].first);
             return size;
           },
@@ -129,7 +147,7 @@ void load_diskann_graph_into_cascade(
       emb_obj.key = cluster_folder + "_emb_" + std::to_string(vector_id);
       emb_obj.previous_version = INVALID_VERSION;
       emb_obj.previous_version_by_key = INVALID_VERSION;
-      emb_obj.blob = std::move(nbr_blob);
+      emb_obj.blob = std::move(emb_blob);
       capi.put_and_forget(emb_obj, false);
 
       // size_t num_byte_emb = sizeof(data_type) * dimension;
@@ -153,18 +171,18 @@ void load_diskann_graph_into_cascade(
     });
     std::cout << "Done with cluster " << i << "/" << clusters.size() - 1
               << std::endl;
-    std::cout << "SAMPLE NEIGHBOR" << std::endl;
-    for (int j = 0; j < tmp_nbr_buffer[10].first; j++) {
-      std::cout << tmp_nbr_buffer[10].second[j] << std::endl;
-    }
+    // std::cout << "SAMPLE NEIGHBOR" << std::endl;
+    // for (int j = 0; j < tmp_nbr_buffer[10].first; j++) {
+      // std::cout << tmp_nbr_buffer[10].second[j] << std::endl;
+    // }
     delete[] coord_ptr;
     delete[] neighbors_ptr;
   }
 
-  std::cout << "nodes with non max neighbors" << std::endl;
-  for (const int &x : non_max_neighbor_nodes) {
-    std::cout << x << std::endl;
-  }
+  // std::cout << "nodes with non max neighbors" << std::endl;
+  // for (const int &x : non_max_neighbor_nodes) {
+    // std::cout << x << std::endl;
+  // }
 }
 
 template<typename data_type>

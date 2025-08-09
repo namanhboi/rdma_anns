@@ -207,7 +207,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         }
         lock.unlock();
 
-#ifndef HEAD_INDEX_TEST
+#ifndef TEST_UDL1
         // this is the actual data sending pipeline to the global search udl
         for (auto &[cluster_id, queries_and_cand_q] : to_send) {
           uint64_t num_sent = 0;
@@ -369,11 +369,21 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   uint64_t max_batch_size = 10;
   uint64_t batch_time_us = 1000;
 
-  std::string index_path;
-  std::string id_mapping_path;
-  std::string cluster_assignment_path;
+  std::string index_path = "";
+  std::string id_mapping_path = "";
+  std::string cluster_assignment_path = "";
 
   void retrieve_and_cache_head_index_fs(DefaultCascadeContextType *typed_ctxt) {
+    if (index_path == "") {
+      throw std::runtime_error("index path not specified");
+    }
+    if (cluster_assignment_path == "") {
+      throw std::runtime_error("cluster assignment path not specified");
+    }
+    if (id_mapping_path == "") {
+      throw std::runtime_error("id mapping path not specified");
+    }
+    
     diskann::Metric metric = diskann::Metric::L2;
     const size_t num_frozen_pts = diskann::get_graph_num_frozen_points(index_path);
 
@@ -425,7 +435,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    // std::cout << "Head index called " << std::endl;
+    std::cout << "Head index called " << std::endl;
     if (cached_head_index == false) {
       retrieve_and_cache_head_index_fs(typed_ctxt);
     }

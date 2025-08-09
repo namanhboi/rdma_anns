@@ -20,7 +20,7 @@
 using namespace derecho::cascade;
 
 
-#define CLIENT_MAX_WAIT_TIME 60
+#define CLIENT_MAX_WAIT_TIME 1000
 
 template<typename data_type>
 class BenchmarkClient {
@@ -37,18 +37,25 @@ class BenchmarkClient {
 
     std::mutex query_queue_mtx;
     std::condition_variable query_queue_cv;
-    std::queue<query_t<data_type>> query_queue;
 
+#ifdef TEST_UDL2    
+    std::queue<greedy_query_t<data_type>> query_queue;
+#else
+    std::queue<query_t<data_type>> query_queue;
+#endif
     void main_loop() {
       if (!running)
         return;
 
+#ifdef TEST_UDL2
+      GlobalSearchMessageBatcher<data_type> batcher(dim, batch_max_size);
+#else
       EmbeddingQueryBatcher<data_type> batcher(dim, batch_max_size);
+#endif
       std::vector<uint64_t> id_list;
       id_list.reserve(batch_max_size);
       auto wait_start = std::chrono::steady_clock::now();
       auto batch_time = std::chrono::microseconds(batch_time_us);
-
       while (true) {
         std::unique_lock<std::mutex> lock(query_queue_mtx);
         if (query_queue.empty()) {
@@ -58,16 +65,25 @@ class BenchmarkClient {
           break;
         uint64_t send_count = 0;
         uint64_t queued_count = query_queue.size();
-        
+
         auto now = std::chrono::steady_clock::now();
+        uint8_t cluster_id = 0;
         if ((queued_count >= batch_min_size) ||
             (now - wait_start) >= batch_time) {
           send_count = std::min(batch_max_size, queued_count);
           wait_start = now;
           for (uint64_t i = 0; i < send_count; i++) {
-            query_t<data_type> &query = query_queue.front();
-            batcher.add_query(query);
+#ifdef TEST_UDL2
+            greedy_query_t<data_type> &query = query_queue.front();
+            cluster_id = query.cluster_id;
             id_list.push_back(query.get_query_id());
+            batcher.push_search_query(std::move(query));
+#else
+            query_t<data_type> &query = query_queue.front();
+            id_list.push_back(query.get_query_id());
+            batcher.add_query(std::move(query));
+#endif
+
             query_queue.pop();
           }
         }
@@ -78,8 +94,14 @@ class BenchmarkClient {
           batcher.serialize();
 
           ObjectWithStringKey obj;
+#ifdef TEST_UDL2
+          obj.key = UDL2_PATHNAME "/cluster_" + std::to_string(cluster_id) +
+                    "/" + std::to_string(node_id) + "_" +
+                    std::to_string(batch_id);
+#else
           obj.key = UDL1_PATHNAME "/" + std::to_string(node_id) + "_" +
                     std::to_string(batch_id);
+#endif
           // std::cout << "query key " << obj.key << std::endl;
           obj.blob = std::move(*batcher.get_blob());
           capi.trigger_put(obj);
@@ -102,11 +124,19 @@ class BenchmarkClient {
       this->batch_time_us = batch_time_us;
       this->dim = dim;
     }
-    void push_query(query_t<data_type> &query) {
+#ifdef TEST_UDL2
+    void push_query(greedy_query_t<data_type> query) {
       std::scoped_lock<std::mutex> l(query_queue_mtx);
-      query_queue.push(query);
+      query_queue.push(std::move(query));
+      query_queue_cv.notify_all();      
+    }
+#else
+    void push_query(query_t<data_type> query) {
+      std::scoped_lock<std::mutex> l(query_queue_mtx);
+      query_queue.push(std::move(query));
       query_queue_cv.notify_all();
     }
+#endif
     std::unordered_map<uint64_t, uint64_t> batch_size;
     void signal_stop() {
       std::scoped_lock l(query_queue_mtx);
@@ -152,12 +182,20 @@ class BenchmarkClient {
           std::cerr << "Error: empty result blob" << std::endl;
           continue;
         }
-
+#ifdef TEST_UDL2
+        ANNSearchResultBatchManager manager(pending.first.get(),
+                                            pending.second);
+        for (const auto &result : manager.get_results()) {
+          parent->result_received(result);
+          
+        }
+#else 
         GlobalSearchMessageBatchManager<data_type> manager(
 							   pending.first.get(), pending.second, parent->dim);
 	for (auto &greedy_query : manager.get_greedy_search_queries()) {
           parent->result_received(greedy_query);
         }
+#endif
       }
     }
   public:
@@ -214,9 +252,11 @@ class BenchmarkClient {
 
   std::atomic<uint64_t> result_count = 0;
   std::shared_mutex result_mutex;
+
+
+#ifdef TEST_UDL1
   std::unordered_map<uint32_t, std::shared_ptr<GreedySearchQuery<data_type>>>
       results;
-
   void result_received(std::shared_ptr<GreedySearchQuery<data_type>> result) {
     uint32_t query_id = result->get_query_id();
     std::unique_lock<std::shared_mutex> lock(result_mutex);
@@ -224,7 +264,17 @@ class BenchmarkClient {
     result_count++;
     query_result_time[query_id] = std::chrono::steady_clock::now();
   }
-  
+#else
+  std::unordered_map<uint32_t, ANNSearchResult>
+      results;  
+  void result_received(ANNSearchResult result) {
+    uint32_t query_id = result.get_query_id();
+    std::unique_lock<std::shared_mutex> lock(result_mutex);
+    results[query_id] = result;
+    result_count++;
+    query_result_time[query_id] = std::chrono::steady_clock::now();
+  }
+#endif  
   
 public:
   BenchmarkClient(uint32_t skip = 0) {
@@ -349,7 +399,7 @@ public:
         },
 						  result_pool_name);
     auto shards = capi.get_subgroup_members<VolatileCascadeStoreWithStringKey>(
-									       UDL1_SUBGROUP_INDEX);
+									       RESULTS_OBJ_POOL_SUBGROUP_INDEX);
 
     std::cout << " pre-establishing connections in with all nodes in "
     << shards.size() << " shards  " << std::endl;
@@ -362,7 +412,7 @@ public:
     for (auto &shard : shards) {
       for (int j = 0; j < shard.size(); j++) {
         auto res = capi.template put<VolatileCascadeStoreWithStringKey>(
-									obj, UDL1_SUBGROUP_INDEX, i, true);
+									obj, RESULTS_OBJ_POOL_SUBGROUP_INDEX, i, true);
         for (auto &reply : res.get()) {
 	  reply.second.get();
         }
@@ -385,15 +435,36 @@ public:
     std::cout << "finished setting up" << std::endl;
   }
 
+#ifdef TEST_UDL2
+  /**
+     precondition is that start node has to be in the cluster.
+  */
+  uint32_t query(const data_type *query_emb, uint32_t K, uint32_t L, uint8_t cluster_id, uint32_t start_node) {
+    uint32_t query_id = next_query_id();
+    query_send_time[query_id] = std::chrono::steady_clock::now();
+    std::shared_ptr<EmbeddingQuery<data_type>> emb_query =
+        std::make_shared<EmbeddingQuery<data_type>>(
+            reinterpret_cast<const uint8_t *>(query_emb),
+						    sizeof(data_type) * dim, query_id, my_id, K, L, dim);
+    std::cout << emb_query->get_query_id() << std::endl;
 
+    std::vector<uint32_t> candidate_queue = {start_node};
+    greedy_query_t<data_type> query(cluster_id, std::move(candidate_queue),
+                                    emb_query);
+    
+    client_thread->push_query(query);
+    return query_id;
+  }
+#else
   uint32_t query(const data_type *query_emb, uint32_t K, uint32_t L) {
     uint32_t query_id = next_query_id();
-    query_t<data_type> query(query_id, my_id, query_emb, dim, K, L);
     query_send_time[query_id] = std::chrono::steady_clock::now();
+    query_t<data_type> query(query_id, my_id, query_emb, dim, K, L);
     client_thread->push_query(query);
     // std::cout << "done pushing query" << std::endl;
     return query_id;
   }
+#endif
   void wait_results() {
     std::cout << "  received " << result_count << std::endl;
     uint64_t wait_time = 0;
@@ -408,10 +479,16 @@ public:
     }
 
   }
+#ifdef TEST_UDL1
   std::shared_ptr<GreedySearchQuery<data_type>> get_result(uint32_t query_id) {
     std::shared_lock<std::shared_mutex> lock(result_mutex);
     return results[query_id];
   }
-
+#else
+  ANNSearchResult get_result(uint32_t query_id) {
+    std::shared_lock<std::shared_mutex> lock(result_mutex);
+    return results[query_id];
+  }
+#endif
 };
   

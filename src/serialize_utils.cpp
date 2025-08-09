@@ -3,13 +3,13 @@
 
 
 uint8_t get_cluster_id(const std::string &key) {
-  std::string cluster_prefix = UDL2_PATHNAME "/cluster_";
+  std::string cluster_prefix = "cluster_";
   if (key.rfind(cluster_prefix, 0) != 0) {
     // doesn't start with the correct prefix
     throw std::invalid_argument(key + " doesn't have the correct prefix " +
                                 cluster_prefix);
   }
-  int num = std::stoul(key);
+  int num = std::stoul(key.substr(cluster_prefix.size()));
   if (num > 255) {
     throw std::invalid_argument("cluster id parsed from key " + key + " is bigger than uint8_t: " + std::to_string(num));
   }
