@@ -277,7 +277,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(client_node_id);
             
             
-            std::cout << "notifying " << client_id_pool_path << std::endl;
+            // std::cout << "notifying " << client_id_pool_path << std::endl;
             typed_ctxt->get_service_client_ref().notify(
 							*(batcher.get_blob()), client_id_pool_path, client_node_id);
             num_sent += batch_size;
