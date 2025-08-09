@@ -363,7 +363,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       return std::make_pair(hops, cmps);
     }
 
-
     /**
        does task_push search on the global graph index.
        the server that is doing the search is called the primary partition while
