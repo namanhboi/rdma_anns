@@ -116,7 +116,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
   uint32_t *query_result = new uint32_t[num_queries * K];
   data_type *query_data = new data_type[num_queries * dataset.query_dim];
   std::vector<uint32_t> bad_queries;
-  uint8_t cluster_0;
+  uint8_t cluster_0 = 0;
   for (auto &[query_id, query_index] : query_id_to_index) {
 #ifdef TEST_UDL1
     std::shared_ptr<GreedySearchQuery<data_type>> greedy_search_q =

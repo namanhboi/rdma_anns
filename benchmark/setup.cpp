@@ -130,6 +130,7 @@ int main(int argc, char **argv) {
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   create_object_pools(capi);
 
+#ifndef TEST_UDL1
   Clusters clusters;
   if (data_type == "uint8") {
     clusters = get_clusters_from_diskann_graph<uint8_t>(
@@ -167,5 +168,7 @@ int main(int argc, char **argv) {
   std::cout << "num clustesr " << clusters.size() << std::endl;
   std::cout << "size of cluster 0 "<< clusters[0].size() << std::endl;
   write_cluster_data_folder(clusters, clusters_folder);
+#endif
   return 0;
+
 }

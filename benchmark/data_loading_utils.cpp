@@ -162,8 +162,9 @@ parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file) {
 void create_object_pools(ServiceClientAPI &capi) {
   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
 								      UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {});
-
+#ifndef TEST_UDL1
   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
 								      UDL2_OBJ_POOL, UDL2_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
+#endif
 }
 

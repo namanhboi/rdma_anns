@@ -25,6 +25,19 @@ message(STATUS "Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARY_DIRS: ${Boost_LIBRARY_DIRS}")
 message(STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}")
 
+option(TEST_UDL1 "Enable TEST_UDL1 functionality" OFF)
+option(TEST_UDL2 "Enable TEST_UDL2 functionality" OFF)
+
+if(TEST_UDL1)
+    add_compile_definitions(TEST_UDL1)
+endif()
+
+if(TEST_UDL2)
+    add_compile_definitions(TEST_UDL2)
+endif()
+
+
+
 add_subdirectory(extern/gp-ann)
 add_subdirectory(extern/DiskANN)
 add_subdirectory(benchmark)

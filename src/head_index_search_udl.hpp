@@ -60,7 +60,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       uint32_t max_elements = 0;
       uint8_t max_element_cluster_id = 0;
       for (const uint32_t &node_id : search_results) {
+#ifdef TEST_UDL1
+        const uint8_t &cluster_id = 0;
+#else
         const uint8_t &cluster_id = parent->cluster_assignment[node_id];
+#endif
         if (candidate_queues_per_cluster.count(cluster_id) == 0) {
           candidate_queues_per_cluster[cluster_id] = std::vector<uint32_t>();
         }
@@ -273,7 +277,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(client_node_id);
             
             
-            // std::cout << "notifying " << client_id_pool_path << std::endl;
+            std::cout << "notifying " << client_id_pool_path << std::endl;
             typed_ctxt->get_service_client_ref().notify(
 							*(batcher.get_blob()), client_id_pool_path, client_node_id);
             num_sent += batch_size;
@@ -306,6 +310,15 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
          std::shared_ptr<EmbeddingQuery<data_type>> query) {
       std::unique_lock<std::mutex> lock(cluster_queue_mutex);
 
+#ifdef TEST_UDL1
+      if (cluster_queue.count(0) ==0 ) {
+        cluster_queue[0] = std::make_unique<
+						     std::vector<std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
+									   std::vector<uint32_t>>>>();
+        cluster_queue[0]->reserve(parent->max_batch_size);
+      }
+      cluster_queue[0]->emplace_back(query, std::move(candidate_queues[0]));
+#else
       for (uint8_t cluster_id; cluster_id < parent->num_clusters; cluster_id++) {
         if (cluster_queue.count(cluster_id) == 0) {
           cluster_queue[cluster_id] = std::make_unique<
@@ -326,6 +339,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                                                   std::vector<uint32_t>());
         }
       }
+#endif
       cluster_queue_cv.notify_all();
     }
   };
@@ -352,11 +366,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   // std::string graph_store_key =
   // "/anns/head_index/graph_store";
 
-
-  std::string head_index_header_key = "/anns/head_index/header";
-  std::string vector_id_mapping_key = "/anns/head_index/mapping";
-  // mapping of the vector id in the head index to the ones in the actual graph.
-  // also stores on 1 byte for each vector, its cluster assignment.
 
   int my_id = -1; // id of this node, logging purpose.
   
@@ -435,7 +444,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    std::cout << "Head index called " << std::endl;
+    // std::cout << "Head index called " << std::endl;
     if (cached_head_index == false) {
       retrieve_and_cache_head_index_fs(typed_ctxt);
     }

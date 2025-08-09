@@ -262,7 +262,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
         secondary_dist.clear();
 
-
         std::shared_ptr<const uint32_t> neighbors;
         if (!is_in_cluster(node_id)) {
           // if node_id not in cluster then the get request for its neighbors
@@ -318,7 +317,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             }
           }
         }
-	std::cout << "retrieveing embeddings for nodes in this cluster " << std::endl;
+	// std::cout << "retrieveing embeddings for nodes in this cluster " << std::endl;
         std::vector<std::shared_ptr<const data_type>> embs =
           retrieve_local_embeddings(primary_node_ids, typed_ctxt);
 
@@ -360,7 +359,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         if (distances != nullptr)
           distances[i] = candidate_queue[i].distance;
       }
-      std::cout << "number of hops " << hops << std::endl;
+      // std::cout << "number of hops " << hops << std::endl;
       return std::make_pair(hops, cmps);
     }
 
@@ -539,7 +538,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         if (distances != nullptr)
           distances[i] = candidate_queue[i].distance;
       }
-      std::cout << "number of hops " << hops << std::endl;
+      // std::cout << "number of hops " << hops << std::endl;
       return std::make_pair(hops, cmps);
     }
   };
@@ -621,6 +620,7 @@ push the compute result to the queue for that query id.
       this->compute_res_queues[query_id]->push(result);
       // this is fine since concurrent queue has internal locks
     }
+
     void push_search_query(std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
       std::scoped_lock<std::mutex> lock(query_queue_mutex);
       query_queue.emplace(std::move(search_query));
@@ -1106,19 +1106,19 @@ public:
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    std::cout << "Global index called " <<  key_string<< std::endl;
+    // std::cout << "Global index called " <<  key_string<< std::endl;
     // can probably optimize this part by doing shared ptr for compute query and
     // compute result
     if (!initialized_index) {
       cluster_id = get_cluster_id(key_string);
       cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
       cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
-      std::cout << cluster_data_prefix << std::endl;
-      std::cout << cluster_search_prefix << std::endl;
+      // std::cout << cluster_data_prefix << std::endl;
+      // std::cout << cluster_search_prefix << std::endl;
       dist_fn.reset(
           (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
-      std::cout << "started making global idnex" << std::endl;
+      // std::cout << "started making global idnex" << std::endl;
       this->index =
         std::make_unique<GlobalIndex>(this, this->dim, this->cluster_id);
       initialized_index = true;
@@ -1128,32 +1128,34 @@ public:
                                std::to_string(cluster_id));
     }
 
-    GlobalSearchMessageBatchManager<data_type> manager(object.blob.bytes, object.blob.size, this->dim);
+    GlobalSearchMessageBatchManager<data_type> manager(
+						       object.blob.bytes, object.blob.size, this->dim);
+    // std::cout << "num search threads started " << search_threads.size() << std::endl;
     for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
          manager.get_greedy_search_queries()) {
       validate_search_query(search_query);
-      std::cout << "query ok" << std::endl;
+      // std::cout << "query ok" << std::endl;
       search_threads[next_search_thread]->push_search_query(std::move(search_query));
       next_search_thread = (next_search_thread + 1) % num_search_threads;
+      // std::cout << next_search_thread << std::endl;
     }
-    std::cout << "done sending query" << std::endl;
 
     // for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
-    //      manager.get_embedding_queries()) {
-    //   validate_emb_query(emb_query);
-    //   distance_compute_thread->push_embedding_query(std::move(emb_query));
+         // manager.get_embedding_queries()) {
+      // validate_emb_query(emb_query);
+      // distance_compute_thread->push_embedding_query(std::move(emb_query));
     // }
 
     // for (compute_query_t &query : manager.get_compute_queries()) {
-    //   validate_compute_query(query);
-    //   distance_compute_thread->push_compute_query(std::move(query));
+      // validate_compute_query(query);
+      // distance_compute_thread->push_compute_query(std::move(query));
     // }
 
-    // for (ComputeResult &result : manager.get_compute_results()) {
-    //   validate_compute_result(result);
-    //   search_threads[result.get_receiver_thread_id()]->push_compute_res(
-    // 									std::move(result));
-    // }
+    for (ComputeResult &result : manager.get_compute_results()) {
+      validate_compute_result(result);
+      search_threads[result.get_receiver_thread_id()]->push_compute_res(
+									std::move(result));
+    }
   }
   static void initialize() {
     if (!ocdpo_ptr) {
@@ -1178,6 +1180,7 @@ public:
       if (config.contains("num_search_threads")){
         this->num_search_threads = config["num_search_threads"].get<uint32_t>();
       }
+      std::cout << "num_search_threads " <<  num_search_threads << std::endl;
 
       if (config.contains("min_batch_size")) {
         this->min_batch_size = config["min_batch_size"].get<uint32_t>();
@@ -1186,6 +1189,7 @@ public:
       if (config.contains("max_batch_size")) {
         this->max_batch_size = config["max_batch_size"].get<uint32_t>();
       }
+      
       if (config.contains("batch_time_us")) {
         this->batch_time_us = config["batch_time_us"].get<uint32_t>();
       }
@@ -1202,6 +1206,7 @@ public:
     std::cout << "hello 1" << std::endl;    
     for (auto &search_thread : search_threads) {
       search_thread->start(typed_ctxt);
+      // std::cout << "started thread "  << search_thread.
     }
 
     std::cout << "hello 2" << std::endl;

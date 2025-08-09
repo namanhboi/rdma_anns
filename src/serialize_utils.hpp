@@ -173,7 +173,7 @@ public:
     queries.reserve(size_hint);
   }
   
-  void add_query(query_t<data_type> &query) {
+  void add_query(query_t<data_type> query) {
     queries.emplace_back(query);
   }
 

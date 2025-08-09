@@ -11,11 +11,11 @@
         "user_defined_logic_config_list": [
           {
             "dim":128,
-            "num_search_threads":16,
+            "num_search_threads":1,
             "min_batch_size":1,
             "max_batch_size":100,
             "batch_time_us":1000,
-	    "index_path": "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/index_sift_learn_R32_L50_A1.2",
+	    "index_path": "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/index_sift_learn_crop_1000_R32_L50_A1.2",
 	    "id_mapping_path" : "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/disk_index_sift_learn_R32_L50_A1.2_in_mem.indices",
 	    "cluster_assignment_path" : "/home/nam/workspace/rdma_anns/build/benchmark/clusters.bin"
           }],

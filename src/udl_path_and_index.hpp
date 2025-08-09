@@ -26,7 +26,7 @@ notify, we don't have to do any replication in a shard i hope?
 
 
 #define UDL1_OBJ_POOL "/anns/head_search"
-#define UDL1_SUBGROUP_INDEX 0
+#define UDL1_SUBGROUP_INDEX 1
 #define UDL1_PATHNAME "/anns/head_search"
 // put queries here : /anns/head_search/query_i to trigger head index search
 
