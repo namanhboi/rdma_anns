@@ -20,6 +20,7 @@ add_library(global_search_udl SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/get_request_manager.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/in_mem_search_index.hpp
 )
 target_include_directories(global_search_udl PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/include) # needed to include this to access the methods of diskann library
 target_compile_definitions(global_search_udl PRIVATE DATA_TYPE="float" GLOBAL_BASELINE)

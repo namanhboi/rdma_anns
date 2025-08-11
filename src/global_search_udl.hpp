@@ -612,8 +612,9 @@ public:
           (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
       // std::cout << "started making global idnex" << std::endl;
-      this->index =
-        std::make_unique<GlobalIndex>(this, this->dim, this->cluster_id);
+      this->index = std::make_unique<GlobalIndex<data_type>>(
+          this->dim, this->cluster_id, cluster_assignment_bin_file,
+							     cluster_data_prefix);
       initialized_index = true;
     }
     if (get_cluster_id(key_string) != cluster_id) {
