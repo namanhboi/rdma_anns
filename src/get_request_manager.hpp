@@ -34,8 +34,8 @@ public:
         blob.memory_mode = derecho::cascade::object_memory_mode_t::
             EMPLACED; // need to do this i think so that the destructor for blob
         // won't clean up the memory we want
-        std::shared_ptr<const T> data(
-				      reinterpret_cast<const T *>(blob.bytes, free_const));
+        std::shared_ptr<const T> data(reinterpret_cast<const T *>(blob.bytes),
+                                      free_const);
         results_data.emplace_back(std::move(data));
         results_id.emplace_back(id);
         // get data from request then delete
@@ -61,13 +61,12 @@ public:
       blob.memory_mode = derecho::cascade::object_memory_mode_t::
             EMPLACED; // need to do this i think so that the destructor for blob
       // won't clean up the memory we want
-      std::shared_ptr<const T> data(
-				    reinterpret_cast<const T *>(blob.bytes, free_const));
+      std::shared_ptr<const T> data(reinterpret_cast<const T *>(blob.bytes),
+                                    free_const);
       results_data.emplace_back(std::move(data));
       results_id.emplace_back(id);
       // get data from request then delete
       it = _get_requests.erase(it);
-      it++;
     }
     return {std::move(results_id), std::move(results_data)};
     
