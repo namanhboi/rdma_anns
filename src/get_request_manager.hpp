@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cascade/object.hpp>
 #include <list>
 #include "serialize_utils.hpp"

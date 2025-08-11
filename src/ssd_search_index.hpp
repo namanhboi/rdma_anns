@@ -52,7 +52,6 @@ public:
 };
 
   template <typename data_type> class SSDIndexKV {
-    DefaultCascadeContextType *typed_ctxt;
     std::string cluster_data_prefix;
     
     std::unique_ptr<uint8_t[]> pq_data;
@@ -93,13 +92,11 @@ public:
 
 Note:this constructor still uses the pq
 compressed bin path and not from the pq data from kv store.
-
      */
 
     SSDIndexKV(const std::string &index_path_prefix,
-               DefaultCascadeContextType *typed_ctxt,
                std::string cluster_data_prefix, uint64_t num_threads)
-        : typed_ctxt(typed_ctxt), cluster_data_prefix(cluster_data_prefix),
+        : cluster_data_prefix(cluster_data_prefix),
         _thread_data(nullptr) {
 
       // loading pq data
@@ -149,9 +146,10 @@ compressed bin path and not from the pq data from kv store.
      *
      * This search currently uses the pq data from file and not from kv store.
      */
-    void search_pq_on_ssd(const data_type *query, const int64_t K, const uint64_t L,
-		 uint64_t *indices, float *distances,
-		 std::vector<uint32_t> start_node_ids) {
+    void search_pq_fs(DefaultCascadeContextType *typed_ctxt,
+                      const data_type *query, const int64_t K, const uint64_t L,
+                      uint64_t *indices, float *distances,
+                      std::vector<uint32_t> start_node_ids) {
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
 									      this->_thread_data);
       auto data = manager.scratch_space();
@@ -298,7 +296,6 @@ compressed bin path and not from the pq data from kv store.
     }
 
     ~SSDIndexKV() {
-      // todo
       if (_nhood_cache_buf != nullptr) {
 	delete[] _nhood_cache_buf;
 	diskann::aligned_free(_coord_cache_buf);

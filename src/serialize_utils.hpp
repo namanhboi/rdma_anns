@@ -555,6 +555,10 @@ public:
   uint64_t get_dim() { return this->dim; }
 
   uint8_t get_cluster_id() { return this->cluster_id; }
+
+  const std::vector<uint32_t> &get_candidate_queue() {
+    return candidate_queue;
+  }
   
 };
 

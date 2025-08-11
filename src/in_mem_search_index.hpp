@@ -128,7 +128,7 @@ public:
   std::pair<uint32_t, uint32_t>
   search_global_baseline(DefaultCascadeContextType *typed_ctxt,
                          std::shared_ptr<GreedySearchQuery<data_type>> query,
-                         const uint32_t K, const uint32_t L, uint32_t *indices,
+                         const uint32_t K, const uint32_t L, uint64_t *indices,
                          float *distances) {
     if (!query)
       throw std::invalid_argument("Query cannot be null");

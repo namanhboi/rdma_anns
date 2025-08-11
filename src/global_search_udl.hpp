@@ -1,17 +1,12 @@
 #include <cascade/object.hpp>
 #include <chrono>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
-#include "in_mem_data_store.h"
-#include "in_mem_graph_store.h"
-#include "index.h"
 #include "serialize_utils.hpp"
 #include <cascade/cascade_interface.hpp>
 #include <cascade/service_types.hpp>
 #include <cascade/user_defined_logic_interface.hpp>
 #include <cascade/utils.hpp>
 #include <iostream>
-#include <limits>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -19,12 +14,10 @@
 #include "concurrent_queue.h"
 #include "neighbor.h"
 #include <stdexcept>
-#include "tsl/robin_set.h"
 #include <boost/dynamic_bitset.hpp>
 #include "udl_path_and_index.hpp"
-#include <filesystem>
 #include "in_mem_search_index.hpp"
-
+#include "ssd_search_index.hpp"
 
 namespace derecho {
 namespace cascade {
@@ -84,14 +77,23 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         
         const uint32_t &K = query->get_K();
         const uint32_t &L = query->get_L();
-        std::shared_ptr<uint32_t[]> result(new uint32_t[query->get_K()]);
-#ifdef GLOBAL_BASELINE
+        std::shared_ptr<uint64_t[]> result_64(new uint64_t[query->get_K()]);
+        std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);        
+#ifdef IN_MEM
 	// std::cout << "hello" << std::endl;
-	parent->index->search_global_baseline(typed_ctxt, query, K, L, result.get(), nullptr);
+        parent->index->search_global_baseline(typed_ctxt, query, K, L,
+                                              result_64.get(), nullptr);
+#elif DISK_FS
+	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
+#elif DISK_KV
+	parent->index->search_pq_fs(query->get_embedding_ptr(), K, L, indices, result_64.get(), nullptr, query.get_candidate_queue());
 #endif
+        for (uint32_t i = 0; i < K; i++) {
+	  result_32.get()[i] = result_64.get()[i];
+        }
         parent->batch_thread->push_ann_result(
             query->get_query_id(), query->get_client_node_id(), K, L,
-					      std::move(result), parent->cluster_id);
+					      std::move(result_32), parent->cluster_id);
       }
     }
 
@@ -518,7 +520,16 @@ push the compute result to the queue for that query id.
 
 
   bool initialized_index = false;
+#ifdef IN_MEM
   std::unique_ptr<GlobalIndex<data_type>> index;
+#elif DISK_FS
+  std::unique_ptr<SSDIndexFileSystem<data_type>> index;
+#elif DISK_KV
+  std::unique_ptr<SSDIndexKV<data_type>> index;
+#endif
+  
+
+
   std::unique_ptr<BatchingThread> batch_thread;
   std::unique_ptr<DistanceComputeThread> distance_compute_thread;
   
@@ -539,6 +550,7 @@ push the compute result to the queue for that query id.
   std::string cluster_search_prefix = UDL2_PATHNAME;
 
   std::string cluster_assignment_bin_file;
+  std::string index_path_prefix;
   std::vector<std::unique_ptr<SearchThread>> search_threads;
 
 
@@ -612,9 +624,18 @@ public:
           (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
       // std::cout << "started making global idnex" << std::endl;
+#ifdef IN_MEM
       this->index = std::make_unique<GlobalIndex<data_type>>(
           this->dim, this->cluster_id, cluster_assignment_bin_file,
 							     cluster_data_prefix);
+#elif DISK_FS
+      this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
+							 this->index_path_prefix, this->num_search_threads);
+#elif DISK_KV
+      this->index = std::make_unique<SSDIndexKV<data_type>>(
+          this->index_path_prefix, cluster_data_prefix,
+							    this->num_search_threads);
+#endif
       initialized_index = true;
     }
     if (get_cluster_id(key_string) != cluster_id) {
@@ -667,6 +688,11 @@ public:
         this->cluster_assignment_bin_file =
           config["cluster_assignment_bin_file"].get<std::string>();
       }
+      if (config.contains("index_path_prefix")) {
+        this->index_path_prefix =
+          config["index_path_prefix"].get<std::string>();
+      }      
+      
       if (config.contains("dim"))
         this->dim = config["dim"].get<uint32_t>();
       std::cout << "dimension is " << dim << std::endl;
