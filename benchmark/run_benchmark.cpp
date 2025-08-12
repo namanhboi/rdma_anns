@@ -25,7 +25,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
                uint32_t batch_min_size, uint32_t batch_max_size,
                uint32_t batch_time_us, uint32_t num_result_threads,
                uint32_t num_warmup, uint32_t send_rate, uint32_t K, uint32_t L,
-               uint8_t cluster_id = 0, uint32_t start_node_id = 0) {
+               uint8_t cluster_id = 0, uint32_t start_node_id = 0, size_t num_queries_to_send = 1) {
   
   BenchmarkDataset<data_type> dataset(query_file, gt_file);
   BenchmarkClient<data_type> client(num_warmup);
@@ -48,7 +48,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
       auto start = std::chrono::steady_clock::now();
       uint64_t next_query_index = dataset.get_next_query_index();
       const data_type *query_emb = dataset.get_query(next_query_index);
-      std::cout << query_emb << std::endl;
+      // std::cout << query_emb << std::endl;
 #ifdef TEST_UDL2
       uint64_t query_id =
         client.query(query_emb, K, L, cluster_id, start_node_id);
@@ -73,8 +73,8 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     dataset.reset();
   }
   
-  uint32_t num_queries = dataset.get_num_queries();
-  std::cout << "starting benchmark: sending " << dataset.get_num_queries() << " queries ..." << std::endl;
+  uint32_t num_queries = std::min(dataset.get_num_queries(), num_queries_to_send);
+  std::cout << "starting benchmark: sending " << num_queries_to_send << " queries ..." << std::endl;
   std::unordered_map<uint64_t,uint32_t> query_id_to_index;
   auto extra_time = std::chrono::nanoseconds(0);
   for(uint32_t i=0;i<num_queries;i++){
@@ -84,7 +84,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
     }
     uint64_t next_query_index = dataset.get_next_query_index();
     const data_type *query_emb = dataset.get_query(next_query_index);
-    std::cout << query_emb << std::endl;
+    // std::cout << query_emb << std::endl;
 #ifdef TEST_UDL2
     uint64_t query_id =
       client.query(query_emb, K, L, cluster_id, start_node_id);
@@ -121,7 +121,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
 #ifdef TEST_UDL1
     std::shared_ptr<GreedySearchQuery<data_type>> greedy_search_q =
       client.get_result(query_id);
-    std::cout << query_id << " " << query_index << std::endl;
+    // std::cout << query_id << " " << query_index << std::endl;
 
     if (greedy_search_q->get_cluster_id() != cluster_0)
       throw std::runtime_error("query cluster " +
@@ -143,7 +143,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
                 sizeof(data_type) * dataset.query_dim);
 #else
     ANNSearchResult result = client.get_result(query_id);
-    std::cout << query_id << " " << query_index << std::endl;
+    // std::cout << query_id << " " << query_index << std::endl;
     std::memcpy(query_result + query_index * K,
                 result.get_search_results_ptr(), K * sizeof(uint32_t));
 #endif
@@ -158,17 +158,15 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
                                std::to_string(i));
   }
 #endif
-  double recall = diskann::calculate_recall(dataset.get_num_queries(),
-                                            dataset.gt_ids, dataset.gt_dists,
-                                            dataset.gt_dim, query_result, K, K);
+  double recall =
+      diskann::calculate_recall(num_queries, dataset.gt_ids, dataset.gt_dists,
+                                dataset.gt_dim, query_result, K, K);
 
   std::cout << "recall is " << recall << std::endl;
   std::cout << "bad queries number: " << bad_queries.size() << std::endl;
 
   delete[] query_result;
   delete[] query_data;
-
-  
 }
 
 
@@ -187,6 +185,7 @@ int main(int argc, char **argv) {
   uint32_t K, L;
   uint8_t cluster_id;
   uint32_t start_node_id;
+  size_t num_queries_to_send;
 
   desc.add_options()("help,h", "show help message")(
       "query_file,Q", po::value<std::string>(&query_file)->required(),
@@ -220,8 +219,11 @@ int main(int argc, char **argv) {
       "cluster id to send queries to test udl2")(
       "start_node_id", po::value<uint32_t>(&start_node_id)->default_value(0),
       "start node id to send queries to test udl2, should be in the cluster "
-      "with id cluster_id");
-  
+      "with id cluster_id")(
+      "num_queries_to_send",
+      po::value<size_t>(&num_queries_to_send)->default_value(1),
+      "num queries to send, if exceeds num queries in query file then just "
+      "send all queries");
   
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -238,15 +240,15 @@ int main(int argc, char **argv) {
   if (data_type == "float") {
     benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size,
                      batch_time_us, num_result_threads, num_warmup, send_rate,
-                     K, L, cluster_id, start_node_id);
+                     K, L, cluster_id, start_node_id, num_queries_to_send);
   } else if (data_type == "uint8_t") {
     benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size,
                        batch_time_us, num_result_threads, num_warmup, send_rate,
-                       K, L, cluster_id, start_node_id);
+                       K, L, cluster_id, start_node_id, num_queries_to_send);
   } else if (data_type == "int8_t") {
     benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size,
                       batch_time_us, num_result_threads, num_warmup, send_rate,
-                      K, L, cluster_id, start_node_id);
+                      K, L, cluster_id, start_node_id, num_queries_to_send);
   }
   
 }

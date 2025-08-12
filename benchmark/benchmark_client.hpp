@@ -446,7 +446,7 @@ public:
         std::make_shared<EmbeddingQuery<data_type>>(
             reinterpret_cast<const uint8_t *>(query_emb),
 						    sizeof(data_type) * dim, query_id, my_id, K, L, dim);
-    std::cout << emb_query->get_query_id() << std::endl;
+    // std::cout << emb_query->get_query_id() << std::endl;
 
     std::vector<uint32_t> candidate_queue = {start_node};
     greedy_query_t<data_type> query(cluster_id, std::move(candidate_queue),

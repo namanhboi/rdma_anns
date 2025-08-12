@@ -129,8 +129,10 @@ int main(int argc, char **argv) {
 
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   create_object_pools(capi);
+  test_pq_flash<float>(index_path_prefix, query_file, gt_file);
+  std::cout << "done searching " << std::endl;
 
-#ifndef TEST_UDL1
+#if defined(TEST_UDL1) && defined(IN_MEM)
   Clusters clusters;
   if (data_type == "uint8") {
     clusters = get_clusters_from_diskann_graph<uint8_t>(
@@ -142,7 +144,7 @@ int main(int argc, char **argv) {
 
 
     int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
-    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);    
+    load_diskann_graph_into_cascade_in_mem(capi, _pFlashIndex, clusters, MAX_DEGREE);    
   } else if (data_type == "int8") {
     clusters = get_clusters_from_diskann_graph<int8_t>(
 								index_path_prefix, num_clusters);
@@ -151,7 +153,7 @@ int main(int argc, char **argv) {
     std::unique_ptr<diskann::PQFlashIndex<int8_t>> _pFlashIndex(
 								new diskann::PQFlashIndex<int8_t>(reader, diskann::Metric::L2));
     int _ = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
-    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);        
+    load_diskann_graph_into_cascade_in_mem(capi, _pFlashIndex, clusters, MAX_DEGREE);        
   } else if (data_type == "float") {
     clusters =
       get_clusters_from_diskann_graph<float>(index_path_prefix, num_clusters);
@@ -163,7 +165,7 @@ int main(int argc, char **argv) {
 							       new diskann::PQFlashIndex<float>(reader, diskann::Metric::L2));
     int _ =
       _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
-    load_diskann_graph_into_cascade(capi, _pFlashIndex, clusters, MAX_DEGREE);
+    load_diskann_graph_into_cascade_in_mem(capi, _pFlashIndex, clusters, MAX_DEGREE);
   }
   std::cout << "num clustesr " << clusters.size() << std::endl;
   std::cout << "size of cluster 0 "<< clusters[0].size() << std::endl;

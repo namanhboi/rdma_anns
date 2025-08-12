@@ -64,18 +64,27 @@ Clusters get_clusters_from_adjgraph(AdjGraph &adj, int num_clusters);
 /** create object pools for udl1 and udl2 */
 void create_object_pools(ServiceClientAPI &capi);
 
+template <typename data_type>
+void test_pq_flash(const std::string &index_path_prefix, const std::string &query_file, const std::string & gt_file) {
 
+  std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+  std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex(
+								 new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
+
+  int _ = _pFlashIndex->load(1, index_path_prefix.c_str());
+  BenchmarkDataset<data_type> dataset(query_file, gt_file);
+  std::vector<uint64_t> results(10);
+  _pFlashIndex->cached_beam_search(dataset.get_query(0), 10, 20, results.data(),
+                                   nullptr, 1);
+}  
 /**
-   This loads the prebuilt diskann graph on ssd into cascade according to the
-   clusters.
-   The embedding of vector j of clusters i will be in
-   /anns/global/data/cluster_i_emb_j
-   The neighbors of vector j of cluster j will be in
-   /anns/global/data/cluster_i_nbr_j
-   - First uint32_t of neighbors blob is number of neighbors, rest is the neighbor ids
+   This loads the prebuilt diskann graph on ssd into cascade persistent kv store
+   for in memory search according to the clusters.
+   The embedding and neighbor ids of vector j of clusters i will be in
+   /anns/global/data/cluster_i_vec_j
  */
 template <typename data_type>
-void load_diskann_graph_into_cascade(
+void load_diskann_graph_into_cascade_ssd(
     ServiceClientAPI &capi,
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
     const Clusters &clusters, int max_degree) {
@@ -97,6 +106,97 @@ void load_diskann_graph_into_cascade(
 
     _pFlashIndex->read_nodes(clusters[i], tmp_coord_buffer, tmp_nbr_buffer);
 
+    for (uint32_t i = 0; i < 100; i++) {
+      for (uint32_t j = 0; j < dimension; j++) {
+        std::cout << tmp_coord_buffer[i][j] << " " << std::endl;
+      }
+      std::cout << std::endl;
+    }
+    std::unique_ptr<diskann::Distance<data_type>> dist_fn(
+        (diskann::Distance<data_type> *)
+            diskann::get_distance_function<data_type>(diskann::Metric::L2));
+    std::cout << "sample distance "
+    << dist_fn->compare(tmp_coord_buffer[0], tmp_coord_buffer[1],
+                                32);
+    
+    std::cout << "cluster folder is " << cluster_folder << std::endl;
+    
+    parlay::parallel_for(0, clusters[i].size(), [&](size_t j) {
+      uint32_t vector_id = clusters[i][j];
+      size_t nbr_blob_size =
+        sizeof(uint32_t) * tmp_nbr_buffer[j].first + sizeof(uint32_t);
+      size_t emb_blob_size = sizeof(data_type) * dimension;
+      size_t total_size = emb_blob_size + nbr_blob_size;
+
+      Blob vec_blob(
+          [&](uint8_t *buffer, const std::size_t size) {
+            uint32_t offset = 0;
+            std::memcpy(buffer + offset, tmp_coord_buffer[j], emb_blob_size);
+            offset += emb_blob_size;
+            std::memcpy(buffer + offset, &tmp_nbr_buffer[j].first,
+                        sizeof(tmp_nbr_buffer[j].first));
+            offset += sizeof(tmp_nbr_buffer[j].first);
+            std::memcpy(buffer + offset, tmp_nbr_buffer[j].second,
+                        sizeof(uint32_t) * tmp_nbr_buffer[j].first);
+            return size;
+          },
+		    total_size);
+      ObjectWithStringKey vec_obj;
+      vec_obj.key = cluster_folder + "_vec_" + std::to_string(vector_id);
+      vec_obj.previous_version = INVALID_VERSION;
+      vec_obj.previous_version_by_key = INVALID_VERSION;
+      vec_obj.blob = std::move(vec_blob);
+      capi.put_and_forget(vec_obj, false);
+    });
+    std::cout << "Done with cluster " << i << "/" << clusters.size() - 1
+              << std::endl;
+    // std::cout << "SAMPLE NEIGHBOR" << std::endl;
+    // for (int j = 0; j < tmp_nbr_buffer[10].first; j++) {
+      // std::cout << tmp_nbr_buffer[10].second[j] << std::endl;
+    // }
+    delete[] coord_ptr;
+    delete[] neighbors_ptr;
+  }
+
+  // std::cout << "nodes with non max neighbors" << std::endl;
+  // for (const int &x : non_max_neighbor_nodes) {
+    // std::cout << x << std::endl;
+  // }
+}
+
+
+
+/**
+   This loads the prebuilt diskann graph on ssd into cascade volatile kv store
+   for in memory search according to the clusters.
+   The embedding of vector j of clusters i will be in
+   /anns/global/data/cluster_i_emb_j
+   The neighbors of vector j of cluster j will be in
+   /anns/global/data/cluster_i_nbr_j
+   - First uint32_t of neighbors blob is number of neighbors, rest is the neighbor ids
+ */
+template <typename data_type>
+void load_diskann_graph_into_cascade_in_mem(
+    ServiceClientAPI &capi,
+    const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
+    const Clusters &clusters, int max_degree) {
+  int dimension = _pFlashIndex->get_data_dim();
+  std::vector<int> non_max_neighbor_nodes;
+
+  for (int i = 0; i < clusters.size(); i++) {
+    std::string cluster_folder = UDL2_DATA_PREFIX "/cluster_" + std::to_string(i);
+    data_type *coord_ptr = new data_type[dimension * clusters[i].size()];
+    std::vector<data_type *> tmp_coord_buffer;
+
+    std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+    uint32_t *neighbors_ptr = new uint32_t[max_degree * clusters[i].size()];
+
+    for (int j = 0; j < clusters[i].size(); j++) {
+      tmp_coord_buffer.push_back(coord_ptr + j * dimension);
+      tmp_nbr_buffer.emplace_back(0, neighbors_ptr + j * max_degree);
+    }
+
+    _pFlashIndex->read_nodes(clusters[i], tmp_coord_buffer, tmp_nbr_buffer);
 
     for (uint32_t i = 0; i < 100; i++) {
       for (uint32_t j = 0; j < dimension; j++) {
@@ -337,7 +437,9 @@ void build_and_save_head_index(
 }
 
 
-
+/**
+   deprecated
+*/
 template <typename data_type>
 void load_diskann_in_mem_index(ServiceClientAPI &capi, const std::string &in_mem_index_path) {
   std::ifstream data_store_in;
@@ -423,8 +525,6 @@ void load_diskann_in_mem_index(ServiceClientAPI &capi, const std::string &in_mem
 template <typename data_type>
 void load_diskann_head_index_into_cascade(
     ServiceClientAPI &capi, const std::string &in_mem_index_path) {
-  // capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-								      // HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
   
   std::cout << in_mem_index_path << std::endl;
   std::ifstream data_store_in;

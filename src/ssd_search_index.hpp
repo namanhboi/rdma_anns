@@ -1,4 +1,5 @@
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
+#include <libaio.h>
 #include "linux_aligned_file_reader.h"
 #include "neighbor.h"
 #include "pq_flash_index.h"
@@ -28,16 +29,17 @@ have any caching right now
 // basically a wrapper for diskann flash index
 template <typename data_type> class SSDIndexFileSystem {
   std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex;
-
+  std::shared_ptr<AlignedFileReader> reader;
 public:
   /**
      num_search_threads is needed for diskann to preallocate memory for search
    */
   SSDIndexFileSystem(const std::string &index_path_prefix,
                      uint64_t num_search_threads) {
-    std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
-    _pFlashIndex = std::make_unique<diskann::PQFlashIndex<data_type>>(
-        reader, diskann::Metric::L2);
+    reader.reset(new LinuxAlignedFileReader());
+    _pFlashIndex.reset(
+		       new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
+
     int res = _pFlashIndex->load(num_search_threads, index_path_prefix.c_str());
     if (res != 0) {
       throw std::runtime_error("cant load ssd index");
@@ -46,8 +48,7 @@ public:
 
   void search(const data_type *query, const int64_t K, const uint64_t L,
               uint64_t *indices, float *distances) {
-    _pFlashIndex->cached_beam_search(query, K, L, indices, distances, BEAMWIDTH,
-                                     false, nullptr);
+    _pFlashIndex->cached_beam_search(query, K, L, indices, nullptr, 1);
   }
 };
 
@@ -237,24 +238,18 @@ compressed bin path and not from the pq data from kv store.
       // because we might want to increase beamwidth in the future
       std::vector<uint32_t> frontier;
       frontier.reserve(2 * BEAMWIDTH);
-      // pointer is to the start of full embedding + nbr ids blob bytes. The
-      // embeddings will be copied to full_precision_emb_buffer to do distance
-      // compute
-      std::vector<std::pair<uint32_t, char *>> frontier_nhoods;
-      frontier_nhoods.reserve(2 * BEAMWIDTH);
 
 
       GetRequestManager<uint8_t, ObjectWithStringKey> get_requests_manager;
 
       while (retset.has_unexpanded_node()) {
 	frontier.clear();
-	frontier_nhoods.clear();
 
 	auto nbr = retset.closest_unexpanded();
 	frontier.push_back(nbr.id);
         if (!frontier.empty()) {
           for (size_t i = 0; i < frontier.size();i++) {
-            const std::string vector_key = this->cluster_data_prefix + "/vec_" + std::to_string(frontier[i]);
+            const std::string vector_key = this->cluster_data_prefix + "_vec_" + std::to_string(frontier[i]);
             get_requests_manager.submit_request(
                 frontier[i], typed_ctxt->get_service_client_ref().get(
 								      vector_key, CURRENT_VERSION, true));

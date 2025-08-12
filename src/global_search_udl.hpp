@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <unordered_map>
 #include "concurrent_queue.h"
@@ -49,12 +50,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::mutex compute_res_queues_mtx;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
-      std::unique_lock<std::mutex> lock(query_queue_mutex, std::defer_lock);
+      std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
+      std::shared_lock index_lock(parent->index_mutex, std::defer_lock);
       while (running) {
-        lock.lock();
+        query_queue_lock.lock();
 
         if (query_queue.empty()) {
-	  query_queue_cv.wait(lock);
+	  query_queue_cv.wait(query_queue_lock);
         }
         
         if (!running) 
@@ -68,7 +70,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         // compute_res_queues[query_id] =
         //   std::make_shared<diskann::ConcurrentQueue<ComputeResult>>(empty_res);
         // compute_res_lock.unlock();
-        lock.unlock();
+        query_queue_lock.unlock();
         // std::cout << query_id << " "  << query->get_dim() <<std::endl;
         // for (uint32_t i = 0; i < query->get_dim(); i++) {
 	  // std::cout << query->get_embedding_ptr()[i] << " " ;
@@ -78,7 +80,8 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         const uint32_t &K = query->get_K();
         const uint32_t &L = query->get_L();
         std::shared_ptr<uint64_t[]> result_64(new uint64_t[query->get_K()]);
-        std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);        
+        std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);
+        index_lock.lock();
 #ifdef IN_MEM
 	// std::cout << "hello" << std::endl;
         parent->index->search_global_baseline(typed_ctxt, query, K, L,
@@ -88,6 +91,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 #elif DISK_KV
 	parent->index->search_pq_fs(query->get_embedding_ptr(), K, L, indices, result_64.get(), nullptr, query.get_candidate_queue());
 #endif
+        index_lock.unlock();
         for (uint32_t i = 0; i < K; i++) {
 	  result_32.get()[i] = result_64.get()[i];
         }
@@ -518,8 +522,9 @@ push the compute result to the queue for that query id.
 
   static std::shared_ptr<OffCriticalDataPathObserver> ocdpo_ptr;
 
-
-  bool initialized_index = false;
+  mutable std::shared_mutex index_mutex;
+  // search threads will use shared_lock, initialization will use unique lock
+  std::atomic<bool> initialized_index{false};
 #ifdef IN_MEM
   std::unique_ptr<GlobalIndex<data_type>> index;
 #elif DISK_FS
@@ -614,29 +619,47 @@ public:
     // std::cout << "Global index called " <<  key_string<< std::endl;
     // can probably optimize this part by doing shared ptr for compute query and
     // compute result
-    if (!initialized_index) {
-      cluster_id = get_cluster_id(key_string);
-      cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
-      cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
-      // std::cout << cluster_data_prefix << std::endl;
-      // std::cout << cluster_search_prefix << std::endl;
-      dist_fn.reset(
-          (diskann::Distance<data_type> *)
+
+
+    // double check locking with atomic bool should be good according to
+    // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern
+    if (initialized_index == false) {
+      std::unique_lock lock(index_mutex);
+      if (initialized_index == false) {
+	std::cout << "index not initialized" << std::endl;
+	cluster_id = get_cluster_id(key_string);
+	cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
+	cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
+	// std::cout << cluster_data_prefix << std::endl;
+	// std::cout << cluster_search_prefix << std::endl;
+	dist_fn.reset(
+		      (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
-      // std::cout << "started making global idnex" << std::endl;
+	// std::cout << "started making global idnex" << std::endl;
 #ifdef IN_MEM
-      this->index = std::make_unique<GlobalIndex<data_type>>(
-          this->dim, this->cluster_id, cluster_assignment_bin_file,
-							     cluster_data_prefix);
+	this->index = std::make_unique<GlobalIndex<data_type>>(
+							       this->dim, this->cluster_id, cluster_assignment_bin_file,
+							       cluster_data_prefix);
 #elif DISK_FS
-      this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
-							 this->index_path_prefix, this->num_search_threads);
+	if (this->index == nullptr) {
+          std::cout << "start creating SSDIndexFileSystem" << cluster_id << " "
+          << key_string << std::endl;
+          std::cout << "index path prefix " << this->index_path_prefix
+          << std::endl;
+          std::cout << "num search threads " << this->num_search_threads
+          << std::endl;        
+	  this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
+									this->index_path_prefix, this->num_search_threads);
+          std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
+          << key_string << std::endl;
+	}
 #elif DISK_KV
-      this->index = std::make_unique<SSDIndexKV<data_type>>(
-          this->index_path_prefix, cluster_data_prefix,
-							    this->num_search_threads);
+	this->index = std::make_unique<SSDIndexKV<data_type>>(
+							      this->index_path_prefix, cluster_data_prefix,
+							      this->num_search_threads);
 #endif
-      initialized_index = true;
+	initialized_index = true;
+      }
     }
     if (get_cluster_id(key_string) != cluster_id) {
       throw std::runtime_error(key_string + "doesn't belong to cluster " +
