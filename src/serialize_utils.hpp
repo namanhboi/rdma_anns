@@ -556,8 +556,11 @@ public:
 
   uint8_t get_cluster_id() { return this->cluster_id; }
 
-  const std::vector<uint32_t> &get_candidate_queue() {
-    return candidate_queue;
+  std::vector<uint32_t> get_candidate_queue() {
+    std::vector<uint32_t> cand(get_candidate_queue_ptr(),
+                               get_candidate_queue_ptr() +
+                               get_candidate_queue_size());
+    return cand;
   }
   
 };

@@ -134,7 +134,8 @@ compressed bin path and not from the pq data from kv store.
 			    diskann::get_distance_function<data_type>(diskann::Metric::L2));
       this->_dist_cmp_float.reset(
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
-
+      this->vector_embedding_size = dim * sizeof(data_type);
+      // std::cout << "size of vector embedding si " << vector_embedding_size << std::endl;
       // setup thread data
 #pragma omp parallel for num_threads((int)num_threads)
       for (int64_t i = 0; i < (int64_t)num_threads; i++) {
@@ -236,12 +237,10 @@ compressed bin path and not from the pq data from kv store.
 	visited.insert(start_node_ids[i]);
       }
 
-
       // used to determine which nodes to do get request, reason this exist is
       // because we might want to increase beamwidth in the future
       std::vector<uint32_t> frontier;
       frontier.reserve(2 * BEAMWIDTH);
-
 
       GetRequestManager<uint8_t, ObjectWithStringKey> get_requests_manager;
 
@@ -257,37 +256,39 @@ compressed bin path and not from the pq data from kv store.
                 frontier[i], typed_ctxt->get_service_client_ref().get(
 								      vector_key, CURRENT_VERSION, true));
           }
+        }
 
-          // can add cached node impl here
-          auto [node_ids, vector_data] =
-            get_requests_manager.get_all_requests();
-          for (size_t i = 0; i < node_ids.size(); i++) {
-            std::memcpy(full_precision_emb_buffer, vector_data[i].get(),
-                        this->vector_embedding_size);
-            float cur_expanded_dist = this->_dist_cmp->compare(
-                aligned_query_T, full_precision_emb_buffer,
-							       (uint32_t)_aligned_dim);
-            full_retset.emplace_back(node_ids[i], cur_expanded_dist);
-            const uint32_t *nbr_ptr = reinterpret_cast<const uint32_t *>(
-								   vector_data[i].get() + vector_embedding_size);
-            uint32_t num_nbrs = nbr_ptr[0];
-            const uint32_t *node_nbrs = nbr_ptr + 1;
-            compute_dists(node_nbrs, num_nbrs, dist_scratch);
-            for (uint32_t m = 0; m < num_nbrs; m++) {
-              uint32_t id = node_nbrs[m];
-              // not in visited i guess
-              if (visited.insert(id).second) {
-                float dist = dist_scratch[m];
-		diskann::Neighbor nn(id, dist);
-                retset.insert(nn);
-              }
+        // can add cached node impl here
+        auto [node_ids, vector_data] =
+          get_requests_manager.get_all_requests();
+        assert(node_ids.size() == frontier.size());
+        for (size_t i = 0; i < node_ids.size(); i++) {
+          std::memcpy(full_precision_emb_buffer, vector_data[i].get(),
+                      this->vector_embedding_size);
+          float cur_expanded_dist = this->_dist_cmp->compare(
+							     aligned_query_T, full_precision_emb_buffer,
+							     (uint32_t)_aligned_dim);
+          full_retset.emplace_back(node_ids[i], cur_expanded_dist);
+          const uint32_t *nbr_ptr = reinterpret_cast<const uint32_t *>(
+								       vector_data[i].get() + vector_embedding_size);
+          uint32_t num_nbrs = nbr_ptr[0];
+          // std::cout << num_nbrs << std::endl;
+          const uint32_t *node_nbrs = nbr_ptr + 1;
+          compute_dists(node_nbrs, num_nbrs, dist_scratch);
+          for (uint32_t m = 0; m < num_nbrs; m++) {
+            uint32_t id = node_nbrs[m];
+            // not in visited i guess
+            if (visited.insert(id).second) {
+              float dist = dist_scratch[m];
+	      diskann::Neighbor nn(id, dist);
+              retset.insert(nn);
             }
           }
         }
       }
       std::sort(full_retset.begin(), full_retset.end());
       for (uint64_t i = 0; i < K; i++) {
-        indices[i] = 0;
+        indices[i] = full_retset[i].id;
         if (distances != nullptr)
           distances[i] = full_retset[i].distance;
       }

@@ -11,7 +11,7 @@ target_include_directories(head_index_search_udl PRIVATE ${CMAKE_SOURCE_DIR}/ext
 target_compile_definitions(head_index_search_udl PRIVATE DATA_TYPE="float")
 
 target_link_libraries(head_index_search_udl ${UDL_COMMON_LIBS} diskann aio)
-target_compile_options(head_index_search_udl PRIVATE "-O3")
+# target_compile_options(head_index_search_udl PRIVATE "-O3")
 
 
 add_library(global_search_udl SHARED
@@ -25,7 +25,7 @@ add_library(global_search_udl SHARED
 target_include_directories(global_search_udl PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/include) # needed to include this to access the methods of diskann library
 target_compile_definitions(global_search_udl PRIVATE DATA_TYPE="float" GLOBAL_BASELINE)
 target_link_libraries(global_search_udl ${UDL_COMMON_LIBS} diskann aio)
-target_compile_options(global_search_udl PRIVATE "-O3")
+# target_compile_options(global_search_udl PRIVATE "-O3")
 
 
 

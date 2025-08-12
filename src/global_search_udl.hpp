@@ -51,11 +51,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
-      std::shared_lock index_lock(parent->index_mutex, std::defer_lock);
+      std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex, std::defer_lock);
       while (running) {
         query_queue_lock.lock();
 
-        if (query_queue.empty()) {
+        while (query_queue.empty()) {
 	  query_queue_cv.wait(query_queue_lock);
         }
         
@@ -77,19 +77,25 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         // }
         // std::cout << std::endl;
         
-        const uint32_t &K = query->get_K();
-        const uint32_t &L = query->get_L();
-        std::shared_ptr<uint64_t[]> result_64(new uint64_t[query->get_K()]);
+        uint32_t K = query->get_K();
+        uint32_t L = query->get_L();
+	// std::cout << query->get_candidate_queue() << std::endl;
+        // std::cout << "query with id " << query->get_query_id() << " has K "
+                  // << query->get_K() << " " << query->get_L() << " "
+        // << query->get_candidate_queue() << std::endl;
+        std::shared_ptr<uint64_t[]> result_64(new uint64_t[K]);
         std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);
         index_lock.lock();
 #ifdef IN_MEM
-	// std::cout << "hello" << std::endl;
+	// std::cout << "hello searching in mem" << std::endl;
         parent->index->search_global_baseline(typed_ctxt, query, K, L,
                                               result_64.get(), nullptr);
-#elif DISK_FS
+#elif defined(DISK_FS)
+	// std::cout << "disk fs search called " << std::endl;
 	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
-#elif DISK_KV
-	parent->index->search_pq_fs(query->get_embedding_ptr(), K, L, indices, result_64.get(), nullptr, query.get_candidate_queue());
+#elif defined(DISK_KV)
+	// std::cout << "disk kv search called " << std::endl;
+	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
 #endif
         index_lock.unlock();
         for (uint32_t i = 0; i < K; i++) {
@@ -527,9 +533,9 @@ push the compute result to the queue for that query id.
   std::atomic<bool> initialized_index{false};
 #ifdef IN_MEM
   std::unique_ptr<GlobalIndex<data_type>> index;
-#elif DISK_FS
+#elif defined(DISK_FS)
   std::unique_ptr<SSDIndexFileSystem<data_type>> index;
-#elif DISK_KV
+#elif defined(DISK_KV)
   std::unique_ptr<SSDIndexKV<data_type>> index;
 #endif
   
@@ -626,7 +632,7 @@ public:
     if (initialized_index == false) {
       std::unique_lock lock(index_mutex);
       if (initialized_index == false) {
-	std::cout << "index not initialized" << std::endl;
+	// std::cout << "index not initialized" << std::endl;
 	cluster_id = get_cluster_id(key_string);
 	cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
 	cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
@@ -637,28 +643,29 @@ public:
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
 	// std::cout << "started making global idnex" << std::endl;
 #ifdef IN_MEM
+	// std::cout << "createing in mem index" << std::endl;
 	this->index = std::make_unique<GlobalIndex<data_type>>(
 							       this->dim, this->cluster_id, cluster_assignment_bin_file,
 							       cluster_data_prefix);
-#elif DISK_FS
-	if (this->index == nullptr) {
-          std::cout << "start creating SSDIndexFileSystem" << cluster_id << " "
-          << key_string << std::endl;
-          std::cout << "index path prefix " << this->index_path_prefix
-          << std::endl;
-          std::cout << "num search threads " << this->num_search_threads
-          << std::endl;        
-	  this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
-									this->index_path_prefix, this->num_search_threads);
-          std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
-          << key_string << std::endl;
-	}
-#elif DISK_KV
-	this->index = std::make_unique<SSDIndexKV<data_type>>(
-							      this->index_path_prefix, cluster_data_prefix,
+#elif defined(DISK_FS)
+        std::cout << "start creating SSDIndexFileSystem" << cluster_id << " "
+        << key_string << std::endl;
+        std::cout << "index path prefix " << this->index_path_prefix
+        << std::endl;
+        std::cout << "num search threads " << this->num_search_threads
+        << std::endl;        
+	this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
+								      this->index_path_prefix, this->num_search_threads);
+        std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
+        << key_string << std::endl;
+#elif defined(DISK_KV)
+	std::cout << "start creating SSDINDEXKV" << std::endl;
+        this->index = std::make_unique<SSDIndexKV<data_type>>(
+            this->index_path_prefix, cluster_data_prefix,
 							      this->num_search_threads);
+        std::cout << "done creating SSDINDEXKV" << std::endl;
 #endif
-	initialized_index = true;
+        initialized_index = true;
       }
     }
     if (get_cluster_id(key_string) != cluster_id) {
@@ -689,11 +696,11 @@ public:
       // distance_compute_thread->push_compute_query(std::move(query));
     // }
 
-    for (ComputeResult &result : manager.get_compute_results()) {
-      validate_compute_result(result);
-      search_threads[result.get_receiver_thread_id()]->push_compute_res(
-									std::move(result));
-    }
+    // for (ComputeResult &result : manager.get_compute_results()) {
+      // validate_compute_result(result);
+      // search_threads[result.get_receiver_thread_id()]->push_compute_res(
+									// std::move(result));
+    // }
   }
   static void initialize() {
     if (!ocdpo_ptr) {
