@@ -8,6 +8,8 @@
 #include <memory>
 #include "get_request_manager.hpp"
 #include "udl_path_and_index.hpp"
+#include "pq.h"
+#include "pq_scratch.h"
 
 #define BEAMWIDTH 1
 
@@ -55,7 +57,7 @@ public:
   template <typename data_type> class SSDIndexKV {
     std::string cluster_data_prefix;
     
-    std::unique_ptr<uint8_t[]> pq_data;
+    uint8_t* pq_data;
     size_t num_points;
     size_t num_chunks;
 
@@ -101,18 +103,18 @@ compressed bin path and not from the pq data from kv store.
         _thread_data(nullptr) {
 
       // loading pq data
-      uint8_t *pq_data_ptr;
       std::string pq_table_bin =
         std::string(index_path_prefix) + "_pq_pivots.bin";
       std::string pq_compressed_vectors =
         std::string(index_path_prefix) + "_pq_compressed.bin";
       size_t npts_u64, nchunks_u64;
-      diskann::load_bin<uint8_t>(pq_compressed_vectors, pq_data_ptr, npts_u64,
-				 nchunks_u64);
+      diskann::load_bin<uint8_t>(pq_compressed_vectors, this->pq_data, npts_u64,
+                                 nchunks_u64);
       this->num_points = npts_u64;
       this->num_chunks = nchunks_u64;
+      // std::cout << "num points " << num_points << " " << "num_chunkcs"
+      // << num_chunks << std::endl;
 
-      pq_data.reset(pq_data_ptr);
 
       size_t pq_file_dim, pq_file_num_centroids;
       diskann::get_bin_metadata(pq_table_bin, pq_file_num_centroids, pq_file_dim,
@@ -121,6 +123,7 @@ compressed bin path and not from the pq data from kv store.
 	throw std::runtime_error(
 				 "Error. Number of PQ centroids is not 256. Exiting.");
       }
+      
       this->dim = pq_file_dim;
       this->_aligned_dim = ROUND_UP(pq_file_dim, 8);      
 
@@ -133,12 +136,14 @@ compressed bin path and not from the pq data from kv store.
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
 
       // setup thread data
-      for (uint64_t i; i < num_threads; i++) {
-	diskann::SSDThreadData<data_type> *data =
-          new diskann::SSDThreadData<data_type>(this->dim, 4096);
-	this->_thread_data.push(data);
+#pragma omp parallel for num_threads((int)num_threads)
+      for (int64_t i = 0; i < (int64_t)num_threads; i++) {
+#pragma omp critical
+        {
+          diskann::SSDThreadData<data_type> *data = new diskann::SSDThreadData<data_type>(this->_aligned_dim, 4096);
+            this->_thread_data.push(data);
+        }
       }
-    
     }
 
     /** we don't need ssd thread data since the difference between it and
@@ -155,62 +160,62 @@ compressed bin path and not from the pq data from kv store.
 									      this->_thread_data);
       auto data = manager.scratch_space();
 
-      // all data necessary for querying and pq operations will be accessed
-      // through these 2 pointers.
+      // // all data necessary for querying and pq operations will be accessed
+      // // through these 2 pointers.
       auto query_scratch = &(data->scratch);
       // this contains preallocated ptrs to pq table, pq processed query, etc
       auto pq_query_scratch = query_scratch->pq_scratch();
 
       query_scratch->reset();
 
-      // aligned malloc memset to 0, need to copy query to here to do
-      // computation since a lot of operations only work on aligned mem address
+      // // aligned malloc memset to 0, need to copy query to here to do
+      // // computation since a lot of operations only work on aligned mem address
       data_type *aligned_query_T = query_scratch->aligned_query_T();
 
-      // aligned malloc for pq computation,
-      // converts whatever type the query is to a float,
-      // will contain the same data as aligned_query_T
+      // // aligned malloc for pq computation,
+      // // converts whatever type the query is to a float,
+      // // will contain the same data as aligned_query_T
       float *query_float = pq_query_scratch->aligned_query_float;
 
-      // whether this is used or not depends on there is a rotation matrix file
-      // that has index_path_prefix as a path prefix
+      // // whether this is used or not depends on there is a rotation matrix file
+      // // that has index_path_prefix as a path prefix
       float *query_rotated = pq_query_scratch->rotated_query;
 
       for (size_t i = 0; i < this->dim; i++) {
 	aligned_query_T[i] = query[i];
       }
 
-      // copies data from aligned query to query float and query rotated
+      // // copies data from aligned query to query float and query rotated
       pq_query_scratch->initialize(this->dim, aligned_query_T);
 
-      // this is where the full precision embeddings will be copied into to do
-      // full distance computation with
+      // // // this is where the full precision embeddings will be copied into to do
+      // // full distance computation with
       data_type *full_precision_emb_buffer = query_scratch->coord_scratch;
 
-      // not sure why this is necessary in pq_flash_index search method since
-      // won't we be overwriting it constantly?
-      _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
+      // // // not sure why this is necessary in pq_flash_index search method since
+      // // // won't we be overwriting it constantly?
+      // // _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
 
       pq_table.preprocess_query(query_rotated);
 
-      float *pq_dists = pq_query_scratch->aligned_dist_scratch;
+      float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
       pq_table.populate_chunk_distances(query_rotated, pq_dists);
       // after this, pq query distance to all centroids in pq table is
       // calcucated in pq_dists, and pq_dists is used for fast look up for pq
       // distance calculation
 
-      // this is where you write the pq coordinates of points to do pq
-      // computation with
+      // // this is where you write the pq coordinates of points to do pq
+      // // computation with
       float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
       uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
 
 
-      // lambda to batch compute query<-> node distances in PQ space from pq data
-      // loading from file
+      // // lambda to batch compute query<-> node distances in PQ space from pq data
+      // // loading from file
       auto compute_dists = [this, pq_coord_scratch,
                           pq_dists](const uint32_t *ids, const uint64_t n_ids,
                                     float *dists_out) {
-	diskann::aggregate_coords(ids, n_ids, this->pq_data.get(),
+	diskann::aggregate_coords(ids, n_ids, this->pq_data,
                                   this->num_chunks, pq_coord_scratch);
 	diskann::pq_dist_lookup(pq_coord_scratch, n_ids, this->num_chunks,
 				pq_dists, dists_out);
@@ -230,8 +235,6 @@ compressed bin path and not from the pq data from kv store.
 		      diskann::Neighbor(start_node_ids[i], start_node_pq_dists[i]));
 	visited.insert(start_node_ids[i]);
       }
-      // done with initilizing candidate queue
-
 
 
       // used to determine which nodes to do get request, reason this exist is
@@ -284,13 +287,17 @@ compressed bin path and not from the pq data from kv store.
       }
       std::sort(full_retset.begin(), full_retset.end());
       for (uint64_t i = 0; i < K; i++) {
-        indices[i] = full_retset[i].id;
+        indices[i] = 0;
         if (distances != nullptr)
           distances[i] = full_retset[i].distance;
       }
     }
 
     ~SSDIndexKV() {
+    if (pq_data != nullptr)
+    {
+        delete[] pq_data;
+    }      
       if (_nhood_cache_buf != nullptr) {
 	delete[] _nhood_cache_buf;
 	diskann::aligned_free(_coord_cache_buf);
