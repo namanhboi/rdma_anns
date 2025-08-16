@@ -1,23 +1,201 @@
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include <libaio.h>
+#include "aligned_file_reader.h"
 #include "linux_aligned_file_reader.h"
 #include "neighbor.h"
 #include "pq_flash_index.h"
+#include "tsl/robin_map.h"
 #include "utils.h"
 #include <cascade/service_types.hpp>
 #include <memory>
 #include "get_request_manager.hpp"
 #include "udl_path_and_index.hpp"
 #include "pq.h"
-#include "pq_scratch.h"
-
+#include "concurrent_neighbor_priority_queue.hpp"
 #define BEAMWIDTH 1
-
-
-
+#define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
+#define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 
 namespace derecho {
 namespace cascade {
+
+/**
+   final ssd index class. It will use the pq data from kvstore.
+   in search function, extra parameters that we need:
+   - std::function to send compute task to other udls
+   - concurrent priority queue
+   - 
+
+
+ */
+  template <typename data_type> class SSDIndex {
+    std::string udl_cluster_data_prefix;
+    diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *> _thread_data;
+
+    // used to determine the order/index in which that node_id is written to the
+    // cluster disk index file. This index is then used to calculate the sector
+    // id and offset
+    tsl::robin_map<uint32_t, uint32_t> node_id_to_index;
+
+    // used to determine which cluster a node resides in.
+    std::vector<uint8_t> cluster_assignment;
+
+    diskann::FixedChunkPQTable pq_table;
+
+    // distance comparator
+    std::shared_ptr<diskann::Distance<data_type>> _dist_cmp;
+    std::shared_ptr<diskann::Distance<float>> _dist_cmp_float;
+
+    
+    size_t num_points;
+    size_t num_chunks = 32;
+
+    size_t _aligned_dim;
+    size_t dim;
+
+    size_t _disk_bytes_per_point;
+
+
+    std::shared_ptr<AlignedFileReader> reader;
+    uint64_t _max_node_len = 0;
+    uint64_t _nnodes_per_sector = 0; // 0 for multi-sector nodes, >0 for multi-node sectors
+    uint64_t _max_degree = 0;
+
+
+    void setup_thread_data(uint64_t num_threads) {
+      for (int64_t i = 0; i < (int64_t)num_threads; i++) {
+        diskann::SSDThreadData<data_type> *data = new diskann::SSDThreadData<data_type>(this->_aligned_dim, 4096);
+        this->_thread_data.push(data);
+      }
+    }
+    std::function<void(compute_query_t)> send_compute_query_fn;
+    
+  public:
+    /**
+       index_path_prefix will be used to determine this cluster's disk index
+       file and its node id mapping.
+       udl_cluster_data_prefix will be used to retrieve pq data
+
+       cluster_assignment_file will be used to determine which cluster a node id
+       belongs to.
+
+
+       */
+    SSDIndex(const std::string &index_path_prefix,
+             const std::string &udl_cluster_data_prefix,
+             const std::string &cluster_assignment_file,
+             const std::string &pq_table_bin, uint64_t num_threads,
+             std::function<void(compute_query_t)> send_compute_query_fn)
+        : udl_cluster_data_prefix(udl_cluster_data_prefix),
+        _thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
+    {
+      // TODO register aligned reader and open the disk index file
+      std::string disk_index_file = index_path_prefix + "_disk.index";
+
+      reader.reset(new LinuxAlignedFileReader());
+      reader->open(disk_index_file);
+      setup_thread_data(num_threads);
+      
+      std::ifstream index_metadata(disk_index_file, std::ios::binary);
+      uint32_t nr, nc; // metadata itself is stored as bin format (nr is number of
+      // metadata, nc should be 1)
+      READ_U32(index_metadata, nr);
+      READ_U32(index_metadata, nc);
+
+      uint64_t disk_nnodes;
+      uint64_t disk_ndims; // can be disk PQ dim if disk_PQ is set to true
+      READ_U64(index_metadata, disk_nnodes);
+      READ_U64(index_metadata, disk_ndims);
+      this->dim = disk_ndims;
+      this->num_points = disk_nnodes;
+      this->_disk_bytes_per_point = this->dim * sizeof(data_type);
+
+      size_t medoid_id_on_file;
+      READ_U64(index_metadata,
+               medoid_id_on_file); // dont really need this since head index
+      // search will provide starting points
+      READ_U64(index_metadata, _max_node_len);
+      READ_U64(index_metadata, _nnodes_per_sector);
+      _max_degree =
+        ((_max_node_len - _disk_bytes_per_point) / sizeof(uint32_t)) - 1;
+      std::cout << "max degree is " << _max_degree << std::endl;
+      if (_max_degree > diskann::defaults::MAX_GRAPH_DEGREE){
+          std::stringstream stream;
+          stream << "Error loading index. Ensure that max graph degree (R) does "
+                    "not exceed "
+          << diskann::defaults::MAX_GRAPH_DEGREE << std::endl;
+          throw diskann::ANNException(stream.str(), -1, __FUNCSIG__, __FILE__, __LINE__);
+      }
+      index_metadata.close();
+
+      // TODO load in the node ids mapping
+      uint32_t *node_ids = nullptr;
+      std::string node_ids_file = index_path_prefix + "_ids_uint32_t.bin";
+      size_t num_pts, one;
+      diskann::load_bin<uint32_t>(node_ids_file, node_ids, num_pts, one);
+      if (one != 1) {
+        throw std::runtime_error("dim from load_bin for node_ids_file not 1");
+      }
+      if (num_pts != num_points) {
+        throw std::runtime_error("num points from node ids file different from disk_index: " + std::to_string(num_pts) + " " + std::to_string(num_points));
+      }
+
+      for (auto i = 0; i < num_pts; i++) {
+        node_id_to_index[node_ids[i]] = i;
+      }
+
+      // TODO load in cluster assignemnt file
+      std::ifstream cluster_assignment_in(cluster_assignment_file,
+                                          std::ios::binary);
+      uint32_t whole_graph_num_pts;
+      uint8_t num_clusters;
+      cluster_assignment_in.read((char *)&whole_graph_num_pts,
+				 sizeof(whole_graph_num_pts));
+      cluster_assignment_in.read((char *)&num_clusters, sizeof(num_clusters));
+
+      cluster_assignment = std::vector<uint8_t>(whole_graph_num_pts);
+      cluster_assignment_in.read((char *)cluster_assignment.data(),
+                                 whole_graph_num_pts * sizeof(uint8_t));
+      cluster_assignment_in.close();
+
+      // loading pq table
+      size_t pq_file_dim, pq_file_num_centroids;
+      diskann::get_bin_metadata(pq_table_bin, pq_file_num_centroids, pq_file_dim,
+				METADATA_SIZE);
+      if (pq_file_num_centroids != 256) {
+	throw std::runtime_error(
+				 "Error. Number of PQ centroids is not 256. Exiting.");
+      }
+      if (pq_file_dim != disk_ndims) {
+        throw std::runtime_error(
+            "Error. Dimension of pq file different from disk file: " +
+            std::to_string(pq_file_dim) + " " + std::to_string(disk_ndims));
+      }
+      this->_aligned_dim = ROUND_UP(pq_file_dim, 8);      
+
+      pq_table.load_pq_centroid_bin(pq_table_bin.c_str(), num_chunks);
+
+      // setup distance comparison functions
+      this->_dist_cmp.reset(
+			    diskann::get_distance_function<data_type>(diskann::Metric::L2));
+      this->_dist_cmp_float.reset(
+				  diskann::get_distance_function<float>(diskann::Metric::L2));
+    }
+
+
+    void
+    search(DefaultCascadeContextType *typed_ctxt, const data_type *query,
+           const int64_t K, const uint64_t L, uint64_t *indices,
+           float *distances, std::vector<uint32_t> start_node_ids,
+           std::function<void(compute_query_t)> send_compute_query_fn,
+           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset) {
+      
+    }
+
+  };
+
+
+
 
   
 /**
