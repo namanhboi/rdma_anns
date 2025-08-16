@@ -90,7 +90,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	// std::cout << "hello searching in mem" << std::endl;
         parent->index->search_global_baseline(typed_ctxt, query, K, L,
                                               result_64.get(), nullptr);
-#elif defined(DISK_FS)
+#elif defined(DISK_FS_DISKANN_WRAPPER)
 	// std::cout << "disk fs search called " << std::endl;
 	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
 #elif defined(DISK_KV)
@@ -533,12 +533,11 @@ push the compute result to the queue for that query id.
   std::atomic<bool> initialized_index{false};
 #ifdef IN_MEM
   std::unique_ptr<GlobalIndex<data_type>> index;
-#elif defined(DISK_FS)
+#elif defined(DISK_FS_DISKANN_WRAPPER)
   std::unique_ptr<SSDIndexFileSystem<data_type>> index;
 #elif defined(DISK_KV)
   std::unique_ptr<SSDIndexKV<data_type>> index;
 #endif
-  
 
 
   std::unique_ptr<BatchingThread> batch_thread;
@@ -561,6 +560,7 @@ push the compute result to the queue for that query id.
   std::string cluster_search_prefix = UDL2_PATHNAME;
 
   std::string cluster_assignment_bin_file;
+  std::string pq_table_bin;  
   std::string index_path_prefix;
   std::vector<std::unique_ptr<SearchThread>> search_threads;
 
@@ -647,7 +647,7 @@ public:
 	this->index = std::make_unique<GlobalIndex<data_type>>(
 							       this->dim, this->cluster_id, cluster_assignment_bin_file,
 							       cluster_data_prefix);
-#elif defined(DISK_FS)
+#elif defined(DISK_FS_DISKANN_WRAPPER)
         std::cout << "start creating SSDIndexFileSystem" << cluster_id << " "
         << key_string << std::endl;
         std::cout << "index path prefix " << this->index_path_prefix
@@ -713,11 +713,16 @@ public:
                   const nlohmann::json &config) {
     this->my_id = typed_ctxt->get_service_client_ref().get_my_id();
     try {
-
       if (config.contains("cluster_assignment_bin_file")) {
         this->cluster_assignment_bin_file =
           config["cluster_assignment_bin_file"].get<std::string>();
       }
+
+      if (config.contains("pq_table_bin")) {
+        this->pq_table_bin =
+          config["pq_table_bin"].get<std::string>();
+      }      
+
       if (config.contains("index_path_prefix")) {
         this->index_path_prefix =
           config["index_path_prefix"].get<std::string>();

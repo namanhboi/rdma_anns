@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
   } else if (data_type == "float") {
     load_data_kv<float>(capi, index_path_prefix, num_clusters, clusters_folder);
   }
-#elif defined(DISK_FS)
+#elif defined(DISK_FS_DISKANN_WRAPPER) || defined(DISK_FS_DISTRIBUTED)
   if (data_type == "uint8") {
     load_data_fs<uint8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
   } else if (data_type == "int8") {

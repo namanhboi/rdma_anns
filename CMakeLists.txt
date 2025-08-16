@@ -29,7 +29,8 @@ option(TEST_UDL1 "Enable TEST_UDL1 functionality" OFF)
 option(TEST_UDL2 "Enable TEST_UDL2 functionality" OFF)
 
 option(IN_MEM "Search udl 2 with in memory kv store based global search" OFF)
-option(DISK_FS "Search udl 2 with ssd based search where data is loaded from file system" OFF)
+option(DISK_FS_DISKANN_WRAPPER "Search udl 2 with ssd based search where data is loaded from file system" OFF)
+option(DISK_FS_DISTRIBUTED "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_KV "Search udl 2 with ssd based search where data is loaded from kv store" OFF)
 
 if(TEST_UDL1)
@@ -44,8 +45,12 @@ if(IN_MEM)
     add_compile_definitions(IN_MEM)
 endif()
 
-if(DISK_FS)
-    add_compile_definitions(DISK_FS)
+if(DISK_FS_DISKANN_WRAPPER)
+    add_compile_definitions(DISK_FS_DISKANN_WRAPPER)
+endif()
+
+if(DISK_FS_DISTRIBUTED)
+    add_compile_definitions(DISK_FS_DISTRIBUTED)
 endif()
 
 if(DISK_KV)
