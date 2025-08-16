@@ -33,8 +33,9 @@
             "min_batch_size":1,
             "max_batch_size":100,
             "batch_time_us":1000,
-	    "cluster_assignment_bin_file" : "/home/nam/workspace/rdma_anns/build/cfg/n2/clusters_data/cluster_assignment_all.bin",
-	    "index_path_prefix": "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/disk_index_sift_learn_crop_1000_R32_L50_A1.2"
+	    "pq_table_bin":"/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/disk_index_sift_learn_R32_L50_A1.2_pq_pivots.bin",
+	    "cluster_assignment_bin_file" : "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/clusters/cluster_assignment_all.bin",
+	    "index_path_prefix": "/home/nam/workspace/rdma_anns/extern/DiskANN/build/data/sift/clusters/cluster_"
           }],
         "destinations": [{}]
       }      

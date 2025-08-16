@@ -78,8 +78,6 @@ namespace cascade {
 
        cluster_assignment_file will be used to determine which cluster a node id
        belongs to.
-
-
        */
     SSDIndex(const std::string &index_path_prefix,
              const std::string &udl_cluster_data_prefix,
@@ -188,10 +186,8 @@ namespace cascade {
            const int64_t K, const uint64_t L, uint64_t *indices,
            float *distances, std::vector<uint32_t> start_node_ids,
            std::function<void(compute_query_t)> send_compute_query_fn,
-           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset) {
-      
-    }
-
+           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset) {}
+    void search() {}
   };
 
 

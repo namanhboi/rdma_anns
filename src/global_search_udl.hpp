@@ -93,6 +93,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 #elif defined(DISK_FS_DISKANN_WRAPPER)
 	// std::cout << "disk fs search called " << std::endl;
 	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
+#elif defined(DISK_FS_DISTRIBUTED)
+	// std::cout << "disk fs search called " << std::endl;
+	parent->index->search();
 #elif defined(DISK_KV)
 	// std::cout << "disk kv search called " << std::endl;
 	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
@@ -535,6 +538,8 @@ push the compute result to the queue for that query id.
   std::unique_ptr<GlobalIndex<data_type>> index;
 #elif defined(DISK_FS_DISKANN_WRAPPER)
   std::unique_ptr<SSDIndexFileSystem<data_type>> index;
+#elif defined(DISK_FS_DISTRIBUTED)
+  std::unique_ptr<SSDIndex<data_type>> index;  
 #elif defined(DISK_KV)
   std::unique_ptr<SSDIndexKV<data_type>> index;
 #endif
@@ -658,6 +663,16 @@ public:
 								      this->index_path_prefix, this->num_search_threads);
         std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
         << key_string << std::endl;
+#elif defined(DISK_FS_DISTRIBUTED)
+        
+	std::string cluster_path_prefix = index_path_prefix + std::to_string(cluster_id);
+        this->index = std::make_unique<SSDIndex<data_type>>(
+            cluster_path_prefix, cluster_data_prefix,
+            cluster_assignment_bin_file, pq_table_bin, num_search_threads,
+            [](compute_query_t query) {
+              return;
+            });
+	std::cout << " done createing diskfs " << std::endl;
 #elif defined(DISK_KV)
 	std::cout << "start creating SSDINDEXKV" << std::endl;
         this->index = std::make_unique<SSDIndexKV<data_type>>(
@@ -770,9 +785,9 @@ public:
     this->batch_thread->start(typed_ctxt);
     std::cout << "hello 3" << std::endl;
 
-    // this->distance_compute_thread = std::make_unique<DistanceComputeThread>(this->my_id, this);
-    // this->distance_compute_thread->start(typed_ctxt);
-    // std::cout << "hello 4" << std::endl;
+    this->distance_compute_thread = std::make_unique<DistanceComputeThread>(this->my_id, this);
+    this->distance_compute_thread->start(typed_ctxt);
+    std::cout << "hello 4" << std::endl;
   }
 
   void shutdown() {
