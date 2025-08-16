@@ -28,7 +28,8 @@
 #include "benchmark_dataset.hpp"
 #include "../src/udl_path_and_index.hpp"
 #include <filesystem>
-
+#include "partition.h"
+#include "disk_utils.h"
 #define NUM_THREADS 16
 
 #define HEAD_INDEX_R 32
@@ -37,23 +38,11 @@
 #define HEAD_INDEX_PERCENTAGE 0.01
 
 
-
-// for now, this will be in memory
-#define WHOLE_GRAPH_SUBGROUP_INDEX 1
-#define HEAD_INDEX_SUBGROUP_INDEX 0
-#define PQ_SUBGROUP_INDEX 2
-// the pq subgroup will live in the same nodes as the whole graph subgroup
-// need to make sure that this is the case in the layout.json file
+#define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
+#define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 
 
 #define MAX_DEGREE 32
-// will need to revisit this later
-#define GRAPH_CLUSTER_PREFIX "/anns/cluster_"
-#define HEAD_INDEX_PREFIX "/anns/head_index"
-#define PQ_PREFIX "/anns/pq"
-// For < 10 billion vectors: all servers are members of the pq object pool only
-// shard, meaning they will all have copies of the pq of all vectors
-// For > 10 billion, then we can randomly shard the pq among the pg subgroup. 
 
 using namespace derecho::cascade;
 using namespace parlayANN;
@@ -76,7 +65,148 @@ void test_pq_flash(const std::string &index_path_prefix, const std::string &quer
   std::vector<uint64_t> results(10);
   _pFlashIndex->cached_beam_search(dataset.get_query(0), 10, 20, results.data(),
                                    nullptr, 1);
-}  
+}
+
+
+/**
+   TODO
+   create the index files for each cluster.
+   To make it easily testable, use the same format as diskann, and then to test
+   it, use 1 cluster and write data to new file. Use diskann to load that file
+   and if recall is the same then we are correct.
+
+   To use the already existing functions to build the disk index from
+   disk_utils from diskann, for each cluster, we need to create a base file as
+   well as a graph file. After this, for each pair of base and graph files, we
+   do create_disk_layout to create the final disk file for that cluster
+*/
+
+template <typename data_type>
+void create_cluster_index_files(const Clusters &clusters,
+                                const std::string &data_file,
+                                const std::string &index_path_prefix,
+                                const std::string &output_folder) {
+
+
+  if (!std::filesystem::exists(output_folder)) {
+    throw std::invalid_argument(output_folder + " doesn't exists");
+  }
+  std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+  std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex(
+							       new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
+  int _ = _pFlashIndex->load(1, index_path_prefix.c_str());
+
+  std::string disk_index_file = index_path_prefix + "_disk.index";
+  std::ifstream index_metadata(disk_index_file, std::ios::binary);
+  
+  uint32_t nr, nc; // metadata itself is stored as bin format (nr is number of
+  // metadata, nc should be 1)
+  READ_U32(index_metadata, nr);
+  READ_U32(index_metadata, nc);
+
+  uint64_t disk_nnodes;
+  uint64_t disk_ndims; 
+  READ_U64(index_metadata, disk_nnodes);
+  READ_U64(index_metadata, disk_ndims);
+
+
+  size_t medoid_id_on_file, _max_node_len, _disk_bytes_per_point, _nnodes_per_sector;
+  READ_U64(index_metadata, medoid_id_on_file);
+  READ_U64(index_metadata, _max_node_len);
+  READ_U64(index_metadata, _nnodes_per_sector);
+  index_metadata.close();
+  uint32_t max_degree = ((_max_node_len - _disk_bytes_per_point) / sizeof(uint32_t)) - 1;
+  std::cout << "max degree is " << max_degree << std::endl;
+
+  parlay::parallel_for(0, clusters.size(), [&](size_t cluster_id) {
+    std::string cluster_graph_file = output_folder + "/" + "cluster_" +
+                             std::to_string(cluster_id) + ".graph";
+    size_t file_offset = 0;
+    std::ofstream graph_out;
+    graph_out.open(cluster_graph_file, std::ios::binary | std::ios::trunc);
+    graph_out.seekp(file_offset, graph_out.beg);
+    
+    // need to writer header
+    size_t index_size = 24;
+    graph_out.write((char *)&index_size, sizeof(uint64_t));
+    graph_out.write((char *)&max_degree, sizeof(uint32_t));
+
+    uint32_t start = 29429; // not sure about these 2 variables tbh
+    size_t num_frozen_pts = 0;
+    graph_out.write((char *)&start, sizeof(uint32_t));
+    graph_out.write((char *)&num_frozen_pts, sizeof(size_t));
+
+    std::vector<data_type *> tmp_coord_buffer(clusters[cluster_id].size(),
+                                              nullptr);
+    
+    std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+    uint32_t *neighbors_ptr =
+      new uint32_t[max_degree * clusters[cluster_id].size()];
+
+    for (int j = 0; j < clusters[cluster_id].size(); j++) {
+      tmp_nbr_buffer.emplace_back(0, neighbors_ptr + j * max_degree);
+    }
+    _pFlashIndex->read_nodes(clusters[cluster_id], tmp_coord_buffer,
+                             tmp_nbr_buffer);
+
+    uint32_t max_observed_degree = 0;
+    for (uint32_t i = 0; i < clusters[cluster_id].size(); i++) {
+      uint32_t nnbrs = tmp_nbr_buffer[i].first;
+      graph_out.write((char *)&nnbrs, sizeof(nnbrs));
+      graph_out.write((char *)tmp_nbr_buffer[i].second,
+                      nnbrs * sizeof(uint32_t));
+      index_size += (size_t)(sizeof(uint32_t) * (nnbrs + 1));
+      max_observed_degree = nnbrs > max_observed_degree ? nnbrs : max_observed_degree;
+    }
+    std::cout << "max observed_degree " << max_observed_degree << std::endl;
+    graph_out.seekp(file_offset, graph_out.beg);
+    graph_out.write((char *)&index_size, sizeof(uint64_t));
+    graph_out.write((char *)&max_observed_degree, sizeof(uint32_t));
+    graph_out.close();
+
+    // create data bin file
+
+    std::string cluster_ids_file = output_folder + "/" + "cluster_" +
+                                   std::to_string(cluster_id) +
+                                   "_ids_uint32_t.bin";
+    std::ofstream cluster_ids_out;
+    cluster_ids_out.open(cluster_ids_file, std::ios::binary | std::ios::trunc);
+      
+    uint32_t num_points_cluster = clusters[cluster_id].size();
+    uint32_t const_one = 1; // needed so that we can parse bin file with diskann::load_bin
+    cluster_ids_out.write((char *)&num_points_cluster, sizeof(uint32_t));
+    cluster_ids_out.write((char *)&const_one, sizeof(uint32_t));
+    cluster_ids_out.write((char *)clusters[cluster_id].data(),
+                          sizeof(uint32_t) * num_points_cluster);
+    cluster_ids_out.close();
+
+
+    std::string cluster_data_file =
+      output_folder + "/" + "cluster_" + std::to_string(cluster_id) + ".bin";
+
+    retrieve_shard_data_from_ids<data_type>(data_file, cluster_ids_file,
+                                            cluster_data_file);
+    
+    // now create disk file for cluster
+    std::string cluster_disk_file = output_folder + "/" + "cluster_" +
+                                    std::to_string(cluster_id) + "_disk.index";
+    diskann::create_disk_layout<data_type>(cluster_data_file, cluster_graph_file,
+                                           cluster_disk_file);
+
+    delete[] neighbors_ptr;
+  });
+  
+}
+
+
+
+/**
+   Loads the pq data from file to cacsade, table file loaded by udl
+*/
+void load_diskann_pq_into_cascade(ServiceClientAPI &capi,
+                                  const std::string &pq_compressed_vectors,
+                                  const Clusters &clusters);
+
 /**
    This loads the prebuilt diskann graph on ssd into cascade persistent kv store
    for in memory search according to the clusters.
@@ -440,156 +570,156 @@ void build_and_save_head_index(
 /**
    deprecated
 */
-template <typename data_type>
-void load_diskann_in_mem_index(ServiceClientAPI &capi, const std::string &in_mem_index_path) {
-  std::ifstream data_store_in;
-  data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-  data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
-  data_store_in.seekg(0, data_store_in.beg);
+// template <typename data_type>
+// void load_diskann_in_mem_index(ServiceClientAPI &capi, const std::string &in_mem_index_path) {
+//   std::ifstream data_store_in;
+//   data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
+//   data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
+//   data_store_in.seekg(0, data_store_in.beg);
 
 
-  uint32_t num_pts, dim;
-  data_store_in.read((char *)&num_pts, sizeof(uint32_t));
-  data_store_in.read((char *)&dim, sizeof(uint32_t));
-  data_store_in.close();
+//   uint32_t num_pts, dim;
+//   data_store_in.read((char *)&num_pts, sizeof(uint32_t));
+//   data_store_in.read((char *)&dim, sizeof(uint32_t));
+//   data_store_in.close();
 
-  std::unique_ptr<diskann::Distance<data_type>> dist;
-  dist.reset((diskann::Distance<data_type> *)diskann::get_distance_function<data_type>(diskann::Metric::L2));
-  diskann::InMemDataStore<data_type> data_store(
-						num_pts, dim, std::move(dist));
-  data_store.load(in_mem_index_path + ".data");
+//   std::unique_ptr<diskann::Distance<data_type>> dist;
+//   dist.reset((diskann::Distance<data_type> *)diskann::get_distance_function<data_type>(diskann::Metric::L2));
+//   diskann::InMemDataStore<data_type> data_store(
+// 						num_pts, dim, std::move(dist));
+//   data_store.load(in_mem_index_path + ".data");
 
-  std::ifstream graph_store_in;
-  graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-  graph_store_in.open(in_mem_index_path, std::ios::binary);
-  graph_store_in.seekg(0, data_store_in.beg);
+//   std::ifstream graph_store_in;
+//   graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
+//   graph_store_in.open(in_mem_index_path, std::ios::binary);
+//   graph_store_in.seekg(0, data_store_in.beg);
 
-  uint64_t graph_expected_file_size;
-  uint32_t max_deg;
-  graph_store_in.read((char *)&graph_expected_file_size, sizeof(uint64_t));
-  graph_store_in.read((char *)&max_deg, sizeof(uint32_t));
-  graph_store_in.close();
+//   uint64_t graph_expected_file_size;
+//   uint32_t max_deg;
+//   graph_store_in.read((char *)&graph_expected_file_size, sizeof(uint64_t));
+//   graph_store_in.read((char *)&max_deg, sizeof(uint32_t));
+//   graph_store_in.close();
 
   
-  diskann::InMemGraphStore graph_store(num_pts, max_deg);
-  auto [nodes_read, start, num_frozen_points] =
-    graph_store.load(in_mem_index_path, num_pts);
+//   diskann::InMemGraphStore graph_store(num_pts, max_deg);
+//   auto [nodes_read, start, num_frozen_points] =
+//     graph_store.load(in_mem_index_path, num_pts);
 
-  capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
-  uint32_t header[] = {num_pts, dim, max_deg};
-  ObjectWithStringKey in_mem_graph_header;
-  in_mem_graph_header.key = HEAD_INDEX_PREFIX "/header";
-  in_mem_graph_header.blob = Blob(reinterpret_cast<const uint8_t*>(header), sizeof(uint32_t) * 3);
+//   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+// 								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
+//   uint32_t header[] = {num_pts, dim, max_deg};
+//   ObjectWithStringKey in_mem_graph_header;
+//   in_mem_graph_header.key = HEAD_INDEX_PREFIX "/header";
+//   in_mem_graph_header.blob = Blob(reinterpret_cast<const uint8_t*>(header), sizeof(uint32_t) * 3);
 
-  capi.put_and_forget(in_mem_graph_header, false);
+//   capi.put_and_forget(in_mem_graph_header, false);
 
-  parlay::parallel_for(0, num_pts, [&] (size_t i) {
-  // for (uint32_t i = 0; i < num_pts; i++) {
-    std::vector<uint32_t> nbrs = graph_store.get_neighbours(i);
-    ObjectWithStringKey nbr_i;
-    nbr_i.key = HEAD_INDEX_PREFIX "/nbr_" + std::to_string(i);
-    // nbr_i.blob = Blob(
-        // [&](uint8_t *buffer, const std::size_t size) {
-          // uint32_t num_nbrs = nbrs.size();
-          // std::memcpy(buffer, &num_nbrs, sizeof(uint32_t));
-          // std::memcpy(buffer, nbrs.data(), sizeof(uint32_t) * num_nbrs);
-          // return size;
-        // },
-		      // sizeof(uint32_t) * (nbrs.size() + 1));
+//   parlay::parallel_for(0, num_pts, [&] (size_t i) {
+//   // for (uint32_t i = 0; i < num_pts; i++) {
+//     std::vector<uint32_t> nbrs = graph_store.get_neighbours(i);
+//     ObjectWithStringKey nbr_i;
+//     nbr_i.key = HEAD_INDEX_PREFIX "/nbr_" + std::to_string(i);
+//     // nbr_i.blob = Blob(
+//         // [&](uint8_t *buffer, const std::size_t size) {
+//           // uint32_t num_nbrs = nbrs.size();
+//           // std::memcpy(buffer, &num_nbrs, sizeof(uint32_t));
+//           // std::memcpy(buffer, nbrs.data(), sizeof(uint32_t) * num_nbrs);
+//           // return size;
+//         // },
+// 		      // sizeof(uint32_t) * (nbrs.size() + 1));
     
     
-    nbr_i.blob = Blob(reinterpret_cast<const uint8_t *>(nbrs.data()),
-                      nbrs.size() * sizeof(uint32_t));
-    nbr_i.previous_version = INVALID_VERSION;
-    nbr_i.previous_version_by_key = INVALID_VERSION;
+//     nbr_i.blob = Blob(reinterpret_cast<const uint8_t *>(nbrs.data()),
+//                       nbrs.size() * sizeof(uint32_t));
+//     nbr_i.previous_version = INVALID_VERSION;
+//     nbr_i.previous_version_by_key = INVALID_VERSION;
 
-    capi.put_and_forget(nbr_i, false);
+//     capi.put_and_forget(nbr_i, false);
     
-    data_type vector_data[dim];
-    data_store.get_vector(i, vector_data);
-    ObjectWithStringKey data_i;
-    data_i.key = HEAD_INDEX_PREFIX "/emb_" + std::to_string(i);
-    data_i.blob = Blob(reinterpret_cast<const uint8_t *>(vector_data),
-                       dim * sizeof(data_type));
-    data_i.previous_version = INVALID_VERSION;
-    data_i.previous_version_by_key = INVALID_VERSION;
-    capi.put_and_forget(data_i, false);
-  });
-}
+//     data_type vector_data[dim];
+//     data_store.get_vector(i, vector_data);
+//     ObjectWithStringKey data_i;
+//     data_i.key = HEAD_INDEX_PREFIX "/emb_" + std::to_string(i);
+//     data_i.blob = Blob(reinterpret_cast<const uint8_t *>(vector_data),
+//                        dim * sizeof(data_type));
+//     data_i.previous_version = INVALID_VERSION;
+//     data_i.previous_version_by_key = INVALID_VERSION;
+//     capi.put_and_forget(data_i, false);
+//   });
+// }
 
 
 /**
    Deprecated
 */
-template <typename data_type>
-void load_diskann_head_index_into_cascade(
-    ServiceClientAPI &capi, const std::string &in_mem_index_path) {
+// template <typename data_type>
+// void load_diskann_head_index_into_cascade(
+//     ServiceClientAPI &capi, const std::string &in_mem_index_path) {
   
-  std::cout << in_mem_index_path << std::endl;
-  std::ifstream data_store_in;
-  data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-  std::cout << "hello done creating data store obj" << std::endl;
-  data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
-  std::cout << "done opening " << in_mem_index_path + ".data";
-  data_store_in.seekg(0, data_store_in.end);
-  std::cout << "seeking";
-  size_t expected_file_size_data = data_store_in.tellg();
-  data_store_in.seekg(0, data_store_in.beg);
-  uint8_t* data_store_data = new uint8_t[expected_file_size_data];
-  data_store_in.read((char *)data_store_data, expected_file_size_data);
-  std::cout << "Successfully read the data_store file with "
-  << expected_file_size_data << " bytes" << std::endl;
-  uint32_t num_pts, dim;
-  std::memcpy(&num_pts, data_store_data, sizeof(uint32_t));
-  std::memcpy(&dim, data_store_data + sizeof(uint32_t), sizeof(uint32_t));
+//   std::cout << in_mem_index_path << std::endl;
+//   std::ifstream data_store_in;
+//   data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
+//   std::cout << "hello done creating data store obj" << std::endl;
+//   data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
+//   std::cout << "done opening " << in_mem_index_path + ".data";
+//   data_store_in.seekg(0, data_store_in.end);
+//   std::cout << "seeking";
+//   size_t expected_file_size_data = data_store_in.tellg();
+//   data_store_in.seekg(0, data_store_in.beg);
+//   uint8_t* data_store_data = new uint8_t[expected_file_size_data];
+//   data_store_in.read((char *)data_store_data, expected_file_size_data);
+//   std::cout << "Successfully read the data_store file with "
+//   << expected_file_size_data << " bytes" << std::endl;
+//   uint32_t num_pts, dim;
+//   std::memcpy(&num_pts, data_store_data, sizeof(uint32_t));
+//   std::memcpy(&dim, data_store_data + sizeof(uint32_t), sizeof(uint32_t));
 
-    capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
-  ObjectWithStringKey data_store_obj;
-  data_store_obj.key = HEAD_INDEX_PREFIX "/data_store";
-  data_store_obj.blob = Blob(data_store_data, expected_file_size_data);
-  data_store_obj.previous_version = INVALID_VERSION;
-  data_store_obj.previous_version_by_key = INVALID_VERSION;
+//     capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
+// 								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
+//   ObjectWithStringKey data_store_obj;
+//   data_store_obj.key = HEAD_INDEX_PREFIX "/data_store";
+//   data_store_obj.blob = Blob(data_store_data, expected_file_size_data);
+//   data_store_obj.previous_version = INVALID_VERSION;
+//   data_store_obj.previous_version_by_key = INVALID_VERSION;
 
-  auto data_store_put_res = capi.put(data_store_obj, false);
-  for (auto &reply_future : data_store_put_res.get()) {
-    auto reply = reply_future.second.get();
-  }
+//   auto data_store_put_res = capi.put(data_store_obj, false);
+//   for (auto &reply_future : data_store_put_res.get()) {
+//     auto reply = reply_future.second.get();
+//   }
 
-  std::cout << "Successfully put the data_store file " << std::endl;
+//   std::cout << "Successfully put the data_store file " << std::endl;
 
-  std::ifstream graph_store_in;
-  graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-  graph_store_in.open(in_mem_index_path, std::ios::binary);
-  std::cout << "done reading the graph streo" ;
-  graph_store_in.seekg(0, graph_store_in.beg);
-  size_t expected_file_size;
-  graph_store_in.read((char *)&expected_file_size, sizeof(size_t));
-  uint8_t *graph_store_data =
-      new uint8_t[expected_file_size - sizeof(size_t) +
-                  sizeof(uint32_t)]; // don't include the
-                                     // expected_file_size in this buffer,
-                                     // replace it with the number of pts
+//   std::ifstream graph_store_in;
+//   graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
+//   graph_store_in.open(in_mem_index_path, std::ios::binary);
+//   std::cout << "done reading the graph streo" ;
+//   graph_store_in.seekg(0, graph_store_in.beg);
+//   size_t expected_file_size;
+//   graph_store_in.read((char *)&expected_file_size, sizeof(size_t));
+//   uint8_t *graph_store_data =
+//       new uint8_t[expected_file_size - sizeof(size_t) +
+//                   sizeof(uint32_t)]; // don't include the
+//                                      // expected_file_size in this buffer,
+//                                      // replace it with the number of pts
   
   
-  std::memcpy(graph_store_data, &num_pts, sizeof(uint32_t));
-  graph_store_in.read((char *)(graph_store_data + sizeof(uint32_t)), expected_file_size - sizeof(size_t));
+//   std::memcpy(graph_store_data, &num_pts, sizeof(uint32_t));
+//   graph_store_in.read((char *)(graph_store_data + sizeof(uint32_t)), expected_file_size - sizeof(size_t));
   
-  ObjectWithStringKey graph_store_obj;
-  graph_store_obj.key = HEAD_INDEX_PREFIX "/graph_store";
-  graph_store_obj.blob = Blob(graph_store_data, expected_file_size);
-  graph_store_obj.previous_version = INVALID_VERSION;
-  graph_store_obj.previous_version_by_key = INVALID_VERSION;
+//   ObjectWithStringKey graph_store_obj;
+//   graph_store_obj.key = HEAD_INDEX_PREFIX "/graph_store";
+//   graph_store_obj.blob = Blob(graph_store_data, expected_file_size);
+//   graph_store_obj.previous_version = INVALID_VERSION;
+//   graph_store_obj.previous_version_by_key = INVALID_VERSION;
 
-  auto graph_store_put_res = capi.put(graph_store_obj, false);
-  for (auto &reply_future : graph_store_put_res.get()) {
-    auto reply = reply_future.second.get();
-  }
-  std::cout << "Successfully put the graph_store file " << std::endl;
-  delete[] data_store_data;
-  delete[] graph_store_data;
-}
+//   auto graph_store_put_res = capi.put(graph_store_obj, false);
+//   for (auto &reply_future : graph_store_put_res.get()) {
+//     auto reply = reply_future.second.get();
+//   }
+//   std::cout << "Successfully put the graph_store file " << std::endl;
+//   delete[] data_store_data;
+//   delete[] graph_store_data;
+// }
 
 template <typename data_type>
 void convert_diskann_graph_to_adjgraph(
@@ -621,30 +751,30 @@ void convert_diskann_graph_to_adjgraph(
 
 
 
-template<typename data_type>
-void load_diskann_pq_into_cascade(
-    ServiceClientAPI &capi,
-    const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex) {
-  capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(PQ_PREFIX
-								      , PQ_SUBGROUP_INDEX);  
-  parlay::parallel_for(0, _pFlashIndex->get_num_points(), [&](size_t i) {
-    std::vector<uint8_t> pq_vector = _pFlashIndex->get_pq_vector(i);
-    ObjectWithStringKey pq_vector_obj;
-    pq_vector_obj.key = PQ_PREFIX "/vector_" + std::to_string(i);
-    pq_vector_obj.previous_version = INVALID_VERSION;
-    pq_vector_obj.previous_version_by_key = INVALID_VERSION;
+// template<typename data_type>
+// void load_diskann_pq_into_cascade(
+//     ServiceClientAPI &capi,
+//     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex) {
+//   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(PQ_PREFIX
+// 								      , PQ_SUBGROUP_INDEX);  
+//   parlay::parallel_for(0, _pFlashIndex->get_num_points(), [&](size_t i) {
+//     std::vector<uint8_t> pq_vector = _pFlashIndex->get_pq_vector(i);
+//     ObjectWithStringKey pq_vector_obj;
+//     pq_vector_obj.key = PQ_PREFIX "/vector_" + std::to_string(i);
+//     pq_vector_obj.previous_version = INVALID_VERSION;
+//     pq_vector_obj.previous_version_by_key = INVALID_VERSION;
 
-    pq_vector_obj.blob =
-        Blob(reinterpret_cast<const uint8_t *>(pq_vector.data()),
-             pq_vector.size() * sizeof(uint8_t));
+//     pq_vector_obj.blob =
+//         Blob(reinterpret_cast<const uint8_t *>(pq_vector.data()),
+//              pq_vector.size() * sizeof(uint8_t));
     
   
-    auto result = capi.put(pq_vector_obj, false);
-    for (auto &reply_future : result.get()) {
-      auto reply = reply_future.second.get();
-    }
-  });
-}
+//     auto result = capi.put(pq_vector_obj, false);
+//     for (auto &reply_future : result.get()) {
+//       auto reply = reply_future.second.get();
+//     }
+//   });
+// }
 
 
 

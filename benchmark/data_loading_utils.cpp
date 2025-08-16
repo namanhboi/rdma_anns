@@ -127,11 +127,10 @@ void write_cluster_data_folder(const Clusters &clusters,
   if (!fs::exists(cluster_bin_folder)) {
     fs::create_directory(cluster_bin_folder);
   }
-  write_cluster_nodes_bin_file(clusters, output_folder);
   std::string cluster_assignment_all_file =
     output_folder + "/cluster_assignment_all.bin";
   write_cluster_assignment_bin_file(clusters, cluster_assignment_all_file);
-  write_cluster_nodes_bin_file(clusters, output_folder);
+  WriteClusters(clusters, output_folder + "/clusters.txt");
 }
 
 
@@ -170,3 +169,36 @@ void create_object_pools(ServiceClientAPI &capi) {
   
 }
 
+
+
+void load_diskann_pq_into_cascade(ServiceClientAPI &capi,
+                                  const std::string &pq_compressed_vectors,
+                                  const Clusters &clusters) {
+  uint8_t *data = nullptr;
+  size_t npts_u64, nchunks_u64;
+  diskann::load_bin<uint8_t>(pq_compressed_vectors, data, npts_u64,
+                             nchunks_u64);
+  size_t pq_data_size = nchunks_u64 * sizeof(uint8_t);
+  for (auto cluster_id = 0; cluster_id < clusters.size(); cluster_id++) {
+    std::string cluster_folder =
+      UDL2_DATA_PREFIX "/cluster_" + std::to_string(cluster_id);
+
+    parlay::parallel_for(0, clusters[cluster_id].size(), [&](size_t i) {
+      auto vector_id = clusters[cluster_id][i];
+      Blob blob(
+          [&](uint8_t *buffer, const std::size_t size) {
+            std::memcpy(buffer, data + i * nchunks_u64, pq_data_size);
+            return size;
+          },
+          pq_data_size);
+
+      ObjectWithStringKey obj;
+      obj.key = cluster_folder + "_pq_" + std::to_string(vector_id);
+      obj.previous_version = INVALID_VERSION;
+      obj.previous_version_by_key = INVALID_VERSION;
+      obj.blob = std::move(blob);
+      capi.put_and_forget(obj, false);
+    });
+  }
+  
+}

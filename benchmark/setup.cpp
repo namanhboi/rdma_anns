@@ -32,7 +32,20 @@ using namespace parlayANN;
 
 
 template <typename data_type>
-void load_data(ServiceClientAPI &capi, const std::string &index_path_prefix,
+void load_data_fs(ServiceClientAPI &capi, const std::string &data_file, const std::string &index_path_prefix,
+               const int num_clusters, const std::string &clusters_folder) {
+  Clusters clusters = get_clusters_from_diskann_graph<data_type>(
+								 index_path_prefix, num_clusters);
+  write_cluster_data_folder(clusters, clusters_folder);
+
+  create_cluster_index_files<data_type>(clusters, data_file, index_path_prefix,
+                                        clusters_folder);
+    
+}
+
+
+template <typename data_type>
+void load_data_kv(ServiceClientAPI &capi, const std::string &index_path_prefix,
                const int num_clusters, const std::string &clusters_folder) {
   Clusters clusters = get_clusters_from_diskann_graph<data_type>(
 								 index_path_prefix, num_clusters);
@@ -76,16 +89,12 @@ int main(int argc, char **argv) {
   std::string in_mem_index_path;
   std::string query_file;
   std::string gt_file;
+  std::string data_file;
 
   desc.add_options()("help,h", "show help message")(
       "index_path_prefix,P",
       po::value<std::string>(&index_path_prefix)->required(),
-      "Path to index to be loaded into Cascade. The graph will be partioned "
-      "into num_clusters via the balanced graph partitioning algorithm. The "
-      "non overlapping partitions will be loaded into object pools "
-      "/anns/cluster_{i}, where i is the index of the partition. For the ith "
-      "graph partition, we will load the data of the jth vector into "
-      "/anns/cluster_{i}/vector_{j} and Embedding is from the base-path.")(
+      "Path to disk index file.")(
       "data_type,T", po::value<std::string>(&data_type)->required(),
       "Data type of vectors, could be float, uint8, int8")(
       "num_clusters,N", po::value<int>(&num_clusters)->required(),
@@ -99,7 +108,9 @@ int main(int argc, char **argv) {
       "query_file", po::value<std::string>(&query_file),
       "Path to in mem index, if not built then build it and save it there")(
       "gt_file", po::value<std::string>(&gt_file),
-      "Path to in mem index, if not built then build it and save it there");
+      "Path to in mem index, if not built then build it and save it there")(
+      "data_file", po::value<std::string>(&data_file),
+									    "Path to in data file, like sift learn");
 
   po::variables_map vm;
 
@@ -117,19 +128,28 @@ int main(int argc, char **argv) {
 
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   create_object_pools(capi);
-  // test_pq_flash<float>(index_path_prefix, query_file, gt_file);
-  // std::cout << "done searching " << std::endl;
 
-#if !defined(TEST_UDL1) && (defined(IN_MEM) || defined(DISK_KV))
+#if !defined(TEST_UDL1)
+#if  (defined(IN_MEM) || defined(DISK_KV))
   std::cout << "doing data loading" << std::endl;
   if (data_type == "uint8") {
-    load_data<uint8_t>(capi, index_path_prefix, num_clusters, clusters_folder);
+    load_data_kv<uint8_t>(capi, index_path_prefix, num_clusters, clusters_folder);
   } else if (data_type == "int8") {
-    load_data<int8_t>(capi, index_path_prefix, num_clusters, clusters_folder);
+    load_data_kv<int8_t>(capi, index_path_prefix, num_clusters, clusters_folder);
   } else if (data_type == "float") {
-    load_data<float>(capi, index_path_prefix, num_clusters, clusters_folder);
+    load_data_kv<float>(capi, index_path_prefix, num_clusters, clusters_folder);
   }
+#elif defined(DISK_FS)
+  if (data_type == "uint8") {
+    load_data_fs<uint8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+  } else if (data_type == "int8") {
+    load_data_fs<int8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+  } else if (data_type == "float") {
+    load_data_fs<float>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+  }
+
 #endif
+#endif  
   return 0;
   
 }

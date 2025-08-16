@@ -19,12 +19,16 @@
 namespace derecho {
 namespace cascade {
 
+  
 /**
    currently these 2 classes are barebones impl for benchmarking whether cascade
    persistent kv can function as the abstracted datastore for ssd based anns.
 
 Both don't support any medoid data stuff, only 1 entry point, and also doesn't
 have any caching right now
+
+right now kv version performs much better because of the in memeory cache of
+cascade persistent store
 
 */
 
@@ -293,6 +297,9 @@ compressed bin path and not from the pq data from kv store.
           distances[i] = full_retset[i].distance;
       }
     }
+
+
+    
 
     ~SSDIndexKV() {
     if (pq_data != nullptr)
