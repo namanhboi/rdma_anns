@@ -567,7 +567,8 @@ push the compute result to the queue for that query id.
   std::string cluster_search_prefix = UDL2_PATHNAME;
 
   std::string cluster_assignment_bin_file;
-  std::string pq_table_bin;  
+  std::string pq_table_bin;
+  std::string pq_compressed_vectors;    
   std::string index_path_prefix;
   std::vector<std::unique_ptr<SearchThread>> search_threads;
 
@@ -672,7 +673,7 @@ public:
 
             cluster_files_path_prefix, cluster_id, cluster_data_prefix,
             cluster_assignment_bin_file, pq_table_bin, num_search_threads,
-							    [](compute_query_t query) { return; });
+							    [](compute_query_t query) { return; }, pq_compressed_vectors);
 	std::cout << " done createing diskfs " << std::endl;
 #elif defined(DISK_KV)
 
@@ -738,7 +739,13 @@ public:
       if (config.contains("pq_table_bin")) {
         this->pq_table_bin =
           config["pq_table_bin"].get<std::string>();
-      }      
+      }
+
+      if (config.contains("pq_compressed_vectors")) {
+        this->pq_compressed_vectors =
+          config["pq_compressed_vectors"].get<std::string>();
+      }
+      
 
       if (config.contains("index_path_prefix")) {
         this->index_path_prefix =

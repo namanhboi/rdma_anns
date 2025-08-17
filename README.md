@@ -7,4 +7,6 @@ To build,
 - IN\_MEM: test the volatile keyvalue store implementation of searching the index. Data is fetched from kvstore instead of being preloaded from a file. Since we don't do in memory search anymore, we should probably delete this sometime in the future. 
 - DISK\_FS\_DISKANN\_WRAPPER: used for testing disk search where we load the index from file and just use a thin diskann::PQFlashIndex wrapper to search. This only works for 1 cluster scenario, no communication between clusters. Mainly used for testing and we will probably use this for the shard baseline in the future.
 - DISK\_FS\_DISTRIBUTED: our implementation of searching on a hollistic global index. vector embedding + neighbor id is read from file, same way that diskann reads them. PQ data is fetched from volatile kv store to enable cascade get() requests from other clusters for the pq data. If a candidate node during greedy search is not on the server (as determined by a cluster assignment file) then we can send a compute query to the cluster actually containing it to get the distances of its neighbors to the query.
+  - PQ_KV
+  - PQ_FS
 - DISK\_KV: Should be the same idea as the above (currently only works for 1 cluster tho) but the vector embedding and neighbor ids are stored on cascade persistent kvstore instead of on file.

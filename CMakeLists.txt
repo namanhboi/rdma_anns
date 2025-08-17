@@ -53,6 +53,13 @@ if(DISK_FS_DISTRIBUTED)
     add_compile_definitions(DISK_FS_DISTRIBUTED)
 endif()
 
+if(PQ_KV)
+    add_compile_definitions(PQ_KV)
+endif()
+if(PQ_FS)
+    add_compile_definitions(PQ_FS)
+endif()
+
 if(DISK_KV)
     add_compile_definitions(DISK_KV)
 endif()

@@ -41,7 +41,9 @@ void load_data_fs(ServiceClientAPI &capi, const std::string &data_file, const st
   create_cluster_index_files<data_type>(clusters, data_file, index_path_prefix,
                                         clusters_folder);
   // need to load pq data in as well
+#ifdef PQ_KV
   load_diskann_pq_into_cascade(capi, pq_vectors, clusters);
+#endif
 }
 
 
