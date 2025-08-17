@@ -80,6 +80,8 @@ namespace cascade {
       }
     }
     std::function<void(compute_query_t)> send_compute_query_fn;
+
+#ifdef PQ_KV
     void aggregate_pq_coord(
         GetRequestVector<data_type, ObjectWithStringKey> &pq_requests,
 			    uint8_t *pq_coord_scratch) {
@@ -92,6 +94,11 @@ namespace cascade {
                     this->num_chunks * sizeof(uint8_t));
       }
     }
+#else
+    uint8_t* pq_data;
+    
+#endif
+    
 
     inline bool is_in_cluster(uint32_t node_id) const {
       return cluster_assignment[node_id] == this->cluster_id;
@@ -136,7 +143,7 @@ no caching suppport rn, since there is the head index?
              const std::string &udl_cluster_data_prefix,
              const std::string &cluster_assignment_file,
              const std::string &pq_table_bin, uint64_t num_threads,
-             std::function<void(compute_query_t)> send_compute_query_fn)
+             std::function<void(compute_query_t)> send_compute_query_fn, std::string pq_compressed_vectors = "")
         : cluster_id(cluster_id),
           udl_cluster_data_prefix(udl_cluster_data_prefix),
           _thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
@@ -155,8 +162,9 @@ no caching suppport rn, since there is the head index?
 
       
       std::ifstream index_metadata(disk_index_file, std::ios::binary);
-      uint32_t nr, nc; // metadata itself is stored as bin format (nr is number of
-      // metadata, nc should be 1)
+      uint32_t nr, nc; // metadata itself is stored as bin format (nr is number
+      // of metadata, nc should be 1)
+            
       READ_U32(index_metadata, nr);
       READ_U32(index_metadata, nc);
 
@@ -240,6 +248,12 @@ no caching suppport rn, since there is the head index?
       this->_dist_cmp_float.reset(
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
       setup_thread_data(num_threads);
+
+#ifdef PQ_FS
+      size_t npts_u64, nchunks_u64;
+      diskann::load_bin<uint8_t>(pq_compressed_vectors, this->pq_data, npts_u64,
+                                 nchunks_u64);
+#endif
     }
 
 
@@ -315,7 +329,13 @@ no caching suppport rn, since there is the head index?
       float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
       uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
 
+      tsl::robin_set<uint64_t> &visited = query_scratch->visited;
+      retset->reserve(L);
+      std::vector<diskann::Neighbor> &full_retset = query_scratch->full_retset;
 
+      std::vector<float> start_node_pq_dists(start_node_ids.size(), 0.0);
+      
+#ifdef PQ_KV
       auto compute_dists =
           [this, pq_coord_scratch, pq_dists](
               GetRequestVector<data_type, ObjectWithStringKey> &pq_requests,
@@ -325,17 +345,11 @@ no caching suppport rn, since there is the head index?
             diskann::pq_dist_lookup(pq_coord_scratch, num_requests,
                                     this->num_chunks, pq_dists, dists_out);
           };
-
-      tsl::robin_set<uint64_t> &visited = query_scratch->visited;
-      retset->reserve(L);
-      std::vector<diskann::Neighbor> &full_retset = query_scratch->full_retset;
-
-      std::vector<float> start_node_pq_dists(start_node_ids.size(), 0.0);
-      
       std::string in_cluster_pq_prefix = this->udl_cluster_data_prefix + "_pq_";
       GetRequestVector<data_type, ObjectWithStringKey> in_cluster_pq_requests(typed_ctxt, _max_degree);
       GetRequestVector<data_type, ObjectWithStringKey> off_cluster_pq_requests(
 									       typed_ctxt, _max_degree);
+      
       for (auto &node_id : start_node_ids) {
         in_cluster_pq_requests.submit_request(
 					      node_id, in_cluster_pq_prefix + std::to_string(node_id));
@@ -343,6 +357,18 @@ no caching suppport rn, since there is the head index?
 
       compute_dists(in_cluster_pq_requests, start_node_pq_dists.data());
 
+#elif PQ_FS
+      auto compute_dists = [this, pq_coord_scratch,
+                            pq_dists](const uint32_t *ids, const uint64_t n_ids,
+                                      float *dists_out) {
+	diskann::aggregate_coords(ids, n_ids, this->pq_data,
+                                  this->num_chunks, pq_coord_scratch);
+	diskann::pq_dist_lookup(pq_coord_scratch, n_ids, this->num_chunks,
+				pq_dists, dists_out);
+      };
+      compute_dists(start_node_ids.data(), start_node_ids.size(),
+                    start_node_pq_dists.data());
+#endif
 
       for (size_t i = 0; i < start_node_ids.size(); i++) {
         retset->insert(
@@ -429,6 +455,7 @@ no caching suppport rn, since there is the head index?
 
           // extract distances from previous off cluster pq data
           // requests.
+#ifdef PQ_KV          
           auto num_off_cluster_reqs  = off_cluster_pq_requests.size();
           auto off_cluster_req_ids = off_cluster_pq_requests.get_requests_ids();
           if (num_off_cluster_reqs != 0) {
@@ -442,6 +469,7 @@ no caching suppport rn, since there is the head index?
               }
             }
           }
+          
                               
           for (auto i = 0; i < nnbrs; i++) {
             if (is_in_cluster(node_nbrs[i])) {
@@ -459,6 +487,10 @@ no caching suppport rn, since there is the head index?
 
           // compute immediately because pq data in mem
           compute_dists(in_cluster_pq_requests, dist_scratch);
+#elif PQ_FS
+          compute_dists(node_nbrs, nnbrs, dist_scratch);
+          // presume that all pq data resides on node.
+#endif
           for (uint32_t m = 0; m < nnbrs; m++) {
             uint32_t id = node_nbrs[m];
             // not in visited i guess
@@ -478,7 +510,19 @@ no caching suppport rn, since there is the head index?
       }      
       
     }
-    void search() {}
+    ~SSDIndex() {
+#ifdef PQ_FS
+      if (pq_data != nullptr)
+	{
+          delete[] pq_data;
+	}
+#endif
+      diskann::cout << "Clearing scratch" << std::endl;
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(this->_thread_data);
+      manager.destroy();
+      
+    }
+    
 
 
   };
