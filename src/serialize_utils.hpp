@@ -839,97 +839,117 @@ public:
 
 };
 
+/**
+   Send back results for a compute query. Will need to include std::vector of
+   diskann::Neighbors.
 
+Upon receviing the result, all of these nodes. Only insert the neighbors that
+are unvisited. Mark all of these nodes as visited
+
+will also send back full embedding of node id as well for reranking purposes later.
+ */
+template<typename data_type>
 struct compute_result_t {
-  uint8_t cluster_sender_id; 
-  uint8_t cluster_receiver_id;
-  uint32_t receiver_thread_id;
-  diskann::Neighbor node;
-  uint32_t query_id;
   uint32_t num_neighbors;
-  std::shared_ptr<const uint32_t>
-      nbr_ptr; // result of transferring ownership from blob note, must have
-  // associated free_const. Also, first uin32_t in sequence is equal to number of
-  // neighbors
+  std::shared_ptr<uint32_t[]> nbr_ids;
+  std::shared_ptr<float[]> nbr_distances;
+  uint32_t query_id;
+  uint32_t node_id;
+  uint32_t receiver_thread_id;
+  uint32_t dim;
+  std::shared_ptr<data_type[]> embedding;
+  uint8_t cluster_sender_id;
+  uint8_t cluster_receiver_id;
 
   compute_result_t()
       : cluster_sender_id(0), cluster_receiver_id(0), receiver_thread_id(0),
-      node({0, 0}), query_id(0), num_neighbors(0), nbr_ptr(nullptr) {}
+        nbr_ids(nullptr), nbr_distances(nullptr), query_id(0), node_id(0),
+        embedding(nullptr), dim(0) {}
 
-  compute_result_t(uint8_t cluster_sender_id, uint8_t cluster_receiever_id,
-                   uint32_t receiver_thread_id, diskann::Neighbor node,
-                   uint32_t query_id, uint32_t num_neighbors,
-                   std::shared_ptr<const uint32_t> nbr_ptr)
-      : cluster_sender_id(cluster_sender_id),
-        cluster_receiver_id(cluster_receiever_id), receiver_thread_id(receiver_thread_id),
-        node(node), query_id(query_id), num_neighbors(num_neighbors) {
-    if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
-      std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
-    }
-    this->nbr_ptr = nbr_ptr;
-  }
-
+  // compute_result_t(uint8_t cluster_sender_id, uint8_t cluster_receiever_id,
+  //                  uint32_t receiver_thread_id, diskann::Neighbor node,
+  //                  uint32_t query_id, uint32_t num_neighbors,
+  //                  std::shared_ptr<const uint32_t> nbr_ptr)
+  //     : cluster_sender_id(cluster_sender_id),
+  //       cluster_receiver_id(cluster_receiever_id), receiver_thread_id(receiver_thread_id),
+  //       node(node), query_id(query_id), num_neighbors(num_neighbors) {
+  //   if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
+  //     std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
+  //   }
+  //   this->nbr_ptr = nbr_ptr;
+  // }
 
   size_t get_serialize_size() const {
-    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id) + 
-           sizeof(node.id) + sizeof(node.distance) + sizeof(query_id) +
-           sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors;
+
+    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
+           sizeof(receiver_thread_id) + sizeof(uint32_t) * num_neighbors +
+           sizeof(float) * num_neighbors + sizeof(num_neighbors) +
+           sizeof(query_id) + sizeof(data_type) * dim + sizeof(dim) + sizeof(node_id);
   }
 
   void write_serialize(uint8_t *buffer) const {
-    if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
-      std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
-    }
     uint32_t offset = 0;
+    std::memcpy(buffer + offset, &num_neighbors, sizeof(num_neighbors));
+    offset += sizeof(num_neighbors);
+
+    std::memcpy(buffer + offset, nbr_ids.get(),
+                sizeof(uint32_t) * num_neighbors);
+    offset += sizeof(uint32_t) * num_neighbors;
+
+    std::memcpy(buffer + offset, nbr_distances.get(),
+                sizeof(float) * num_neighbors);
+    offset += sizeof(float) * num_neighbors;
+
+    std::memcpy(buffer + offset, &query_id, sizeof(query_id));
+    offset += sizeof(query_id);
+
+    std::memcpy(buffer + offset, &node_id, sizeof(node_id));
+    offset += sizeof(node_id);
+
+    std::memcpy(buffer + offset, &receiver_thread_id,
+                sizeof(receiver_thread_id));
+    offset += sizeof(receiver_thread_id);
+
+    std::memcpy(buffer + offset, &dim, sizeof(dim));
+    offset += sizeof(dim);
+
+    std::memcpy(buffer + offset, embedding.get(), sizeof(data_type) * dim);
+    offset += sizeof(data_type) * dim;
+
     std::memcpy(buffer, &cluster_sender_id, sizeof(cluster_sender_id));
     offset += sizeof(cluster_sender_id);
 
     std::memcpy(buffer + offset, &cluster_receiver_id,
                 sizeof(cluster_receiver_id));
     offset += sizeof(cluster_receiver_id);
-
-    std::memcpy(buffer + offset, &receiver_thread_id,
-                sizeof(receiver_thread_id));
-    offset += sizeof(receiver_thread_id);
-
-    std::memcpy(buffer + offset, &node.id, sizeof(node.id));
-    offset += sizeof(node.id);
-
-    std::memcpy(buffer + offset, &node.distance, sizeof(node.distance));
-    offset += sizeof(node.distance);
-    
-    std::memcpy(buffer + offset, &query_id, sizeof(query_id));
-    offset += sizeof(query_id);
-    
-    std::memcpy(buffer + offset, &num_neighbors, sizeof(num_neighbors));
-    offset += sizeof(num_neighbors);
-
-    const uint32_t *nbr_id_start_ptr = nbr_ptr.get() + 1;
-    std::memcpy(buffer + offset, nbr_id_start_ptr, sizeof(uint32_t) * num_neighbors);
   }
 };
 
 // reason for this class to exist is because of shared ptr to buffer. Don't want
 // to deallocate memory when it's still needed.
+template<typename data_type>
 class ComputeResult {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
+
+  uint32_t num_neighbors;
+  const uint32_t *nbr_ids;
+  const float *nbr_distances;
+  uint32_t query_id;
+  uint32_t node_id;
+  uint32_t receiver_thread_id;
+  uint32_t dim;
+  const data_type *embedding_ptr;
   
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
-  uint32_t receiver_thread_id;
-  
-  diskann::Neighbor node;
-  uint32_t query_id;
-  uint32_t num_neighbors;
-  const uint32_t* neighbors;
-
 public:
   ComputeResult()
-      : buffer(nullptr), buffer_size(0), cluster_sender_id(0),
-        cluster_receiver_id(0), receiver_thread_id(0), node({0, 0.0}),
-        query_id(0), num_neighbors(0), neighbors(nullptr) {}
-  
+      : buffer(nullptr), buffer_size(0), nbr_ids(nullptr),
+        nbr_distances(nullptr), query_id(0), node_id(0), num_neighbors(0),
+        receiver_thread_id(0), dim(0), embedding_ptr(nullptr),
+        cluster_sender_id(0), cluster_receiver_id(0) {}
+    
   ComputeResult(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
                 uint32_t data_position) {
     this->buffer = buffer;
@@ -939,67 +959,101 @@ public:
 
   void initialize(uint32_t data_position) {
     uint32_t offset = data_position;
-    
-    this->cluster_sender_id = *(buffer.get() + offset);
-    offset += sizeof(cluster_sender_id);
-
-    this->cluster_receiver_id = *(buffer.get() + offset);
-    offset += sizeof(cluster_receiver_id);
-
-    this->receiver_thread_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
-    offset += sizeof(receiver_thread_id);
-
-    uint32_t node_id =
-      *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
-    offset += sizeof(node_id);
-
-    float distance = *reinterpret_cast<const float *>(buffer.get() + offset);
-    offset += sizeof(distance);
-
-    this->node = {node_id, distance};
-
-    this->query_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
-    offset += sizeof(this->query_id);
 
     this->num_neighbors =
       *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
-    offset += sizeof(num_neighbors);
-
-    this->neighbors = reinterpret_cast<const uint32_t *>(buffer.get() + offset);
     
+    this->nbr_ids = reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(uint32_t) * num_neighbors;
+
+    this->nbr_distances =
+      reinterpret_cast<const float *>(buffer.get() + offset);
+    offset += sizeof(float) * num_neighbors;
+
+    this->query_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(uint32_t);
+
+    this->node_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(uint32_t);
+
+    this->receiver_thread_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(uint32_t);
+
+    this->dim = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(uint32_t);
+
+    this->embedding_ptr =
+      reinterpret_cast<const data_type *>(buffer.get() + offset);
+    offset += sizeof(data_type) * this->dim;
+
+    this->cluster_sender_id = *reinterpret_cast<const uint8_t *>(buffer.get() + offset);
+    offset += sizeof(uint8_t);
+
+    this->cluster_receiver_id = *reinterpret_cast<const uint8_t *>(buffer.get() + offset);
+    offset += sizeof(uint8_t);
   }
+
   size_t get_serialize_size() const {
-    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
-           sizeof(receiver_thread_id) +
-           sizeof(node.id) + sizeof(node.distance) + sizeof(query_id) +
-           sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors;
+    return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
+           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
+           sizeof(receiver_thread_id) + sizeof(dim) + sizeof(data_type) * dim +
+           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id);
   }
 
-  const uint32_t *get_neighbors_ptr() const { return neighbors; }
-
-
-  uint8_t get_cluster_sender_id() const { return cluster_sender_id; }
-  uint8_t get_cluster_receiver_id() const { return cluster_receiver_id; }
-  diskann::Neighbor get_node() const { return node; }
-  uint32_t get_query_id() const { return query_id; }
-  uint32_t get_num_neighbors() const { return num_neighbors; }
-
-  uint32_t get_receiver_thread_id() const {return receiver_thread_id;}
+  uint32_t get_num_neighbors() const {
+    return num_neighbors;
+  }
   
+  const uint32_t* get_nbr_ids() const {
+    return nbr_ids;
+  }
+  
+  const float* get_nbr_distances() const {
+    return nbr_distances;
+  }
+  
+  uint32_t get_query_id() const {
+    return query_id;
+  }
+  
+  uint32_t get_node_id() const {
+    return node_id;
+  }
+  
+  uint32_t get_receiver_thread_id() const {
+    return receiver_thread_id;
+  }
+  
+  uint32_t get_dim() const {
+    return dim;
+  }
+  
+  const data_type* get_embedding_ptr() const {
+    return embedding_ptr;
+  }
+  
+  uint8_t get_cluster_sender_id() const {
+    return cluster_sender_id;
+  }
+  
+  uint8_t get_cluster_receiver_id() const {
+    return cluster_receiver_id;
+  }
 };
 
 
-// results could be a vector of shared ptr 
+template<typename data_type>
 class ComputeResultBatcher {
   std::shared_ptr<derecho::cascade::Blob> blob;
-  std::vector<compute_result_t> results;
-
+  std::vector<std::shared_ptr<compute_result_t<data_type>>> results;
 public:
   ComputeResultBatcher() {}
-  
+
   ComputeResultBatcher(uint32_t size_hint) { results.reserve(size_hint); }
 
-  void push(const compute_result_t &result) { results.emplace_back(result); }
+  void push(std::shared_ptr<compute_result_t<data_type>> result) {
+    results.emplace_back(std::move(result));
+  }
 
   static uint32_t get_header_size() { return sizeof(uint32_t); }
 
@@ -1011,7 +1065,7 @@ public:
   size_t get_serialize_size() {
     size_t total_size = ComputeResultBatcher::get_header_size();
     for (const auto &result : results) {
-      total_size += result.get_serialize_size();
+      total_size += result->get_serialize_size();
     }
     return total_size;
   }
@@ -1021,8 +1075,8 @@ public:
     write_header(buffer + offset);
     offset += ComputeResultBatcher::get_header_size();
     for (const auto &result : results) {
-      result.write_serialize(buffer + offset);
-      offset += result.get_serialize_size();
+      result->write_serialize(buffer + offset);
+      offset += result->get_serialize_size();
     }
   }
   void serialize() {
@@ -1050,19 +1104,22 @@ public:
   }    
 };
 
-
+template<typename data_type>
 class ComputeResultBatchManager {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
   uint32_t num_results;
   uint32_t data_position;
 
-  std::vector<ComputeResult> results;
+  std::vector<std::shared_ptr<ComputeResult<data_type>>> results;
   void create_results() {
-    uint32_t offset = data_position + ComputeResultBatcher::get_header_size();
+    uint32_t offset = data_position + ComputeResultBatcher<data_type>::get_header_size();
     for (uint32_t i = 0; i < num_results; i++) {
-      results.emplace_back(buffer, buffer_size, offset);
-      offset += results[i].get_serialize_size();
+      std::shared_ptr<ComputeResult<data_type>> tmp_res =
+          std::make_shared<ComputeResult<data_type>>(buffer, buffer_size,
+                                                     offset);
+      results.emplace_back(std::move(tmp_res));
+      offset += results[i]->get_serialize_size();
     }
   }
   
@@ -1084,7 +1141,7 @@ public:
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
 
-  std::vector<ComputeResult> &get_results() {
+  std::vector<std::shared_ptr<ComputeResult<data_type>>> &get_results() {
     if (results.empty()) {
       create_results();
     }
@@ -1334,7 +1391,7 @@ class GlobalSearchMessageBatcher {
   EmbeddingQueryBatcher<data_type> query_embeddings_batcher;
   GreedySearchQueryBatcher<data_type> search_queries_batcher;
   ComputeQueryBatcher compute_queries_batcher;
-  ComputeResultBatcher compute_results_batcher;
+  ComputeResultBatcher<data_type> compute_results_batcher;
 
   // std::vector<global_search_message<data_type>> messages;
   uint32_t query_emb_dim; // this is only used for head search udl
@@ -1346,7 +1403,7 @@ public:
     this->search_queries_batcher =
       GreedySearchQueryBatcher<data_type>(emb_dim, size_hint);
     this->compute_queries_batcher = ComputeQueryBatcher(size_hint);
-    this->compute_results_batcher = ComputeResultBatcher(size_hint);
+    this->compute_results_batcher = ComputeResultBatcher<data_type>(size_hint);
     this->query_embeddings_batcher =
       EmbeddingQueryBatcher<data_type>(emb_dim, size_hint);
   }
@@ -1360,8 +1417,8 @@ public:
     this->compute_queries_batcher.push(compute_query);
   }
 
-  void push_compute_result(compute_result_t compute_result) {
-    this->compute_results_batcher.push(compute_result);
+  void push_compute_result(std::shared_ptr<compute_result_t<data_type>> compute_result) {
+    this->compute_results_batcher.push(std::move(compute_result));
   }
   void push_embedding_query(
 			    std::shared_ptr<EmbeddingQuery<data_type>> emb_query) {
@@ -1436,7 +1493,7 @@ template <typename data_type> class GlobalSearchMessageBatchManager {
   uint64_t buffer_size;
   std::unique_ptr<GreedySearchQueryBatchManager<data_type>> greedy_search_manager;
   std::unique_ptr<ComputeQueryBatchManager> compute_query_manager;
-  std::unique_ptr<ComputeResultBatchManager> compute_result_manager;
+  std::unique_ptr<ComputeResultBatchManager<data_type>> compute_result_manager;
   std::unique_ptr<EmbeddingQueryBatchManager<data_type>> embedding_query_manager;
   
 public:
@@ -1458,7 +1515,7 @@ public:
 									      this->buffer, this->buffer_size, embedding_queries_position);
     greedy_search_manager = std::make_unique<GreedySearchQueryBatchManager<data_type>>(
 									       this->buffer, this->buffer_size, search_queries_position);
-    compute_result_manager = std::make_unique<ComputeResultBatchManager>(
+    compute_result_manager = std::make_unique<ComputeResultBatchManager<data_type>>(
 								 this->buffer, this->buffer_size, compute_results_position);
     compute_query_manager = std::make_unique<ComputeQueryBatchManager>(
 								       this->buffer, this->buffer_size, compute_queries_position);
@@ -1478,10 +1535,9 @@ public:
     return this->compute_query_manager->get_queries();
   }
 
-  std::vector<ComputeResult> &get_compute_results() {
+  std::vector<std::shared_ptr<ComputeResult<data_type>>> &get_compute_results() {
     return this->compute_result_manager->get_results();
   }
-
 
   uint32_t get_num_messages() const {
     return this->embedding_query_manager->get_num_queries() +
@@ -1489,8 +1545,6 @@ public:
            this->compute_query_manager->get_num_queries() +
            this->compute_result_manager->get_num_results();
   }
-
-
 };  
 
 uint8_t get_cluster_id(const std::string &key);
