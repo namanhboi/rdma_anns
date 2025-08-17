@@ -95,7 +95,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
 #elif defined(DISK_FS_DISTRIBUTED)
 	// std::cout << "disk fs search called " << std::endl;
-	parent->index->search();
+	std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset = std::make_shared<diskann::ConcurrentNeighborPriorityQueue>(query_id);
+	parent->index->search(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue(), retset);
+
 #elif defined(DISK_KV)
 	// std::cout << "disk kv search called " << std::endl;
 	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
@@ -665,15 +667,15 @@ public:
         << key_string << std::endl;
 #elif defined(DISK_FS_DISTRIBUTED)
         
-	std::string cluster_path_prefix = index_path_prefix + std::to_string(cluster_id);
+	std::string cluster_files_path_prefix = index_path_prefix + std::to_string(cluster_id);
         this->index = std::make_unique<SSDIndex<data_type>>(
-            cluster_path_prefix, cluster_data_prefix,
+
+            cluster_files_path_prefix, cluster_id, cluster_data_prefix,
             cluster_assignment_bin_file, pq_table_bin, num_search_threads,
-            [](compute_query_t query) {
-              return;
-            });
+							    [](compute_query_t query) { return; });
 	std::cout << " done createing diskfs " << std::endl;
 #elif defined(DISK_KV)
+
 	std::cout << "start creating SSDINDEXKV" << std::endl;
         this->index = std::make_unique<SSDIndexKV<data_type>>(
             this->index_path_prefix, cluster_data_prefix,

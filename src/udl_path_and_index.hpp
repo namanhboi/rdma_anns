@@ -26,7 +26,7 @@ notify, we don't have to do any replication in a shard i hope?
 
 
 #define UDL1_OBJ_POOL "/anns/head_search"
-#define UDL1_SUBGROUP_INDEX 1
+#define UDL1_SUBGROUP_INDEX 0
 #define UDL1_PATHNAME "/anns/head_search"
 
 #ifdef IN_MEM
@@ -36,16 +36,23 @@ notify, we don't have to do any replication in a shard i hope?
 #endif
 // put queries here : /anns/head_search/query_i to trigger head index search
 
-#define UDL2_SUBGROUP_INDEX 1
+#define UDL2_SUBGROUP_INDEX 0
 #define UDL2_OBJ_POOL "/anns/global"
 #define UDL2_DATA_PREFIX "/anns/global/data"
 #define UDL2_PATHNAME "/anns/global/search"
 
-#ifdef IN_MEM
+#if defined(IN_MEM) || defined(DISK_FS_DISTRIBUTED)
 #define UDL2_OBJ_POOL_TYPE VolatileCascadeStoreWithStringKey
 #else
 #define UDL2_OBJ_POOL_TYPE PersistentCascadeStoreWithStringKey
 #endif
+// disk_fs_distributed is volatile becacuse we only need to store pq data
+// disk_kv will use persistent since that is testing performance of storing
+// vectors on persistent kv store
+// disk_fs_diskann_wrapper doesn't use kvstore so doesn't matter
+
+
+
 
 // both UDL2_DATA_PREFIX and UDL2_PATHNAME are a part of the same object pool /anns/global
 

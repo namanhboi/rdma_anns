@@ -21,6 +21,15 @@ public:
 			       id, typed_ctxt->get_service_client_ref().get(key, CURRENT_VERSION, true));
   }
 
+  std::vector<uint64_t> get_requests_ids() {
+    std::vector<uint64_t> ids;
+    for (auto &[id, _] : _get_requests) {
+      ids.emplace_back(id);
+    }
+    return ids;
+  }
+
+  // this clears all get requests
   std::vector<std::pair<uint64_t, std::shared_ptr<const T>>> get_results() {
     std::vector<std::pair<uint64_t, std::shared_ptr<const T>>> results;
     for (auto i = 0; i < _get_requests.size(); i++) {
@@ -36,6 +45,9 @@ public:
     }
     _get_requests.clear();
     return results;
+  }
+  size_t size() const{
+    return _get_requests.size();
   }    
 };  
 

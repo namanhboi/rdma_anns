@@ -8,10 +8,12 @@
 #include "utils.h"
 #include <cascade/service_types.hpp>
 #include <memory>
+#include <stdexcept>
 #include "get_request_manager.hpp"
 #include "udl_path_and_index.hpp"
 #include "pq.h"
 #include "concurrent_neighbor_priority_queue.hpp"
+#include "pq_scratch.h"
 #define BEAMWIDTH 1
 #define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
@@ -35,7 +37,7 @@ namespace cascade {
     // used to determine the order/index in which that node_id is written to the
     // cluster disk index file. This index is then used to calculate the sector
     // id and offset
-    tsl::robin_map<uint32_t, uint32_t> node_id_to_index;
+    tsl::robin_map<uint64_t, uint64_t> node_id_to_index;
 
     // used to determine which cluster a node resides in.
     std::vector<uint8_t> cluster_assignment;
@@ -61,15 +63,63 @@ namespace cascade {
     uint64_t _nnodes_per_sector = 0; // 0 for multi-sector nodes, >0 for multi-node sectors
     uint64_t _max_degree = 0;
 
-
+    uint8_t cluster_id;
     void setup_thread_data(uint64_t num_threads) {
+#pragma omp parallel for num_threads((int)num_threads)
       for (int64_t i = 0; i < (int64_t)num_threads; i++) {
-        diskann::SSDThreadData<data_type> *data = new diskann::SSDThreadData<data_type>(this->_aligned_dim, 4096);
-        this->_thread_data.push(data);
+#pragma omp critical
+        {
+          diskann::SSDThreadData<data_type> *data =
+              new diskann::SSDThreadData<data_type>(this->_aligned_dim, 4096);
+
+          this->reader->register_thread();
+          data->ctx = this->reader->get_ctx();
+
+          this->_thread_data.push(data);
+        }
       }
     }
     std::function<void(compute_query_t)> send_compute_query_fn;
-    
+    void aggregate_pq_coord(
+        GetRequestVector<data_type, ObjectWithStringKey> &pq_requests,
+			    uint8_t *pq_coord_scratch) {
+      std::vector<std::pair<uint64_t, std::shared_ptr<const data_type>>>
+      pq_results = pq_requests.get_results();
+
+      for (auto i = 0; i < pq_results.size(); i++) {
+        std::memcpy(pq_coord_scratch + i * this->num_chunks,
+                    pq_results[i].second.get(),
+                    this->num_chunks * sizeof(uint8_t));
+      }
+    }
+
+    inline bool is_in_cluster(uint32_t node_id) const {
+      return cluster_assignment[node_id] == this->cluster_id;
+    }
+
+    inline uint64_t get_node_sector(uint64_t node_id) {
+      return 1 + (_nnodes_per_sector > 0
+                      ? node_id_to_index[node_id] / _nnodes_per_sector
+                      : node_id_to_index[node_id] *
+                            DIV_ROUND_UP(_max_node_len,
+                                         diskann::defaults::SECTOR_LEN));
+    }
+    inline char *offset_to_node(char *sector_buf, uint64_t node_id) {
+      return sector_buf +
+             (_nnodes_per_sector == 0
+                  ? 0
+                  : (node_id_to_index[node_id] % _nnodes_per_sector) *
+                    _max_node_len);
+    }
+
+    inline uint32_t* offset_to_node_nhood(char *node_buf){
+      return (unsigned *)(node_buf + _disk_bytes_per_point);
+    }
+    inline data_type* offset_to_node_coords(char *node_buf)
+    {
+      return (data_type *)(node_buf);
+    }
+
   public:
     /**
        index_path_prefix will be used to determine this cluster's disk index
@@ -78,21 +128,31 @@ namespace cascade {
 
        cluster_assignment_file will be used to determine which cluster a node id
        belongs to.
+
+
+no caching suppport rn, since there is the head index?
        */
-    SSDIndex(const std::string &index_path_prefix,
+    SSDIndex(const std::string &index_path_prefix, const uint8_t &cluster_id,
              const std::string &udl_cluster_data_prefix,
              const std::string &cluster_assignment_file,
              const std::string &pq_table_bin, uint64_t num_threads,
              std::function<void(compute_query_t)> send_compute_query_fn)
-        : udl_cluster_data_prefix(udl_cluster_data_prefix),
-        _thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
+        : cluster_id(cluster_id),
+          udl_cluster_data_prefix(udl_cluster_data_prefix),
+          _thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
     {
       // TODO register aligned reader and open the disk index file
       std::string disk_index_file = index_path_prefix + "_disk.index";
+      if (!std::filesystem::exists(disk_index_file)) {
+        std::stringstream error_msg;
+        error_msg << "disk index file doesn't exist " << disk_index_file
+        << " cluster id " << cluster_id << std::endl;
+        throw std::invalid_argument(error_msg.str());
+      }
 
       reader.reset(new LinuxAlignedFileReader());
       reader->open(disk_index_file);
-      setup_thread_data(num_threads);
+
       
       std::ifstream index_metadata(disk_index_file, std::ios::binary);
       uint32_t nr, nc; // metadata itself is stored as bin format (nr is number of
@@ -105,6 +165,7 @@ namespace cascade {
       READ_U64(index_metadata, disk_nnodes);
       READ_U64(index_metadata, disk_ndims);
       this->dim = disk_ndims;
+      std::cout << "dimension is " << disk_ndims << std::endl;
       this->num_points = disk_nnodes;
       this->_disk_bytes_per_point = this->dim * sizeof(data_type);
 
@@ -139,7 +200,7 @@ namespace cascade {
       }
 
       for (auto i = 0; i < num_pts; i++) {
-        node_id_to_index[node_ids[i]] = i;
+        node_id_to_index[((uint64_t)node_ids[i])] = ((uint64_t)i);
       }
 
       // TODO load in cluster assignemnt file
@@ -178,16 +239,248 @@ namespace cascade {
 			    diskann::get_distance_function<data_type>(diskann::Metric::L2));
       this->_dist_cmp_float.reset(
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
+      setup_thread_data(num_threads);
     }
+
 
 
     void
     search(DefaultCascadeContextType *typed_ctxt, const data_type *query,
            const int64_t K, const uint64_t L, uint64_t *indices,
            float *distances, std::vector<uint32_t> start_node_ids,
-           std::function<void(compute_query_t)> send_compute_query_fn,
-           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset) {}
+           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset,
+           uint32_t beam_width = 1) {
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
+									      this->_thread_data);
+      auto data = manager.scratch_space();
+      IOContext &ctx = data->ctx;
+      
+      // // all data necessary for querying and pq operations will be accessed
+      // // through these 2 pointers.
+      auto query_scratch = &(data->scratch);
+      // this contains preallocated ptrs to pq table, pq processed query, etc
+      auto pq_query_scratch = query_scratch->pq_scratch();
+
+      query_scratch->reset();
+
+      // // aligned malloc memset to 0, need to copy query to here to do
+      // // computation since a lot of operations only work on aligned mem address
+      data_type *aligned_query_T = query_scratch->aligned_query_T();
+
+      // // aligned malloc for pq computation,
+      // // converts whatever type the query is to a float,
+      // // will contain the same data as aligned_query_T
+      float *query_float = pq_query_scratch->aligned_query_float;
+
+      // // whether this is used or not depends on there is a rotation matrix file
+      // // that has index_path_prefix as a path prefix
+      float *query_rotated = pq_query_scratch->rotated_query;
+
+      for (size_t i = 0; i < this->dim; i++) {
+	aligned_query_T[i] = query[i];
+      }
+
+      // // copies data from aligned query to query float and query rotated
+      pq_query_scratch->initialize(this->dim, aligned_query_T);
+
+      // // // this is where the full precision embeddings will be copied into to do
+      // // full distance computation with
+      data_type *full_precision_emb_buffer = query_scratch->coord_scratch;
+
+      // write data from aio here
+      char *sector_scratch = query_scratch->sector_scratch;
+      uint64_t &sector_scratch_idx =
+          query_scratch->sector_idx; // index into sector_scratch so that writes
+      // dont overlap
+      
+      const uint64_t num_sectors_per_node =
+          _nnodes_per_sector > 0
+              ? 1
+          : DIV_ROUND_UP(_max_node_len, diskann::defaults::SECTOR_LEN);
+
+      // // // not sure why this is necessary in pq_flash_index search method since
+      // // // won't we be overwriting it constantly?
+      // // _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
+
+      pq_table.preprocess_query(query_rotated);
+
+      float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
+      pq_table.populate_chunk_distances(query_rotated, pq_dists);
+      // after this, pq query distance to all centroids in pq table is
+      // calcucated in pq_dists, and pq_dists is used for fast look up for pq
+      // distance calculation
+
+      // // this is where you write the pq coordinates of points to do pq
+      // // computation with
+      float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
+      uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
+
+
+      auto compute_dists =
+          [this, pq_coord_scratch, pq_dists](
+              GetRequestVector<data_type, ObjectWithStringKey> &pq_requests,
+              float *dists_out) {
+            size_t num_requests = pq_requests.size();
+            aggregate_pq_coord(pq_requests, pq_coord_scratch);
+            diskann::pq_dist_lookup(pq_coord_scratch, num_requests,
+                                    this->num_chunks, pq_dists, dists_out);
+          };
+
+      tsl::robin_set<uint64_t> &visited = query_scratch->visited;
+      retset->reserve(L);
+      std::vector<diskann::Neighbor> &full_retset = query_scratch->full_retset;
+
+      std::vector<float> start_node_pq_dists(start_node_ids.size(), 0.0);
+      
+      std::string in_cluster_pq_prefix = this->udl_cluster_data_prefix + "_pq_";
+      GetRequestVector<data_type, ObjectWithStringKey> in_cluster_pq_requests(typed_ctxt, _max_degree);
+      GetRequestVector<data_type, ObjectWithStringKey> off_cluster_pq_requests(
+									       typed_ctxt, _max_degree);
+      for (auto &node_id : start_node_ids) {
+        in_cluster_pq_requests.submit_request(
+					      node_id, in_cluster_pq_prefix + std::to_string(node_id));
+      }
+
+      compute_dists(in_cluster_pq_requests, start_node_pq_dists.data());
+
+
+      for (size_t i = 0; i < start_node_ids.size(); i++) {
+        retset->insert(
+		       diskann::Neighbor(start_node_ids[i], start_node_pq_dists[i]));
+	visited.insert(start_node_ids[i]);
+      }
+
+      // used to determine which nodes to do get request, reason this exist is
+      // because we might want to increase beamwidth in the future
+      std::vector<uint32_t> frontier;
+      frontier.reserve(2 * beam_width);
+
+      //ptr into sector scratch
+      std::vector<std::pair<uint32_t, char *>> frontier_nhoods;
+      frontier_nhoods.reserve(2 * beam_width);
+
+      std::vector<AlignedRead> frontier_read_reqs;
+      frontier_read_reqs.reserve(2 * beam_width);
+      
+      // need to look at original pq_flash_index.cpp impl
+      while (retset->has_unexpanded_node()) {
+        frontier.clear();
+        frontier_nhoods.clear();
+        frontier_read_reqs.clear();
+        sector_scratch_idx = 0;
+
+	auto nbr = retset->closest_unexpanded();
+        frontier.push_back(nbr.id);
+	uint32_t num_seen = 0;
+        while (retset->has_unexpanded_node() && frontier.size() < beam_width &&
+               num_seen < beam_width) {
+            auto nbr = retset->closest_unexpanded();
+            num_seen++;
+            frontier.push_back(nbr.id);
+        }
+        
+        if (!frontier.empty()) {
+          for (size_t i = 0; i < frontier.size();i++) {
+            // submit read request if the candidate node is in the cluster, if
+            // not then use the callback std::function to send task
+            uint32_t node_id = frontier[i];
+            if (is_in_cluster(node_id)) {
+              std::pair<uint32_t, char *> fnhood;
+              fnhood.first = node_id;
+              fnhood.second = sector_scratch +
+                              num_sectors_per_node * sector_scratch_idx *
+                              diskann::defaults::SECTOR_LEN;
+              sector_scratch_idx++;
+              frontier_nhoods.push_back(fnhood);
+              frontier_read_reqs.emplace_back(get_node_sector((size_t)node_id) *
+                                                  diskann::defaults::SECTOR_LEN,
+                                              num_sectors_per_node *
+                                                  diskann::defaults::SECTOR_LEN,
+                                              fnhood.second);
+
+            } else {
+              // TODO, need to impl. Currently not testing this rn.
+              compute_query_t query;
+              this->send_compute_query_fn(query);
+	    }
+          }
+          reader->read(frontier_read_reqs, ctx);
+          
+        }
+
+        // right now we are doing fully synchronous io, can look at pipeann to
+        // do async
+        for (auto &frontier_nhood : frontier_nhoods) {
+          char *node_disk_buf = offset_to_node(frontier_nhood.second, frontier_nhood.first);
+          uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
+          uint64_t nnbrs = (uint64_t)(*node_buf);
+          data_type *node_fp_coords = offset_to_node_coords(node_disk_buf);
+          memcpy(full_precision_emb_buffer, node_fp_coords, _disk_bytes_per_point);
+          float cur_expanded_dist;
+          cur_expanded_dist =
+              _dist_cmp->compare(aligned_query_T, full_precision_emb_buffer,
+                                 (uint32_t)_aligned_dim);
+          full_retset.push_back(
+				diskann::Neighbor(frontier_nhood.first, cur_expanded_dist));
+          uint32_t *node_nbrs = (node_buf + 1);
+          // get pq data of neighbors in cluster,
+          // compute node_nbrs <-> query dist in PQ space
+          // compute_dists(node_nbrs, nnbrs, dist_scratch);
+
+          // extract distances from previous off cluster pq data
+          // requests.
+          auto num_off_cluster_reqs  = off_cluster_pq_requests.size();
+          auto off_cluster_req_ids = off_cluster_pq_requests.get_requests_ids();
+          if (num_off_cluster_reqs != 0) {
+            compute_dists(off_cluster_pq_requests, dist_scratch);
+            for (auto i = 0; i < num_off_cluster_reqs; i++) {
+              uint32_t id = off_cluster_req_ids[i];
+              if (visited.insert(id).second) {
+		float dist = dist_scratch[i];
+		diskann::Neighbor nn(id, dist);
+		retset->insert(nn);
+              }
+            }
+          }
+                              
+          for (auto i = 0; i < nnbrs; i++) {
+            if (is_in_cluster(node_nbrs[i])) {
+              in_cluster_pq_requests.submit_request(
+						    node_nbrs[i], in_cluster_pq_prefix + std::to_string(node_nbrs[i]));
+            } else {
+              uint8_t nbr_cluster = cluster_assignment[node_nbrs[i]];
+              std::string off_cluster_pq_key =
+                  UDL2_DATA_PREFIX "/cluster_" + std::to_string(nbr_cluster) +
+                  "_pq_" + std::to_string(node_nbrs[i]);
+              off_cluster_pq_requests.submit_request(node_nbrs[i],
+                                                     off_cluster_pq_key);
+	    }
+          }
+
+          // compute immediately because pq data in mem
+          compute_dists(in_cluster_pq_requests, dist_scratch);
+          for (uint32_t m = 0; m < nnbrs; m++) {
+            uint32_t id = node_nbrs[m];
+            // not in visited i guess
+            if (visited.insert(id).second) {
+              float dist = dist_scratch[m];
+	      diskann::Neighbor nn(id, dist);
+              retset->insert(nn);
+            }
+          }
+        }
+      }
+      std::sort(full_retset.begin(), full_retset.end());
+      for (uint64_t i = 0; i < K; i++) {
+        indices[i] = full_retset[i].id;
+        if (distances != nullptr)
+          distances[i] = full_retset[i].distance;
+      }      
+      
+    }
     void search() {}
+
+
   };
 
 

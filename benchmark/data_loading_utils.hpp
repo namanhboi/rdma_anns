@@ -456,7 +456,7 @@ void build_and_save_head_index(
   //
   uint64_t aligned_dim = ROUND_UP(
       _pFlashIndex->get_data_dim(),
-      8); // round up the dimension to a multiple of 8, a lof of operations
+      8); // round up the dimension to a multiple of 8, a lof of opertaions
           // indlucding index building requires that the allocated data for
           // coordinates of vectors need to be aligned this way
   

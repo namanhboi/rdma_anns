@@ -33,14 +33,15 @@ using namespace parlayANN;
 
 template <typename data_type>
 void load_data_fs(ServiceClientAPI &capi, const std::string &data_file, const std::string &index_path_prefix,
-               const int num_clusters, const std::string &clusters_folder) {
+		  const int num_clusters, const std::string &clusters_folder, const std::string &pq_vectors) {
   Clusters clusters = get_clusters_from_diskann_graph<data_type>(
 								 index_path_prefix, num_clusters);
   write_cluster_data_folder(clusters, clusters_folder);
 
   create_cluster_index_files<data_type>(clusters, data_file, index_path_prefix,
                                         clusters_folder);
-    
+  // need to load pq data in as well
+  load_diskann_pq_into_cascade(capi, pq_vectors, clusters);
 }
 
 
@@ -90,6 +91,7 @@ int main(int argc, char **argv) {
   std::string query_file;
   std::string gt_file;
   std::string data_file;
+  std::string pq_vectors;
 
   desc.add_options()("help,h", "show help message")(
       "index_path_prefix,P",
@@ -110,8 +112,9 @@ int main(int argc, char **argv) {
       "gt_file", po::value<std::string>(&gt_file),
       "Path to in mem index, if not built then build it and save it there")(
       "data_file", po::value<std::string>(&data_file),
-									    "Path to in data file, like sift learn");
-
+      "Path to in data file, like sift learn")(
+      "pq_vectors", po::value<std::string>(&pq_vectors),
+					       "Path to pq compressed vectors bin file");
   po::variables_map vm;
 
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -141,11 +144,11 @@ int main(int argc, char **argv) {
   }
 #elif defined(DISK_FS_DISKANN_WRAPPER) || defined(DISK_FS_DISTRIBUTED)
   if (data_type == "uint8") {
-    load_data_fs<uint8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+    load_data_fs<uint8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   } else if (data_type == "int8") {
-    load_data_fs<int8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+    load_data_fs<int8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   } else if (data_type == "float") {
-    load_data_fs<float>(capi, data_file,index_path_prefix, num_clusters, clusters_folder);
+    load_data_fs<float>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   }
 
 #endif

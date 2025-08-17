@@ -169,8 +169,6 @@ void create_object_pools(ServiceClientAPI &capi) {
   
 }
 
-
-
 void load_diskann_pq_into_cascade(ServiceClientAPI &capi,
                                   const std::string &pq_compressed_vectors,
                                   const Clusters &clusters) {
@@ -179,6 +177,7 @@ void load_diskann_pq_into_cascade(ServiceClientAPI &capi,
   diskann::load_bin<uint8_t>(pq_compressed_vectors, data, npts_u64,
                              nchunks_u64);
   size_t pq_data_size = nchunks_u64 * sizeof(uint8_t);
+  std::cout << "num chunks " << nchunks_u64 << std::endl;
   for (auto cluster_id = 0; cluster_id < clusters.size(); cluster_id++) {
     std::string cluster_folder =
       UDL2_DATA_PREFIX "/cluster_" + std::to_string(cluster_id);
