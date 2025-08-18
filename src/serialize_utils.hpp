@@ -270,9 +270,10 @@ class EmbeddingQueryBatchManager {
   void create_queries() {
     for (uint32_t i = 0; i < num_queries; i++) {
       queries.emplace_back(
-			   std::move(std::make_shared<EmbeddingQuery<data_type>>(
-										 this->buffer, this->buffer_size, get_metadata_position(i),
-										 get_embeddings_position(i), emb_dim)));
+          std::move(std::make_shared<EmbeddingQuery<data_type>>(
+              this->buffer, this->buffer_size, get_metadata_position(i),
+								get_embeddings_position(i), emb_dim)));
+      
     }
 
   }
@@ -866,25 +867,23 @@ struct compute_result_t {
         nbr_ids(nullptr), nbr_distances(nullptr), query_id(0), node_id(0),
         embedding(nullptr), dim(0) {}
 
-  // compute_result_t(uint8_t cluster_sender_id, uint8_t cluster_receiever_id,
-  //                  uint32_t receiver_thread_id, diskann::Neighbor node,
-  //                  uint32_t query_id, uint32_t num_neighbors,
-  //                  std::shared_ptr<const uint32_t> nbr_ptr)
-  //     : cluster_sender_id(cluster_sender_id),
-  //       cluster_receiver_id(cluster_receiever_id), receiver_thread_id(receiver_thread_id),
-  //       node(node), query_id(query_id), num_neighbors(num_neighbors) {
-  //   if (!std::get_deleter<decltype(free_const) *>(nbr_ptr)) {
-  //     std::invalid_argument("nbr_ptr doesn't have free_const as deleter");
-  //   }
-  //   this->nbr_ptr = nbr_ptr;
-  // }
-
+  compute_result_t(uint32_t num_neighbors, std::shared_ptr<uint32_t[]> nbr_ids,
+                   std::shared_ptr<float[]> nbr_distances, uint32_t query_id,
+                   uint32_t node_id, uint32_t receiver_thread_id, uint32_t dim,
+                   std::shared_ptr<data_type[]> embedding,
+                   uint8_t cluster_sender_id, uint8_t cluster_receiver_id)
+      : num_neighbors(num_neighbors), nbr_ids(nbr_ids),
+        nbr_distances(nbr_distances), query_id(query_id), node_id(node_id),
+        receiver_thread_id(receiver_thread_id), dim(dim), embedding(embedding),
+        cluster_sender_id(cluster_sender_id),
+        cluster_receiver_id(cluster_receiver_id) {
+  }
+  
   size_t get_serialize_size() const {
-
-    return sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) +
-           sizeof(receiver_thread_id) + sizeof(uint32_t) * num_neighbors +
-           sizeof(float) * num_neighbors + sizeof(num_neighbors) +
-           sizeof(query_id) + sizeof(data_type) * dim + sizeof(dim) + sizeof(node_id);
+    return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
+           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
+           sizeof(receiver_thread_id) + sizeof(dim) + sizeof(data_type) * dim +
+           sizeof(cluster_receiver_id) + sizeof(cluster_sender_id);
   }
 
   void write_serialize(uint8_t *buffer) const {
@@ -916,7 +915,7 @@ struct compute_result_t {
     std::memcpy(buffer + offset, embedding.get(), sizeof(data_type) * dim);
     offset += sizeof(data_type) * dim;
 
-    std::memcpy(buffer, &cluster_sender_id, sizeof(cluster_sender_id));
+    std::memcpy(buffer + offset, &cluster_sender_id, sizeof(cluster_sender_id));
     offset += sizeof(cluster_sender_id);
 
     std::memcpy(buffer + offset, &cluster_receiver_id,
@@ -939,7 +938,7 @@ class ComputeResult {
   uint32_t node_id;
   uint32_t receiver_thread_id;
   uint32_t dim;
-  const data_type *embedding_ptr;
+  const data_type *embedding; 
   
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
@@ -947,7 +946,7 @@ public:
   ComputeResult()
       : buffer(nullptr), buffer_size(0), nbr_ids(nullptr),
         nbr_distances(nullptr), query_id(0), node_id(0), num_neighbors(0),
-        receiver_thread_id(0), dim(0), embedding_ptr(nullptr),
+        receiver_thread_id(0), dim(0), embedding(nullptr),
         cluster_sender_id(0), cluster_receiver_id(0) {}
     
   ComputeResult(std::shared_ptr<uint8_t[]> buffer, uint64_t buffer_size,
@@ -962,6 +961,7 @@ public:
 
     this->num_neighbors =
       *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(num_neighbors);
     
     this->nbr_ids = reinterpret_cast<const uint32_t *>(buffer.get() + offset);
     offset += sizeof(uint32_t) * num_neighbors;
@@ -982,7 +982,7 @@ public:
     this->dim = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
     offset += sizeof(uint32_t);
 
-    this->embedding_ptr =
+    this->embedding =
       reinterpret_cast<const data_type *>(buffer.get() + offset);
     offset += sizeof(data_type) * this->dim;
 
@@ -1028,8 +1028,8 @@ public:
     return dim;
   }
   
-  const data_type* get_embedding_ptr() const {
-    return embedding_ptr;
+  const data_type* get_embedding() const {
+    return embedding;
   }
   
   uint8_t get_cluster_sender_id() const {
