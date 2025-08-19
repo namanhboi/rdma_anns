@@ -222,7 +222,7 @@ void load_diskann_graph_into_cascade_ssd(
   std::vector<int> non_max_neighbor_nodes;
 
   for (int i = 0; i < clusters.size(); i++) {
-    std::string cluster_folder = UDL2_DATA_PREFIX "/cluster_" + std::to_string(i);
+    std::string cluster_folder = UDL2_DATA_PREFIX_CLUSTER + std::to_string(i);
     data_type *coord_ptr = new data_type[dimension * clusters[i].size()];
     std::vector<data_type *> tmp_coord_buffer;
 
@@ -314,7 +314,7 @@ void load_diskann_graph_into_cascade_in_mem(
   std::vector<int> non_max_neighbor_nodes;
 
   for (int i = 0; i < clusters.size(); i++) {
-    std::string cluster_folder = UDL2_DATA_PREFIX "/cluster_" + std::to_string(i);
+    std::string cluster_folder = UDL2_DATA_PREFIX_CLUSTER + std::to_string(i);
     data_type *coord_ptr = new data_type[dimension * clusters[i].size()];
     std::vector<data_type *> tmp_coord_buffer;
 
@@ -438,10 +438,14 @@ void save_head_index_node_indices(std::vector<uint32_t> &node_list,
    the head index to in_mem_index_path
 */
 template <typename data_type>
-void build_and_save_head_index(
-    const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
-			       int R, int L, float alpha,
-			       const std::string &in_mem_index_path) {
+void build_and_save_head_index(const std::string &index_path_prefix,
+                               const std::string &head_index_path, int R = HEAD_INDEX_R, int L = HEAD_INDEX_L,
+                               float alpha = HEAD_INDEX_ALPHA) {
+  std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
+  std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex(
+								 new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
+  int _ = _pFlashIndex->load(1, index_path_prefix.c_str());
+
   uint32_t num_nodes_to_cache = get_num_nodes_head_index(_pFlashIndex);
   std::vector<uint32_t> node_list;
   _pFlashIndex->cache_bfs_levels(num_nodes_to_cache, node_list);
@@ -515,7 +519,7 @@ void build_and_save_head_index(
   auto filter_params = diskann::IndexFilterParamsBuilder()
                            .with_universal_label("")
                            .with_label_file("")
-                           .with_save_path_prefix(in_mem_index_path)
+                           .with_save_path_prefix(head_index_path)
                            .build();
 
   auto config =
@@ -538,32 +542,8 @@ void build_and_save_head_index(
   auto index = index_factory.create_instance();
   std::vector<uint32_t> tags;
   index->build(_coord_cache_buf, node_list.size(), tags);
-  index->save(in_mem_index_path.c_str());
-
-  std::unique_ptr<diskann::Distance<data_type>> dist;
-  dist.reset((diskann::Distance<data_type> *)diskann::get_distance_function<data_type>(diskann::Metric::L2));
-  std::shared_ptr<diskann::InMemDataStore<data_type>> data_store =
-      std::make_shared<diskann::InMemDataStore<data_type>>(
-          _pFlashIndex->get_num_points(), _pFlashIndex->get_data_dim(),
-							   std::move(dist));
-  data_store->populate_data(_coord_cache_buf, node_list.size());
-  std::cout <<"distance between node 120 and node 7 is " << data_store->get_distance(120, 7) << std::endl;
-  std::cout << "distance between node 999 and node 0 is " << data_store->get_distance(999, 0) << std::endl;
-  std::string query_file = "/home/nam/workspace/rdma_anns/extern/DiskANN/build/"
-                           "data/sift/sift_query.fbin";
-
-  data_type *query_data;
-  size_t query_num;
-  size_t query_dim;
-  size_t query_aligned_dim;
-  diskann::load_aligned_bin(query_file, query_data, query_num, query_dim,
-                            query_aligned_dim);
-  std::vector<uint32_t> search_id_results(10);
-  index->search(query_data, 10, 20, search_id_results.data());
-  for (auto id : search_id_results) {
-    std::cout << "result " << id << std::endl;
-  }  
-  save_head_index_node_indices(node_list, in_mem_index_path);
+  index->save(head_index_path.c_str());
+  save_head_index_node_indices(node_list, head_index_path);
 }
 
 

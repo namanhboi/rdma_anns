@@ -181,11 +181,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           if(!(item.second->empty())){
             empty = false;
             break;
-          }
+          } 
         }
 
         if (empty){
-            cluster_queue_cv.wait_for(lock,batch_time);
+          cluster_queue_cv.wait_for(lock, batch_time);
         }
 
         if (!running)
@@ -216,7 +216,10 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         for (auto &[cluster_id, queries_and_cand_q] : to_send) {
           uint64_t num_sent = 0;
           uint64_t total = queries_and_cand_q->size();
+
           while (num_sent < total) {
+          std::cout << "total queries to send to cluster " << cluster_id << " "
+          << total << std::endl;
             uint64_t left = total - num_sent;
             uint64_t batch_size = std::min(parent->max_batch_size, left);
             GlobalSearchMessageBatcher<data_type> batcher(
@@ -233,14 +236,32 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                 batcher.push_search_query(std::move(search_query));
               }
             }
+            std::cout << "batch size is " <<batch_size << std::endl;
             batcher.serialize();
             ObjectWithStringKey obj;
             obj.blob = std::move(*batcher.get_blob());
             obj.previous_version = INVALID_VERSION;
             obj.previous_version_by_key = INVALID_VERSION;
-            obj.key = UDL2_PATHNAME "/cluster_" + std::to_string(static_cast<int>(cluster_id));
-            typed_ctxt->get_service_client_ref().put_and_forget(
-								obj, true); // trigger put
+            obj.key = UDL2_PATHNAME_CLUSTER + 
+                      std::to_string(static_cast<int>(cluster_id));
+            std::cout << "object key is " << obj.key << std::endl;
+
+            std::cout << typed_ctxt->get_service_client_ref()
+                             .find_object_pool_and_affinity_set_by_key(obj.key)
+                             .second
+            << std::endl;
+            // typed_ctxt->get_service_client_ref().put_and_forget(obj,
+            // static_cast<uint32_t>(UDL2_SUBGROUP_INDEX), cluster_id, true);
+
+            auto [subgroup_type_index, subgroup_index, shard_index] =
+                typed_ctxt->get_service_client_ref().key_to_shard_public(
+									 obj.key);
+            std::cout << "key is " << obj.key << " subgroup_type_index "
+                      << subgroup_type_index << " " << "subgroup_index "
+                      << subgroup_index << " " << "shard index " << shard_index
+            << std::endl;
+                        
+            typed_ctxt->get_service_client_ref().put_and_forget(obj, true);
             num_sent += batch_size;
           }
         }
@@ -359,7 +380,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   std::vector<uint32_t> id_mapping;
   // each byte represents the cluster assignment of the corresponding graph
   // vector id from the id_mapping. 
-  std::vector<uint8_t> cluster_assignment; //TODO
+  std::vector<uint8_t> cluster_assignment;
 
   // data here: num_pts (uint32_t), num_dim (uint32_t), data....
   // std::string data_store_key = "/anns/head_index/data_store";
@@ -380,13 +401,13 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
   std::string index_path = "";
   std::string id_mapping_path = "";
-  std::string cluster_assignment_path = "";
+  std::string cluster_assignment_bin_file = "";
 
   void retrieve_and_cache_head_index_fs(DefaultCascadeContextType *typed_ctxt) {
     if (index_path == "") {
       throw std::runtime_error("index path not specified");
     }
-    if (cluster_assignment_path == "") {
+    if (cluster_assignment_bin_file == "") {
       throw std::runtime_error("cluster assignment path not specified");
     }
     if (id_mapping_path == "") {
@@ -416,7 +437,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     head_index = index_factory.create_instance();
     head_index->load(index_path.c_str(), num_search_threads, 20);
     std::cout << "Index loaded from " << index_path << std::endl;
-    std::ifstream cluster_assignment_in(cluster_assignment_path,
+    std::ifstream cluster_assignment_in(cluster_assignment_bin_file,
                                         std::ios::binary);
     uint32_t whole_graph_num_pts;
     cluster_assignment_in.read((char *)&whole_graph_num_pts,
@@ -483,6 +504,7 @@ public:
       }
 
       if (config.contains("min_batch_size")) {
+
         this->min_batch_size = config["min_batch_size"].get<int>();
       }
 
@@ -511,9 +533,9 @@ public:
         this->id_mapping_path =
           config["id_mapping_path"].get<std::string>();
       }
-      if (config.contains("cluster_assignment_path")) {
-        this->cluster_assignment_path =
-          config["cluster_assignment_path"].get<std::string>();
+      if (config.contains("cluster_assignment_bin_file")) {
+        this->cluster_assignment_bin_file =
+          config["cluster_assignment_bin_file"].get<std::string>();
       }
 
     } catch (const std::exception& e) {

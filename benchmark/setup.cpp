@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
   int num_clusters;
   std::string output_clusters;
   std::string clusters_folder;
-  std::string in_mem_index_path;
+  std::string head_index_path;
   std::string query_file;
   std::string gt_file;
   std::string data_file;
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
       "Path to write the clusters")(
       "dist_fn,F", po::value<std::string>(&dist_fn)->required(),
       "Distance function, could be Euclidian or ?. RN only support Euclidian")(
-      "in_mem_index_path", po::value<std::string>(&in_mem_index_path),
+      "head_index_path", po::value<std::string>(&head_index_path),
       "Path to in mem index, if not built then build it and save it there")(
       "query_file", po::value<std::string>(&query_file),
       "Path to in mem index, if not built then build it and save it there")(
@@ -134,7 +134,20 @@ int main(int argc, char **argv) {
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   create_object_pools(capi);
 
+//udl1 only needs the object pool to be created and nothing else
 #if !defined(TEST_UDL1)
+
+  // if not test udl1 and udl2 then must be running fr, so we need to create head index
+#if !defined(TEST_UDL2)
+  if (data_type == "uint8") {
+    build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
+  } else if (data_type == "int8") {
+    build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
+  } else if (data_type == "float") {
+    build_and_save_head_index<float>(index_path_prefix, head_index_path);
+  }  
+#endif
+
 #if  (defined(IN_MEM) || defined(DISK_KV))
   std::cout << "doing data loading" << std::endl;
   if (data_type == "uint8") {
@@ -152,7 +165,6 @@ int main(int argc, char **argv) {
   } else if (data_type == "float") {
     load_data_fs<float>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   }
-
 #endif
 #endif  
   return 0;

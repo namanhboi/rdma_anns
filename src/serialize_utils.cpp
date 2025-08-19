@@ -3,7 +3,7 @@
 
 
 uint8_t get_cluster_id(const std::string &key) {
-  std::string cluster_prefix = "cluster_";
+  std::string cluster_prefix = "cluster";
   if (key.rfind(cluster_prefix, 0) != 0) {
     // doesn't start with the correct prefix
     throw std::invalid_argument(key + " doesn't have the correct prefix " +

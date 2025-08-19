@@ -160,7 +160,7 @@ parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file) {
 
 void create_object_pools(ServiceClientAPI &capi) {
   capi.template create_object_pool<UDL1_OBJ_POOL_TYPE>(
-						       UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {});
+						       UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
 #ifndef TEST_UDL1
   capi.template create_object_pool<UDL2_OBJ_POOL_TYPE>(
 						       UDL2_OBJ_POOL, UDL2_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
@@ -180,7 +180,8 @@ void load_diskann_pq_into_cascade(ServiceClientAPI &capi,
   std::cout << "num chunks " << nchunks_u64 << std::endl;
   for (auto cluster_id = 0; cluster_id < clusters.size(); cluster_id++) {
     std::string cluster_folder =
-      UDL2_DATA_PREFIX "/cluster_" + std::to_string(cluster_id);
+      UDL2_DATA_PREFIX_CLUSTER + std::to_string(cluster_id);
+      
 
     parlay::parallel_for(0, clusters[cluster_id].size(), [&](size_t i) {
       auto vector_id = clusters[cluster_id][i];

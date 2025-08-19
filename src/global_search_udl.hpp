@@ -1,5 +1,6 @@
 #include <cascade/object.hpp>
 #include <chrono>
+#include <derecho/core/detail/p2p_connection.hpp>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
 #include "serialize_utils.hpp"
 #include <cascade/cascade_interface.hpp>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include "concurrent_queue.h"
@@ -44,12 +46,12 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::condition_variable_any query_queue_cv;
     std::mutex query_queue_mutex;
     std::queue<std::shared_ptr<GreedySearchQuery<data_type>>> query_queue;
-    
-    // query_id and the concurrent queue that accepts distance compute results
-    std::unordered_map<uint32_t, std::shared_ptr<diskann::ConcurrentQueue<ComputeResult>>> compute_res_queues;
-    std::mutex compute_res_queues_mtx;
+
+
+    std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset = std::make_shared<diskann::ConcurrentNeighborPriorityQueue>();
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
+      std::cout << "Search thread id is " << std::this_thread::get_id() << std::endl;
       std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
       std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex, std::defer_lock);
       while (running) {
@@ -65,12 +67,15 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
+
         // std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
 	// ComputeResult empty_res;
         // compute_res_queues[query_id] =
         //   std::make_shared<diskann::ConcurrentQueue<ComputeResult>>(empty_res);
         // compute_res_lock.unlock();
+
         query_queue_lock.unlock();
+
         // std::cout << query_id << " "  << query->get_dim() <<std::endl;
         // for (uint32_t i = 0; i < query->get_dim(); i++) {
 	  // std::cout << query->get_embedding_ptr()[i] << " " ;
@@ -95,9 +100,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	parent->index->search(query->get_embedding_ptr(), K, L, result_64.get(), nullptr);
 #elif defined(DISK_FS_DISTRIBUTED)
 	// std::cout << "disk fs search called " << std::endl;
-	std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset = std::make_shared<diskann::ConcurrentNeighborPriorityQueue>(query_id);
-	parent->index->search(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue(), retset);
-
+	retset->start_new_query(query_id);
+	parent->index->search(typed_ctxt, query->get_embedding_ptr(), query->get_query_id(), my_thread_id , K, L, result_64.get(), nullptr, query->get_candidate_queue(), retset);
+	retset->clear();
 #elif defined(DISK_KV)
 	// std::cout << "disk kv search called " << std::endl;
 	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
@@ -116,20 +121,16 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     SearchThread(uint64_t thread_id, GlobalSearchOCDPO<data_type> *parent)
     : my_thread_id(thread_id), parent(parent) {}
 
-    /**
-push the compute result to the queue for that query id.
-     */
-    void push_compute_res(ComputeResult result) {
-      uint32_t query_id = result.get_query_id();
-      if (this->compute_res_queues.count(query_id) == 0) {
-        throw std::runtime_error("Compute result for query id " +
-                                 std::to_string(query_id) +
-                                 " arrived but there is no matching compute "
-                                 "result queue to put it into ");
+    void push_compute_result(
+				std::shared_ptr<ComputeResult<data_type>> compute_result) {
+      if (retset == nullptr) {
+	throw std::runtime_error("concurrent neighbor pq retset is nullptr");
       }
-      this->compute_res_queues[query_id]->push(result);
-      // this is fine since concurrent queue has internal locks
+      retset->check_query_id_insert_nbrs(
+          compute_result->get_query_id(), compute_result->get_num_neighbors(),
+					 compute_result->get_nbr_ids(), compute_result->get_nbr_distances());
     }
+
 
     void push_search_query(std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
       std::scoped_lock<std::mutex> lock(query_queue_mutex);
@@ -185,79 +186,42 @@ push the compute result to the queue for that query id.
       // first then get which ever one arrives
       std::unique_lock<std::mutex> queue_lock(compute_queue_mutex, std::defer_lock);
       std::unique_lock<std::mutex> map_lock(query_map_mutex, std::defer_lock);
-      
+
+      std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex, std::defer_lock);
       while (running) {
-        // need to check if queue empty then waitfor 
 	std::shared_ptr<EmbeddingQuery<data_type>> query_emb_ptr;
         queue_lock.lock();
-        if (compute_queue.empty()) { // should this be while or if (ask alicia)
+        while (compute_queue.empty()) {
 	  compute_queue_cv.wait(queue_lock);
         }
         if (!running)
           break;
         
-        compute_query_t query = compute_queue.front();
+        compute_query_t compute_query = compute_queue.front();
         compute_queue.pop();
-        // prolly could pop until the next query id available?
+	queue_lock.unlock();
 
 	map_lock.lock();
-        if (query_map.count(query.query_id) == 0) {
-          std::cerr << "[compute distance] " << "cluster " << parent->cluster_id << " query embedding for query "
-          << query.query_id << " has not arrived" << std::endl;
-          compute_queue.push(query);
+        if (query_map.count(compute_query.query_id) == 0) {
+          // this should be an error because trigger put is an atomic multicast
+          std::stringstream err;
+          err << "[compute distance] " << "cluster " << static_cast<int>(parent->cluster_id)
+              << " query embedding for compute query " << compute_query.query_id
+          << " has not arrived" << std::endl;
+          throw std::runtime_error(err.str());
         } else {
-	  query_emb_ptr = query_map[query.query_id];
+          query_emb_ptr = query_map[compute_query.query_id];
         }
+
         map_lock.unlock();
-        queue_lock.unlock();
-        if (!query_emb_ptr) {
-	  continue;
-        }
-        // after this, the embedding for query has arrived
-        if (query.cluster_receiver_id != parent->cluster_id) {
-          throw std::invalid_argument(
-              "query " + std::to_string(query.query_id) +
-              " has cluster_reciever_id " +
-              std::to_string(query.cluster_receiver_id) +
-              " but this node has cluster id " +
-              std::to_string(parent->cluster_id));
-        }
-        std::string emb_key =
-          parent->cluster_data_prefix + "_emb_" + std::to_string(query.node_id);
-        bool stable = true;
-        auto emb_get_result =
-          typed_ctxt->get_service_client_ref().get(emb_key, stable);
+        index_lock.lock();
 
-        auto &emb_reply = emb_get_result.get().begin()->second.get();
-        Blob emb_blob = std::move(const_cast<Blob &>(emb_reply.blob));
-        const data_type *vec_emb =
-          reinterpret_cast<const data_type *>(emb_blob.bytes);
-
-        float distance = parent->dist_fn->compare(
-            vec_emb, query_emb_ptr->get_embedding_ptr(),
-						  query_emb_ptr->get_dim());
-        diskann::Neighbor node = {query.node_id, distance};
-
-        std::string nbr_key =
-          parent->cluster_data_prefix + "_nbr_" + std::to_string(query.node_id);
-        auto nbr_get_result =
-          typed_ctxt->get_service_client_ref().get(nbr_key, stable);
-        auto &nbr_reply = nbr_get_result.get().begin()->second.get();
-        Blob nbr_blob = std::move(const_cast<Blob &>(nbr_reply.blob));
-        nbr_blob.memory_mode = object_memory_mode_t::EMPLACED;
-        std::shared_ptr<const uint32_t> nbr_ptr(
-						reinterpret_cast<const uint32_t *>(nbr_blob.bytes), free_const);
+        std::shared_ptr<compute_result_t<data_type>> compute_result =
+            parent->index->execute_compute_query(typed_ctxt, compute_query,
+                                                 query_emb_ptr);
+        index_lock.unlock();
         
-	uint32_t num_nbrs = *nbr_ptr.get();
-        
-
-        if (distance >= query.min_distance) {
-          compute_result_t res(parent->cluster_id, query.cluster_sender_id,
-                               query.receiver_thread_id, node, query.query_id,
-                               num_nbrs, nbr_ptr);
-          
-          parent->batch_thread->push_compute_res(res);
-        }
+        parent->batch_thread->push_compute_res(compute_result);
       }
     }
 
@@ -280,8 +244,9 @@ push the compute result to the queue for that query id.
     void signal_stop() {
       std::scoped_lock<std::mutex> l(compute_queue_mutex);
       running = false;
-
-      // compute_queue.push()
+      compute_query_t empty_q;
+      compute_queue.push(empty_q);
+      compute_queue_cv.notify_all();
     }
     void push_compute_query(compute_query_t compute_query) {
       std::scoped_lock<std::mutex> lock(compute_queue_mutex);
@@ -316,7 +281,9 @@ push the compute result to the queue for that query id.
     */
     struct message {
       message_type msg_type;
-      std::variant<compute_result_t, compute_query_t> msg;
+      std::variant<std::shared_ptr<compute_result_t<data_type>>,
+                   compute_query_t>
+          msg;
     };
     
     GlobalSearchOCDPO<data_type> *parent;
@@ -411,8 +378,9 @@ push the compute result to the queue for that query id.
             for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
               if (messages->at(i).msg_type == message_type::COMPUTE_RESULT) {
 
-                message_batcher.push_compute_result(
-						    std::move(std::get<compute_result_t>(messages->at(i).msg)));
+                message_batcher.push_compute_result(std::move(
+                    std::get<std::shared_ptr<compute_result_t<data_type>>>(
+									   messages->at(i).msg)));
               } else if (messages->at(i).msg_type ==
                          message_type::COMPUTE_QUERY) {
 
@@ -428,8 +396,8 @@ push the compute result to the queue for that query id.
 
             // send data to the correct cluster, send using pathname because
             // that is how you trigger the udl handler
-            obj.key = UDL2_PATHNAME "/cluster_" + std::to_string(cluster_id);
-            typed_ctxt->get_service_client_ref().trigger_put(obj);
+            obj.key = UDL2_PATHNAME_CLUSTER + std::to_string(cluster_id);
+            typed_ctxt->get_service_client_ref().put_and_forget(obj, true);
             num_sent += batch_size;
             message_batcher.reset();
           }
@@ -465,32 +433,28 @@ push the compute result to the queue for that query id.
   public:
     BatchingThread(uint64_t thread_id, GlobalSearchOCDPO *parent) : thread_id(thread_id),parent(parent) {}
 
-    void push_compute_query(uint32_t node_id, uint32_t query_id,
-                            float min_distance, uint8_t cluster_receiver_id, uint32_t receiver_thread_id) {
+    void push_compute_query(compute_query_t query) {
       std::scoped_lock<std::mutex> lock(messages_mutex);
-      compute_query_t query(node_id, query_id, min_distance, parent->cluster_id,
-                            cluster_receiver_id, receiver_thread_id);
-      // message mes(std::move(query));
-      message msg = {message_type::COMPUTE_QUERY, std::move(query)};
-
-      if (cluster_messages.count(cluster_receiver_id) == 0) {
-        cluster_messages[cluster_receiver_id] =
+      if (cluster_messages.count(query.cluster_receiver_id) == 0) {
+        cluster_messages[query.cluster_receiver_id] =
           std::make_unique<std::vector<message>>();
-        cluster_messages[cluster_receiver_id]->reserve(parent->max_batch_size);
+        cluster_messages[query.cluster_receiver_id]->reserve(parent->max_batch_size);
       }
-      cluster_messages[cluster_receiver_id]->emplace_back(std::move(msg));
+      message msg = {message_type::COMPUTE_QUERY, std::move(query)};
+      cluster_messages[query.cluster_receiver_id]->emplace_back(std::move(msg));
     }
 
-    void push_compute_res(compute_result_t res) {
+    void push_compute_res(std::shared_ptr<compute_result_t<data_type>> res) {
+      
       std::scoped_lock<std::mutex> lock(messages_mutex);      
-      if (cluster_messages.count(res.cluster_receiver_id) == 0) {
-        cluster_messages[res.cluster_receiver_id] =
+      uint8_t receiver_id = res->cluster_receiver_id;
+      if (cluster_messages.count(res->cluster_receiver_id) == 0) {
+        cluster_messages[receiver_id] =
           std::make_unique<std::vector<message>>();
-        cluster_messages[res.cluster_receiver_id]->reserve(
-							   parent->max_batch_size);
+        cluster_messages[receiver_id]->reserve(parent->max_batch_size);
       }
       message mes = {message_type::COMPUTE_RESULT, std::move(res)};
-      cluster_messages[res.cluster_receiver_id]->emplace_back(std::move(mes));
+      cluster_messages[receiver_id]->emplace_back(std::move(mes));
     }
 
     void push_ann_result(uint32_t query_id, uint32_t client_id, uint32_t K,
@@ -524,10 +488,13 @@ push the compute result to the queue for that query id.
     void signal_stop() {
       std::scoped_lock<std::mutex> l(messages_mutex);
       running = false;
-      search_results[0]->push_back({});
+      if (cluster_messages.count(0) == 0) {
+        cluster_messages[0] = std::make_unique<std::vector<message>>();
+      }
+      message mes;
+      cluster_messages[0]->push_back(mes);
       messages_cv.notify_all();
     }
-    
   };
 
 
@@ -563,8 +530,8 @@ push the compute result to the queue for that query id.
   uint32_t batch_time_us;
 
   std::unique_ptr<diskann::Distance<data_type>> dist_fn;
-  std::string cluster_data_prefix = UDL2_DATA_PREFIX;
-  std::string cluster_search_prefix = UDL2_PATHNAME;
+  std::string cluster_data_prefix = UDL2_DATA_PREFIX_CLUSTER;
+  std::string cluster_search_prefix = UDL2_PATHNAME_CLUSTER;
 
   std::string cluster_assignment_bin_file;
   std::string pq_table_bin;
@@ -614,12 +581,21 @@ push the compute result to the queue for that query id.
     }
   }
 
-  void validate_compute_result(const ComputeResult &compute_res) {
-    if (compute_res.get_cluster_receiver_id() != this->cluster_id) {
+  void validate_compute_result(
+			       const std::shared_ptr<ComputeResult<data_type>> &compute_res) {
+    if (compute_res->get_cluster_receiver_id() != this->cluster_id) {
       throw std::runtime_error(
           "Global UDL: " +
-          std::to_string(compute_res.get_cluster_receiver_id()) +
+          std::to_string(compute_res->get_cluster_receiver_id()) +
           " different from this cluster id  " + std::to_string(cluster_id));
+    }
+    if (compute_res->get_receiver_thread_id() >= search_threads.size()) {
+      std::stringstream err;
+      err << "compute result receiver thread id too big "
+          << compute_res->get_receiver_thread_id()
+          << " compared to number of search threads " << search_threads.size()
+      << std::endl;
+      throw std::runtime_error(err.str());
     }
   }
   
@@ -630,22 +606,25 @@ public:
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    // std::cout << "Global index called " <<  key_string<< std::endl;
+    std::cout << "Global index called " << key_string << std::endl;
     // can probably optimize this part by doing shared ptr for compute query and
     // compute result
 
 
     // double check locking with atomic bool should be good according to
     // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern
+    
     if (initialized_index == false) {
       std::unique_lock lock(index_mutex);
       if (initialized_index == false) {
-	// std::cout << "index not initialized" << std::endl;
-	cluster_id = get_cluster_id(key_string);
-	cluster_data_prefix += "/cluster_" + std::to_string(cluster_id);
-	cluster_search_prefix += "/cluster_" + std::to_string(cluster_id);
-	// std::cout << cluster_data_prefix << std::endl;
-	// std::cout << cluster_search_prefix << std::endl;
+	std::cout << "index not initialized" << std::endl;
+        cluster_id = get_cluster_id(key_string);
+	cluster_data_prefix += std::to_string(cluster_id);
+	cluster_search_prefix += std::to_string(cluster_id);
+	std::cout << cluster_data_prefix << std::endl;
+        std::cout << cluster_search_prefix << std::endl;
+        std::cout << "cluster index is " << static_cast<int>(cluster_id) << " " << key_string
+        << std::endl;
 	dist_fn.reset(
 		      (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
@@ -667,13 +646,15 @@ public:
         std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
         << key_string << std::endl;
 #elif defined(DISK_FS_DISTRIBUTED)
-        
-	std::string cluster_files_path_prefix = index_path_prefix + std::to_string(cluster_id);
+
+        std::string cluster_files_path_prefix =
+          index_path_prefix + std::to_string(cluster_id);
+        uint32_t num_compute_threads = 1;
         this->index = std::make_unique<SSDIndex<data_type>>(
 
             cluster_files_path_prefix, cluster_id, cluster_data_prefix,
-            cluster_assignment_bin_file, pq_table_bin, num_search_threads,
-							    [](compute_query_t query) { return; }, pq_compressed_vectors);
+            cluster_assignment_bin_file, pq_table_bin, num_search_threads, num_compute_threads,
+							    [this](compute_query_t query) { this->batch_thread->push_compute_query(query); }, pq_compressed_vectors);
 	std::cout << " done createing diskfs " << std::endl;
 #elif defined(DISK_KV)
 
@@ -702,23 +683,22 @@ public:
       next_search_thread = (next_search_thread + 1) % num_search_threads;
       // std::cout << next_search_thread << std::endl;
     }
+    for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
+         manager.get_embedding_queries()) {
+      validate_emb_query(emb_query);
+      distance_compute_thread->push_embedding_query(std::move(emb_query));
+    }
 
-    // for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
-         // manager.get_embedding_queries()) {
-      // validate_emb_query(emb_query);
-      // distance_compute_thread->push_embedding_query(std::move(emb_query));
-    // }
+    for (compute_query_t &query : manager.get_compute_queries()) {
+      validate_compute_query(query);
+      distance_compute_thread->push_compute_query(std::move(query));
+    }
 
-    // for (compute_query_t &query : manager.get_compute_queries()) {
-      // validate_compute_query(query);
-      // distance_compute_thread->push_compute_query(std::move(query));
-    // }
-
-    // for (ComputeResult &result : manager.get_compute_results()) {
-      // validate_compute_result(result);
-      // search_threads[result.get_receiver_thread_id()]->push_compute_res(
-									// std::move(result));
-    // }
+    for (std::shared_ptr<ComputeResult<data_type>> &result : manager.get_compute_results()) {
+      validate_compute_result(result);
+      search_threads[result->get_receiver_thread_id()]->push_compute_result(
+									    std::move(result));
+    }
   }
   static void initialize() {
     if (!ocdpo_ptr) {
@@ -730,6 +710,14 @@ public:
   void set_config(DefaultCascadeContextType *typed_ctxt,
                   const nlohmann::json &config) {
     this->my_id = typed_ctxt->get_service_client_ref().get_my_id();
+    std::cout << "global search udl id is  " << my_id << std::endl;
+
+    std::cout << "members "
+              << typed_ctxt->get_service_client_ref().get_members()
+    << std::endl;
+    std::cout << "my shard "
+    << typed_ctxt->get_service_client_ref().get_my_shard<VolatileCascadeStoreWithStringKey>(UDL2_SUBGROUP_INDEX)
+    << std::endl;    
     try {
       if (config.contains("cluster_assignment_bin_file")) {
         this->cluster_assignment_bin_file =
@@ -810,10 +798,10 @@ public:
       batch_thread->signal_stop();
       batch_thread->join();
     }
-    // if (distance_compute_thread) {
-    //   distance_compute_thread->signal_stop();
-    //   distance_compute_thread->join();
-    // }
+    if (distance_compute_thread) {
+      distance_compute_thread->signal_stop();
+      distance_compute_thread->join();
+    }
   }
   
 };

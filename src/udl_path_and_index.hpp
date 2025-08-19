@@ -29,17 +29,14 @@ notify, we don't have to do any replication in a shard i hope?
 #define UDL1_SUBGROUP_INDEX 0
 #define UDL1_PATHNAME "/anns/head_search"
 
-#ifdef IN_MEM
 #define UDL1_OBJ_POOL_TYPE VolatileCascadeStoreWithStringKey
-#else
-#define UDL1_OBJ_POOL_TYPE PersistentCascadeStoreWithStringKey
-#endif
-// put queries here : /anns/head_search/query_i to trigger head index search
 
 #define UDL2_SUBGROUP_INDEX 0
 #define UDL2_OBJ_POOL "/anns/global"
 #define UDL2_DATA_PREFIX "/anns/global/data"
+#define UDL2_DATA_PREFIX_CLUSTER "/anns/global/data/cluster"
 #define UDL2_PATHNAME "/anns/global/search"
+#define UDL2_PATHNAME_CLUSTER "/anns/global/search/cluster"
 
 #if defined(IN_MEM) || defined(DISK_FS_DISTRIBUTED)
 #define UDL2_OBJ_POOL_TYPE VolatileCascadeStoreWithStringKey
@@ -64,4 +61,4 @@ notify, we don't have to do any replication in a shard i hope?
 // each client will have a separate object pool: /anns/results/{client_id}
 
 
-#define AFFINITY_SET_REGEX "cluster_[0-9]+"
+#define AFFINITY_SET_REGEX "cluster[0-9]+"

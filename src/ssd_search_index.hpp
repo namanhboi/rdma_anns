@@ -4,6 +4,7 @@
 #include "linux_aligned_file_reader.h"
 #include "neighbor.h"
 #include "pq_flash_index.h"
+#include "serialize_utils.hpp"
 #include "tsl/robin_map.h"
 #include "utils.h"
 #include <cascade/service_types.hpp>
@@ -32,8 +33,13 @@ namespace cascade {
  */
   template <typename data_type> class SSDIndex {
     std::string udl_cluster_data_prefix;
-    diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *> _thread_data;
 
+    //thread data used for searching
+    diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *> search_thread_data;
+
+    // thread data for compute tasks
+    diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *> compute_thread_data;
+    
     // used to determine the order/index in which that node_id is written to the
     // cluster disk index file. This index is then used to calculate the sector
     // id and offset
@@ -64,21 +70,24 @@ namespace cascade {
     uint64_t _max_degree = 0;
 
     uint8_t cluster_id;
-    void setup_thread_data(uint64_t num_threads) {
+    void setup_thread_data(
+        uint64_t num_threads,
+        diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *>
+            &thread_data, uint32_t visited_reserve) {
 #pragma omp parallel for num_threads((int)num_threads)
       for (int64_t i = 0; i < (int64_t)num_threads; i++) {
 #pragma omp critical
         {
           diskann::SSDThreadData<data_type> *data =
-              new diskann::SSDThreadData<data_type>(this->_aligned_dim, 4096);
+            new diskann::SSDThreadData<data_type>(this->_aligned_dim, visited_reserve);
 
           this->reader->register_thread();
           data->ctx = this->reader->get_ctx();
-
-          this->_thread_data.push(data);
+          thread_data.push(data);
         }
       }
     }
+  
     std::function<void(compute_query_t)> send_compute_query_fn;
 
 #ifdef PQ_KV
@@ -142,11 +151,11 @@ no caching suppport rn, since there is the head index?
     SSDIndex(const std::string &index_path_prefix, const uint8_t &cluster_id,
              const std::string &udl_cluster_data_prefix,
              const std::string &cluster_assignment_file,
-             const std::string &pq_table_bin, uint64_t num_threads,
+             const std::string &pq_table_bin, uint64_t num_search_threads, uint64_t num_compute_threads,
              std::function<void(compute_query_t)> send_compute_query_fn, std::string pq_compressed_vectors = "")
         : cluster_id(cluster_id),
           udl_cluster_data_prefix(udl_cluster_data_prefix),
-          _thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
+          search_thread_data(nullptr), send_compute_query_fn(send_compute_query_fn)
     {
       // TODO register aligned reader and open the disk index file
       std::string disk_index_file = index_path_prefix + "_disk.index";
@@ -247,8 +256,8 @@ no caching suppport rn, since there is the head index?
 			    diskann::get_distance_function<data_type>(diskann::Metric::L2));
       this->_dist_cmp_float.reset(
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
-      setup_thread_data(num_threads);
-
+      setup_thread_data(num_search_threads, this->search_thread_data, 4096);
+      setup_thread_data(num_compute_threads, this->compute_thread_data, 0);
 #ifdef PQ_FS
       size_t npts_u64, nchunks_u64;
       diskann::load_bin<uint8_t>(pq_compressed_vectors, this->pq_data, npts_u64,
@@ -256,16 +265,153 @@ no caching suppport rn, since there is the head index?
 #endif
     }
 
+    std::shared_ptr<compute_result_t<data_type>> execute_compute_query(
+        DefaultCascadeContextType *typed_ctxt, compute_query_t compute_query,
+								       std::shared_ptr<EmbeddingQuery<data_type>> query_emb) {
 
+      if (!is_in_cluster(compute_query.node_id)) {
+        std::stringstream err;
+        err << "Compute query " << compute_query.query_id << " for node id " << compute_query.node_id << " is not in the cluster " << cluster_id << std::endl;
+        throw std::runtime_error(err.str());
+      }
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
+									      this->compute_thread_data);
 
+      auto data = manager.scratch_space();
+      IOContext &ctx = data->ctx;
+      
+      // // all data necessary for querying and pq operations will be accessed
+      // // through these 2 pointers.
+      auto query_scratch = &(data->scratch);
+      // this contains preallocated ptrs to pq table, pq processed query, etc
+      auto pq_query_scratch = query_scratch->pq_scratch();
+
+      query_scratch->reset();
+
+      // // aligned malloc memset to 0, need to copy query to here to do
+      // // computation since a lot of operations only work on aligned mem address
+      data_type *aligned_query_T = query_scratch->aligned_query_T();
+
+      // // aligned malloc for pq computation,
+      // // converts whatever type the query is to a float,
+      // // will contain the same data as aligned_query_T
+      float *query_float = pq_query_scratch->aligned_query_float;
+
+      // // whether this is used or not depends on there is a rotation matrix file
+      // // that has index_path_prefix as a path prefix
+      float *query_rotated = pq_query_scratch->rotated_query;
+
+      for (size_t i = 0; i < this->dim; i++) {
+	aligned_query_T[i] = query_emb->get_embedding_ptr()[i];
+      }
+
+      // // copies data from aligned query to query float and query rotated
+      pq_query_scratch->initialize(this->dim, aligned_query_T);
+
+      // // // this is where the full precision embeddings will be copied into to do
+      // // full distance computation with
+      data_type *full_precision_emb_buffer = query_scratch->coord_scratch;
+
+      // write data from aio here
+      char *sector_scratch = query_scratch->sector_scratch;
+      uint64_t &sector_scratch_idx =
+          query_scratch->sector_idx; // index into sector_scratch so that writes
+      // dont overlap
+      
+      const uint64_t num_sectors_per_node =
+          _nnodes_per_sector > 0
+              ? 1
+          : DIV_ROUND_UP(_max_node_len, diskann::defaults::SECTOR_LEN);
+
+      // // // not sure why this is necessary in pq_flash_index search method since
+      // // // won't we be overwriting it constantly?
+      // // _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
+
+      pq_table.preprocess_query(query_rotated);
+
+      float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
+      pq_table.populate_chunk_distances(query_rotated, pq_dists);
+      // after this, pq query distance to all centroids in pq table is
+      // calcucated in pq_dists, and pq_dists is used for fast look up for pq
+      // distance calculation
+
+      // // this is where you write the pq coordinates of points to do pq
+      // // computation with
+      float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
+      uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
+#ifdef PQ_KV
+      auto compute_dists =
+          [this, pq_coord_scratch, pq_dists](
+              GetRequestVector<data_type, ObjectWithStringKey> &pq_requests,
+              float *dists_out) {
+            size_t num_requests = pq_requests.size();
+            aggregate_pq_coord(pq_requests, pq_coord_scratch);
+            diskann::pq_dist_lookup(pq_coord_scratch, num_requests,
+                                    this->num_chunks, pq_dists, dists_out);
+          };
+      std::string in_cluster_pq_prefix = this->udl_cluster_data_prefix + "_pq_";
+      GetRequestVector<data_type, ObjectWithStringKey> in_cluster_pq_requests(
+									      typed_ctxt, _max_degree);
+#elif PQ_FS
+      auto compute_dists = [this, pq_coord_scratch,
+                            pq_dists](const uint32_t *ids, const uint64_t n_ids,
+                                      float *dists_out) {
+	diskann::aggregate_coords(ids, n_ids, this->pq_data,
+                                  this->num_chunks, pq_coord_scratch);
+	diskann::pq_dist_lookup(pq_coord_scratch, n_ids, this->num_chunks,
+				pq_dists, dists_out);
+      };
+#endif
+      uint32_t node_id = compute_query.node_id;
+      std::pair<uint32_t, char *> fnhood;
+      fnhood.first = node_id;
+      fnhood.second = sector_scratch +
+                      num_sectors_per_node * sector_scratch_idx *
+                      diskann::defaults::SECTOR_LEN;
+      std::vector<AlignedRead> frontier_read_reqs;
+      frontier_read_reqs.emplace_back(get_node_sector((size_t)node_id) *
+                                      diskann::defaults::SECTOR_LEN,
+                                      num_sectors_per_node *
+                                      diskann::defaults::SECTOR_LEN,
+                                      fnhood.second);
+      reader->read(frontier_read_reqs, ctx);
+      char *node_disk_buf = offset_to_node(fnhood.second, fnhood.first);
+      uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
+      uint64_t num_neighbors = (uint64_t)(*node_buf);
+      data_type *node_fp_coords = offset_to_node_coords(node_disk_buf);
+      memcpy(full_precision_emb_buffer, node_fp_coords, _disk_bytes_per_point);
+      float expanded_dist = _dist_cmp->compare(
+					       aligned_query_T, full_precision_emb_buffer, (uint32_t)_aligned_dim);
+
+      uint32_t *node_nbrs = (node_buf + 1);
+      std::shared_ptr<uint32_t[]> nbr_ids(new uint32_t[num_neighbors]);
+      std::memcpy(nbr_ids.get(), node_nbrs, sizeof(uint32_t) * num_neighbors);
+      std::shared_ptr<float[]> nbr_distances(new float[num_neighbors]);
+#ifdef PQ_KV
+      for (auto i = 0; i < num_neighbors; i++) {
+        in_cluster_pq_requests.submit_request(
+					      node_nbrs[i], in_cluster_pq_prefix + std::to_string(node_nbrs[i]));
+      }
+      compute_dists(in_cluster_pq_requests, nbr_distances.get());
+#elif PQ_FS
+      compute_dists(nbr_ids.get(), num_neighbors, nbr_distances.get());
+#endif
+
+      return std::make_shared<compute_result_t<data_type>>(
+          num_neighbors, nbr_ids, nbr_distances, compute_query.query_id,
+          compute_query.node_id, expanded_dist,
+          compute_query.receiver_thread_id, compute_query.cluster_sender_id,
+							   compute_query.cluster_receiver_id);
+    }
+    
     void
-    search(DefaultCascadeContextType *typed_ctxt, const data_type *query,
+    search(DefaultCascadeContextType *typed_ctxt, const data_type *query, const uint32_t query_id, uint32_t search_thread_id,
            const int64_t K, const uint64_t L, uint64_t *indices,
            float *distances, std::vector<uint32_t> start_node_ids,
            std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset,
            uint32_t beam_width = 1) {
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
-									      this->_thread_data);
+									      this->search_thread_data);
       auto data = manager.scratch_space();
       IOContext &ctx = data->ctx;
       
@@ -425,8 +571,13 @@ no caching suppport rn, since there is the head index?
                                               fnhood.second);
 
             } else {
-              // TODO, need to impl. Currently not testing this rn.
-              compute_query_t query;
+              // TODO, need to impl. Currently not testing rn this.
+              size_t size = retset->size();
+              float min_distance = retset->operator[](size - 1).distance;
+              uint8_t nbr_cluster = cluster_assignment[node_id];
+              compute_query_t query(node_id, query_id, min_distance,
+                                    this->cluster_id, nbr_cluster,
+                                    search_thread_id);
               this->send_compute_query_fn(query);
 	    }
           }
@@ -507,7 +658,7 @@ no caching suppport rn, since there is the head index?
         indices[i] = full_retset[i].id;
         if (distances != nullptr)
           distances[i] = full_retset[i].distance;
-      }      
+      }
       
     }
     ~SSDIndex() {
@@ -518,13 +669,9 @@ no caching suppport rn, since there is the head index?
 	}
 #endif
       diskann::cout << "Clearing scratch" << std::endl;
-      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(this->_thread_data);
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(this->search_thread_data);
       manager.destroy();
-      
     }
-    
-
-
   };
 
 

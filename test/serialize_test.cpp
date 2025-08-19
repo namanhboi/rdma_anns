@@ -261,7 +261,7 @@ TEST_CASE("Testing serialization of compute queries") {
 
 template<typename data_type>
 std::vector<std::shared_ptr<compute_result_t<data_type>>>
-generate_random_compute_results(uint32_t num_results, uint32_t R, uint32_t dim) {
+generate_random_compute_results(uint32_t num_results, uint32_t R) {
   std::random_device rd; // obtain a random number from hardware
   std::mt19937 gen(rd()); // seed the generator  
   std::uniform_int_distribution<uint8_t> uint8_t_gen(0, 255);
@@ -283,18 +283,13 @@ generate_random_compute_results(uint32_t num_results, uint32_t R, uint32_t dim) 
     }
     uint32_t query_id = uint32_t_gen(gen);
     uint32_t node_id = uint32_t_gen(gen);
+    float expanded_dist = float_gen(gen);
     uint32_t receiver_thread_id = uint32_t_gen(gen);
-    std::vector<uint8_t> tmp(dim * sizeof(data_type));
-    std::generate(tmp.begin(), tmp.end(),
-                  [&]() { return uint8_t_gen(gen); });
-    std::shared_ptr<data_type[]> embedding(new data_type[dim]);
-    std::memcpy(embedding.get(), tmp.data(), sizeof(data_type) * dim);
     uint8_t cluster_sender_id = uint8_t_gen(gen);
     uint8_t cluster_receiver_id = uint8_t_gen(gen);
     generated.emplace_back(std::make_shared<compute_result_t<data_type>>(
-        num_neighbors, nbr_ids, nbr_distances, query_id, node_id,
-        receiver_thread_id, dim, embedding, cluster_sender_id,
-									 cluster_receiver_id));
+        num_neighbors, nbr_ids, nbr_distances, query_id, node_id, expanded_dist,
+									 receiver_thread_id, cluster_sender_id, cluster_receiver_id));
   }
   return generated;
 }
@@ -307,7 +302,6 @@ TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", floa
   uint32_t max_batch_size = 10;
 
   size_t start_batch_index = 0;
-  auto dim = 128;
   
   std::random_device rd; // obtain a random number from hardware
   std::mt19937 gen(rd()); // seed the generator
@@ -326,7 +320,7 @@ TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", floa
     uint32_t batch_size = std::min(num_queries_left, rand_batch_size);
 
     std::vector<std::shared_ptr<compute_result_t<TestType>>> generated =
-      generate_random_compute_results<TestType>(batch_size, R, dim);
+      generate_random_compute_results<TestType>(batch_size, R);
     
     for (uint32_t i = 0; i < batch_size; i++) {
       batcher.push(generated[i]);
@@ -353,12 +347,9 @@ TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", floa
                             sizeof(float) * generated[i]->num_neighbors) == 0);
         REQUIRE(result->get_query_id() == generated[i]->query_id);
         REQUIRE(result->get_node_id() == generated[i]->node_id);
+        REQUIRE(result->get_expanded_dist() == generated[i]->expanded_dist);
         REQUIRE(result->get_receiver_thread_id() ==
                 generated[i]->receiver_thread_id);
-        REQUIRE(result->get_dim() == generated[i]->dim);
-        REQUIRE(std::memcmp(result->get_embedding(),
-                            generated[i]->embedding.get(),
-                            sizeof(TestType) * generated[i]->dim) == 0);
         REQUIRE(result->get_cluster_sender_id() ==
                 generated[i]->cluster_sender_id);
         REQUIRE(result->get_cluster_receiver_id() ==
@@ -527,7 +518,7 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
 
     uint32_t compute_result_batch_size = batch_size_gen(gen);
     std::vector<std::shared_ptr<compute_result_t<TestType>>> compute_results =
-      generate_random_compute_results<TestType>(compute_result_batch_size, R, dim);
+      generate_random_compute_results<TestType>(compute_result_batch_size, R);
         
     
     uint32_t compute_query_batch_size = batch_size_gen(gen);
@@ -624,10 +615,7 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       REQUIRE(result->get_node_id() == compute_results[i]->node_id);
       REQUIRE(result->get_receiver_thread_id() ==
               compute_results[i]->receiver_thread_id);
-      REQUIRE(result->get_dim() == compute_results[i]->dim);
-      REQUIRE(std::memcmp(result->get_embedding(),
-                          compute_results[i]->embedding.get(),
-                          sizeof(TestType) * compute_results[i]->dim) == 0);
+      REQUIRE(result->get_expanded_dist() == compute_results[i]->expanded_dist);
       REQUIRE(result->get_cluster_sender_id() ==
               compute_results[i]->cluster_sender_id);
       REQUIRE(result->get_cluster_receiver_id() ==

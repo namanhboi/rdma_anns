@@ -95,7 +95,7 @@ class BenchmarkClient {
 
           ObjectWithStringKey obj;
 #ifdef TEST_UDL2
-          obj.key = UDL2_PATHNAME "/cluster_" + std::to_string(cluster_id) +
+          obj.key = UDL2_PATHNAME_CLUSTER + std::to_string(cluster_id) +
                     "/" + std::to_string(node_id) + "_" +
                     std::to_string(batch_id);
 #else
@@ -182,7 +182,7 @@ class BenchmarkClient {
           std::cerr << "Error: empty result blob" << std::endl;
           continue;
         }
-#ifdef TEST_UDL2
+#ifndef TEST_UDL1
         ANNSearchResultBatchManager manager(pending.first.get(),
                                             pending.second);
         for (const auto &result : manager.get_results()) {
