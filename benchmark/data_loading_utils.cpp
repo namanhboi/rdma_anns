@@ -160,10 +160,11 @@ parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file) {
 
 void create_object_pools(ServiceClientAPI &capi) {
   capi.template create_object_pool<UDL1_OBJ_POOL_TYPE>(
-						       UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
+						       UDL1_OBJ_POOL, UDL1_SUBGROUP_INDEX, HASH, {});
 #ifndef TEST_UDL1
   capi.template create_object_pool<UDL2_OBJ_POOL_TYPE>(
-						       UDL2_OBJ_POOL, UDL2_SUBGROUP_INDEX, HASH, {}, AFFINITY_SET_REGEX);
+						       UDL2_OBJ_POOL, UDL2_SUBGROUP_INDEX, HASH, {});
+  
 
 #endif
   

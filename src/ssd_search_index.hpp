@@ -70,24 +70,8 @@ namespace cascade {
     uint64_t _max_degree = 0;
 
     uint8_t cluster_id;
-    void setup_thread_data(
-        uint64_t num_threads,
-        diskann::ConcurrentQueue<diskann::SSDThreadData<data_type> *>
-            &thread_data, uint32_t visited_reserve) {
-#pragma omp parallel for num_threads((int)num_threads)
-      for (int64_t i = 0; i < (int64_t)num_threads; i++) {
-#pragma omp critical
-        {
-          diskann::SSDThreadData<data_type> *data =
-            new diskann::SSDThreadData<data_type>(this->_aligned_dim, visited_reserve);
 
-          this->reader->register_thread();
-          data->ctx = this->reader->get_ctx();
-          thread_data.push(data);
-        }
-      }
-    }
-  
+
     std::function<void(compute_query_t)> send_compute_query_fn;
 
 #ifdef PQ_KV
@@ -256,15 +240,31 @@ no caching suppport rn, since there is the head index?
 			    diskann::get_distance_function<data_type>(diskann::Metric::L2));
       this->_dist_cmp_float.reset(
 				  diskann::get_distance_function<float>(diskann::Metric::L2));
-      setup_thread_data(num_search_threads, this->search_thread_data, 4096);
-      setup_thread_data(num_compute_threads, this->compute_thread_data, 0);
+      // setup_thread_data(num_search_threads, this->search_thread_data, 4096);
+      // setup_thread_data(num_compute_threads, this->compute_thread_data, 0);
 #ifdef PQ_FS
       size_t npts_u64, nchunks_u64;
       diskann::load_bin<uint8_t>(pq_compressed_vectors, this->pq_data, npts_u64,
                                  nchunks_u64);
 #endif
     }
+    void setup_search_thread_data(uint32_t visited_reserve) {
+      diskann::SSDThreadData<data_type> *data =
+          new diskann::SSDThreadData<data_type>(this->_aligned_dim,
+                                                visited_reserve);
+      this->reader->register_thread();
+      data->ctx = this->reader->get_ctx();
+      search_thread_data.push(data);
+    }
 
+    void setup_compute_thread_data() {
+      diskann::SSDThreadData<data_type> *data =
+        new diskann::SSDThreadData<data_type>(this->_aligned_dim, 0);
+      this->reader->register_thread();
+      data->ctx = this->reader->get_ctx();
+      compute_thread_data.push(data);
+    }
+  
     std::shared_ptr<compute_result_t<data_type>> execute_compute_query(
         DefaultCascadeContextType *typed_ctxt, compute_query_t compute_query,
 								       std::shared_ptr<EmbeddingQuery<data_type>> query_emb) {
@@ -274,6 +274,7 @@ no caching suppport rn, since there is the head index?
         err << "Compute query " << compute_query.query_id << " for node id " << compute_query.node_id << " is not in the cluster " << cluster_id << std::endl;
         throw std::runtime_error(err.str());
       }
+
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
 									      this->compute_thread_data);
 
@@ -403,13 +404,15 @@ no caching suppport rn, since there is the head index?
           compute_query.receiver_thread_id, compute_query.cluster_sender_id,
 							   compute_query.cluster_receiver_id);
     }
-    
+
     void
-    search(DefaultCascadeContextType *typed_ctxt, const data_type *query, const uint32_t query_id, uint32_t search_thread_id,
-           const int64_t K, const uint64_t L, uint64_t *indices,
-           float *distances, std::vector<uint32_t> start_node_ids,
+    search(DefaultCascadeContextType *typed_ctxt, const data_type *query,
+           const uint32_t query_id, uint32_t search_thread_id, const int64_t K,
+           const uint64_t L, uint64_t *indices, float *distances,
+           std::vector<uint32_t> start_node_ids,
            std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset,
            uint32_t beam_width = 1) {
+
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
 									      this->search_thread_data);
       auto data = manager.scratch_space();
@@ -421,7 +424,7 @@ no caching suppport rn, since there is the head index?
       // this contains preallocated ptrs to pq table, pq processed query, etc
       auto pq_query_scratch = query_scratch->pq_scratch();
 
-      query_scratch->reset();
+      query_scratch->reset(); 
 
       // // aligned malloc memset to 0, need to copy query to here to do
       // // computation since a lot of operations only work on aligned mem address
@@ -669,8 +672,10 @@ no caching suppport rn, since there is the head index?
 	}
 #endif
       diskann::cout << "Clearing scratch" << std::endl;
-      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(this->search_thread_data);
-      manager.destroy();
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> search_manager(this->search_thread_data);
+      search_manager.destroy();
+      diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> compute_manager(this->compute_thread_data);
+      compute_manager.destroy();
     }
   };
 

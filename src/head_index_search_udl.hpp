@@ -51,6 +51,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // the cluster with the most starting points into the candidate queue
     // if we are doing cotra then we follow paper and put starting points of
     // multiple main partitions
+    // what the fuck is this poorly written piece of fucking shit
     std::unordered_map<uint8_t, std::vector<uint32_t>>
     determine_candidate_queues(
 			       const std::vector<uint32_t> &search_results) {
@@ -170,6 +171,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::mutex cluster_queue_mutex;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
+      // uint32_t batch_index = 0;
       std::unique_lock<std::mutex> lock(cluster_queue_mutex, std::defer_lock);
       std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
       wait_time;
@@ -190,6 +192,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
         if (!running)
           break;
+	
         std::unordered_map<
             uint8_t, std::unique_ptr<std::vector<
                            std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
@@ -198,6 +201,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         
         auto now = std::chrono::steady_clock::now();
         for (auto &[cluster_id, queries_and_cand_q] : cluster_queue) {
+          assert(cluster_queue.size() == parent->num_clusters);
 	  if (wait_time.count(cluster_id) == 0) 
             wait_time[cluster_id] = now;
 	  if (queries_and_cand_q->size() >= parent->min_batch_size || ((now-wait_time[cluster_id]) >= batch_time)) {
@@ -212,14 +216,17 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         lock.unlock();
 
 #ifndef TEST_UDL1
+        // batch_index++;
         // this is the actual data sending pipeline to the global search udl
+
         for (auto &[cluster_id, queries_and_cand_q] : to_send) {
+          assert(to_send.size() == parent->num_clusters);
           uint64_t num_sent = 0;
           uint64_t total = queries_and_cand_q->size();
 
           while (num_sent < total) {
-          std::cout << "total queries to send to cluster " << cluster_id << " "
-          << total << std::endl;
+          // std::cout << "total queries to send to cluster " << cluster_id << " "
+          // << total << std::endl;
             uint64_t left = total - num_sent;
             uint64_t batch_size = std::min(parent->max_batch_size, left);
             GlobalSearchMessageBatcher<data_type> batcher(
@@ -236,32 +243,38 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                 batcher.push_search_query(std::move(search_query));
               }
             }
-            std::cout << "batch size is " <<batch_size << std::endl;
+            // std::cout << "batch size is " <<batch_size << std::endl;
             batcher.serialize();
             ObjectWithStringKey obj;
             obj.blob = std::move(*batcher.get_blob());
             obj.previous_version = INVALID_VERSION;
             obj.previous_version_by_key = INVALID_VERSION;
-            obj.key = UDL2_PATHNAME_CLUSTER + 
+            obj.key = UDL2_PATHNAME_CLUSTER +
                       std::to_string(static_cast<int>(cluster_id));
-            std::cout << "object key is " << obj.key << std::endl;
+            // std::cout << "object key is " << obj.key << std::endl;
 
-            std::cout << typed_ctxt->get_service_client_ref()
-                             .find_object_pool_and_affinity_set_by_key(obj.key)
-                             .second
-            << std::endl;
+            // std::cout << typed_ctxt->get_service_client_ref()
+                             // .find_object_pool_and_affinity_set_by_key(obj.key)
+                             // .second
+            // << std::endl;
             // typed_ctxt->get_service_client_ref().put_and_forget(obj,
             // static_cast<uint32_t>(UDL2_SUBGROUP_INDEX), cluster_id, true);
 
-            auto [subgroup_type_index, subgroup_index, shard_index] =
-                typed_ctxt->get_service_client_ref().key_to_shard_public(
-									 obj.key);
-            std::cout << "key is " << obj.key << " subgroup_type_index "
-                      << subgroup_type_index << " " << "subgroup_index "
-                      << subgroup_index << " " << "shard index " << shard_index
-            << std::endl;
-                        
-            typed_ctxt->get_service_client_ref().put_and_forget(obj, true);
+            // auto [subgroup_type_index, subgroup_index, shard_index] =
+                // typed_ctxt->get_service_client_ref().key_to_shard_public(
+									 // obj.key);
+            // std::cout << "key is " << obj.key << "subgroup_index "
+                      // << UDL2_SUBGROUP_INDEX << "shard index "
+            // << static_cast<uint32_t>(cluster_id) << std::endl;
+
+            auto now = std::chrono::steady_clock::now();
+
+            // typed_ctxt->get_service_client_ref().put_and_forget(obj, true);
+            typed_ctxt->get_service_client_ref()
+                .put_and_forget<UDL2_OBJ_POOL_TYPE>(
+                    obj, UDL2_SUBGROUP_INDEX, static_cast<uint32_t>(cluster_id),
+						    true);
+
             num_sent += batch_size;
           }
         }
@@ -334,13 +347,15 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 #ifdef TEST_UDL1
       if (cluster_queue.count(0) ==0 ) {
         cluster_queue[0] = std::make_unique<
-						     std::vector<std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
-									   std::vector<uint32_t>>>>();
+            std::vector<std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
+                                  std::vector<uint32_t>>>>();
         cluster_queue[0]->reserve(parent->max_batch_size);
       }
       cluster_queue[0]->emplace_back(query, std::move(candidate_queues[0]));
 #else
-      for (uint8_t cluster_id; cluster_id < parent->num_clusters; cluster_id++) {
+      uint32_t num_emb_queries = 0;
+      // std::cout << " candidate queue size " << candidate_queues.size() << std::endl;
+      for (uint8_t cluster_id = 0; cluster_id < parent->num_clusters; cluster_id++) {
         if (cluster_queue.count(cluster_id) == 0) {
           cluster_queue[cluster_id] = std::make_unique<
               std::vector<std::pair<std::shared_ptr<EmbeddingQuery<data_type>>,
@@ -358,7 +373,19 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           // GreedySearchQueries
           cluster_queue[cluster_id]->emplace_back(query,
                                                   std::vector<uint32_t>());
+          num_emb_queries ++;
+          // std::cout << "cluster_id " << cluster_id << " is being passed an empty vector" << std::endl;
         }
+      }
+      if (num_emb_queries != parent->num_clusters - 1) {
+        std::stringstream err;
+        err << "not the expected amount of embedding queries to send to "
+               "secondary partitions: "
+            << num_emb_queries << ". Number of clusters is "
+        << static_cast<int>(parent->num_clusters) << std::endl;
+        
+	std::cerr<< err.str();
+        throw std::runtime_error(err.str());
       }
 #endif
       cluster_queue_cv.notify_all();
@@ -373,6 +400,8 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   std::unique_ptr<diskann::AbstractIndex> head_index;
   bool cached_head_index = false; // if head index is loaded into mem or not
 
+
+  std::once_flag initialized_index;
 
 
   // id_mapping is the mapping from the vector id of the head index to the
@@ -466,9 +495,13 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
     // std::cout << "Head index called " << std::endl;
-    if (cached_head_index == false) {
-      retrieve_and_cache_head_index_fs(typed_ctxt);
-    }
+    // if (cached_head_index == false) {
+    std::call_once(
+        initialized_index,
+        &HeadIndexSearchOCDPO<data_type>::retrieve_and_cache_head_index_fs,
+		   this, typed_ctxt);
+      // retrieve_and_cache_head_index_fs(typed_ctxt);
+    // }
     std::unique_ptr<EmbeddingQueryBatchManager<data_type>> batch_manager =
         std::make_unique<EmbeddingQueryBatchManager<data_type>>(
 								object.blob.bytes, object.blob.size);
