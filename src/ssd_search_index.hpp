@@ -19,6 +19,65 @@
 #define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 
+
+
+/**
+   used to store diskann::Neighbor with expanded distance 
+*/
+class ConcurrentResultVector {
+  std::vector<diskann::Neighbor> results;
+  mutable std::mutex results_mutex;
+
+public:
+  ConcurrentResultVector(uint32_t visited_reserve ) {
+    results.reserve(visited_reserve);
+  }
+
+  void push_back(const diskann::Neighbor &nbr) {
+    std::scoped_lock l(results_mutex);
+    results.push_back(nbr);
+  }
+  void sort_and_write(uint32_t *indices, float *distances, uint32_t K) const {
+    std::scoped_lock l(results_mutex);
+    std::sort(results.begin(), results.end());
+    for (uint64_t i = 0; i < K; i++) {
+      indices[i] = results[i].id;
+      if (distances != nullptr)
+        distances[i] = results[i].distance;
+    }
+  }
+};
+
+
+class ConcurrentVisitedSet {
+  tsl::robin_set<size_t> visited;
+  mutable std::mutex visited_mutex;
+
+public:
+  ConcurrentVisitedSet(uint32_t visited_reserve) {
+    visited.reserve(visited_reserve);
+  }
+  bool insert(size_t node_id) {
+    std::scoped_lock l(visited_mutex);
+    return visited.insert(node_id).second;
+  }
+};
+
+/*
+  global search baseline: includes the concurrent candidate q, full result ret
+  (expanded data)
+  cotraversal: candidate queues, stop tokens, etc
+*/
+struct ConcurrentSearchData {
+  diskann::ConcurrentNeighborPriorityQueue retset;
+  ConcurrentResultVector full_retset;
+  ConcurrentVisitedSet visited;
+  ConcurrentSearchData(uint32_t visited_reserve)
+  : full_retset(visited_reserve), visited(visited_reserve) {}
+};
+
+
+
 namespace derecho {
 namespace cascade {
 
