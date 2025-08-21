@@ -13,70 +13,11 @@
 #include "get_request_manager.hpp"
 #include "udl_path_and_index.hpp"
 #include "pq.h"
-#include "concurrent_neighbor_priority_queue.hpp"
+#include "concurrent_search_data_structures.hpp"
 #include "pq_scratch.h"
 #define BEAMWIDTH 1
 #define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
-
-
-
-/**
-   used to store diskann::Neighbor with expanded distance 
-*/
-class ConcurrentResultVector {
-  std::vector<diskann::Neighbor> results;
-  mutable std::mutex results_mutex;
-
-public:
-  ConcurrentResultVector(uint32_t visited_reserve ) {
-    results.reserve(visited_reserve);
-  }
-
-  void push_back(const diskann::Neighbor &nbr) {
-    std::scoped_lock l(results_mutex);
-    results.push_back(nbr);
-  }
-  void sort_and_write(uint32_t *indices, float *distances, uint32_t K) const {
-    std::scoped_lock l(results_mutex);
-    std::sort(results.begin(), results.end());
-    for (uint64_t i = 0; i < K; i++) {
-      indices[i] = results[i].id;
-      if (distances != nullptr)
-        distances[i] = results[i].distance;
-    }
-  }
-};
-
-
-class ConcurrentVisitedSet {
-  tsl::robin_set<size_t> visited;
-  mutable std::mutex visited_mutex;
-
-public:
-  ConcurrentVisitedSet(uint32_t visited_reserve) {
-    visited.reserve(visited_reserve);
-  }
-  bool insert(size_t node_id) {
-    std::scoped_lock l(visited_mutex);
-    return visited.insert(node_id).second;
-  }
-};
-
-/*
-  global search baseline: includes the concurrent candidate q, full result ret
-  (expanded data)
-  cotraversal: candidate queues, stop tokens, etc
-*/
-struct ConcurrentSearchData {
-  diskann::ConcurrentNeighborPriorityQueue retset;
-  ConcurrentResultVector full_retset;
-  ConcurrentVisitedSet visited;
-  ConcurrentSearchData(uint32_t visited_reserve)
-  : full_retset(visited_reserve), visited(visited_reserve) {}
-};
-
-
 
 namespace derecho {
 namespace cascade {
@@ -86,9 +27,6 @@ namespace cascade {
    in search function, extra parameters that we need:
    - std::function to send compute task to other udls
    - concurrent priority queue
-   - 
-
-
  */
   template <typename data_type> class SSDIndex {
     std::string udl_cluster_data_prefix;
@@ -324,7 +262,7 @@ no caching suppport rn, since there is the head index?
       compute_thread_data.push(data);
     }
   
-    std::shared_ptr<compute_result_t<data_type>> execute_compute_query(
+    std::shared_ptr<compute_result_t> execute_compute_query(
         DefaultCascadeContextType *typed_ctxt, compute_query_t compute_query,
 								       std::shared_ptr<EmbeddingQuery<data_type>> query_emb) {
 
@@ -457,11 +395,11 @@ no caching suppport rn, since there is the head index?
       compute_dists(nbr_ids.get(), num_neighbors, nbr_distances.get());
 #endif
 
-      return std::make_shared<compute_result_t<data_type>>(
+      return std::make_shared<compute_result_t>(
           num_neighbors, nbr_ids, nbr_distances, compute_query.query_id,
           compute_query.node_id, expanded_dist,
-          compute_query.receiver_thread_id, compute_query.cluster_sender_id,
-							   compute_query.cluster_receiver_id);
+          compute_query.receiver_thread_id, compute_query.cluster_receiver_id,
+						compute_query.cluster_sender_id);
     }
 
     void
@@ -469,7 +407,7 @@ no caching suppport rn, since there is the head index?
            const uint32_t query_id, uint32_t search_thread_id, const int64_t K,
            const uint64_t L, uint64_t *indices, float *distances,
            std::vector<uint32_t> start_node_ids,
-           std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset,
+           std::shared_ptr<ConcurrentSearchData> search_data,
            uint32_t beam_width = 1) {
 
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
@@ -537,9 +475,12 @@ no caching suppport rn, since there is the head index?
       float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
       uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
 
-      tsl::robin_set<uint64_t> &visited = query_scratch->visited;
-      retset->reserve(L);
-      std::vector<diskann::Neighbor> &full_retset = query_scratch->full_retset;
+      
+      ConcurrentNeighborPriorityQueue retset = search_data->get_retset();
+      ConcurrentVisitedSet visited = search_data->get_visited();
+      retset.reserve(L);
+      ConcurrentResultVector full_retset = search_data->get_full_retset();
+      
 
       std::vector<float> start_node_pq_dists(start_node_ids.size(), 0.0);
       
@@ -579,7 +520,7 @@ no caching suppport rn, since there is the head index?
 #endif
 
       for (size_t i = 0; i < start_node_ids.size(); i++) {
-        retset->insert(
+        retset.insert(
 		       diskann::Neighbor(start_node_ids[i], start_node_pq_dists[i]));
 	visited.insert(start_node_ids[i]);
       }
@@ -597,18 +538,18 @@ no caching suppport rn, since there is the head index?
       frontier_read_reqs.reserve(2 * beam_width);
       
       // need to look at original pq_flash_index.cpp impl
-      while (retset->has_unexpanded_node()) {
+      while (retset.has_unexpanded_node()) {
         frontier.clear();
         frontier_nhoods.clear();
         frontier_read_reqs.clear();
         sector_scratch_idx = 0;
 
-	auto nbr = retset->closest_unexpanded();
+	auto nbr = retset.closest_unexpanded();
         frontier.push_back(nbr.id);
 	uint32_t num_seen = 0;
-        while (retset->has_unexpanded_node() && frontier.size() < beam_width &&
+        while (retset.has_unexpanded_node() && frontier.size() < beam_width &&
                num_seen < beam_width) {
-            auto nbr = retset->closest_unexpanded();
+            auto nbr = retset.closest_unexpanded();
             num_seen++;
             frontier.push_back(nbr.id);
         }
@@ -633,9 +574,8 @@ no caching suppport rn, since there is the head index?
                                               fnhood.second);
 
             } else {
-              // TODO, need to impl. Currently not testing rn this.
-              size_t size = retset->size();
-              float min_distance = retset->operator[](size - 1).distance;
+              size_t size = retset.size();
+              float min_distance = retset.operator[](size - 1).distance;
               uint8_t nbr_cluster = cluster_assignment[node_id];
               compute_query_t query(node_id, query_id, min_distance,
                                     this->cluster_id, nbr_cluster,
@@ -707,21 +647,21 @@ no caching suppport rn, since there is the head index?
           for (uint32_t m = 0; m < nnbrs; m++) {
             uint32_t id = node_nbrs[m];
             // not in visited i guess
-            if (visited.insert(id).second) {
+            if (visited.insert(id)) {
               float dist = dist_scratch[m];
 	      diskann::Neighbor nn(id, dist);
-              retset->insert(nn);
+              retset.insert(nn);
             }
           }
         }
       }
-      std::sort(full_retset.begin(), full_retset.end());
-      for (uint64_t i = 0; i < K; i++) {
-        indices[i] = full_retset[i].id;
-        if (distances != nullptr)
-          distances[i] = full_retset[i].distance;
-      }
-      
+      // std::sort(full_retset.begin(), full_retset.end());
+      // for (uint64_t i = 0; i < K; i++) {
+        // indices[i] = full_retset[i].id;
+        // if (distances != nullptr)
+          // distances[i] = full_retset[i].distance;
+      // }
+      full_retset.sort_and_write(indices, distances, K);
     }
     ~SSDIndex() {
 #ifdef PQ_FS

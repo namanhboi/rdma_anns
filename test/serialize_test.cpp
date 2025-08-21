@@ -47,11 +47,7 @@ TEST_CASE("Testing EmbeddingQuery serialization and deserialization on sift data
     std::shared_ptr<uint8_t[]> tmp(new uint8_t[batcher.get_serialize_size()]);
     batcher.write_serialize(tmp.get());
 
-    // std::shared_ptr<derecho::cascade::Blob> blob = batcher.get_blob();
-    // std::cerr << blob->size << std::endl;
 
-    // if (blob17->bytes == nullptr)
-      // std::cerr << "nullptr" << std::endl;
     EmbeddingQueryBatchManager<float> manager(tmp.get(),
                                               batcher.get_serialize_size());
     
@@ -259,8 +255,7 @@ TEST_CASE("Testing serialization of compute queries") {
 }
 
 
-template<typename data_type>
-std::vector<std::shared_ptr<compute_result_t<data_type>>>
+std::vector<std::shared_ptr<compute_result_t>>
 generate_random_compute_results(uint32_t num_results, uint32_t R) {
   std::random_device rd; // obtain a random number from hardware
   std::mt19937 gen(rd()); // seed the generator  
@@ -270,7 +265,7 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
 						     0.0, std::numeric_limits<float>::max());
   std::uniform_int_distribution<uint32_t> uint32_t_gen(
 						      0, std::numeric_limits<uint32_t>::max());
-  std::vector<std::shared_ptr<compute_result_t<data_type>>> generated;
+  std::vector<std::shared_ptr<compute_result_t>> generated;
   for (uint32_t i = 0; i < num_results; i++) {
     std::vector<uint32_t> neighbors = generate_list_uint32_t(R);
     uint32_t num_neighbors = neighbors.size();
@@ -287,15 +282,15 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
     uint32_t receiver_thread_id = uint32_t_gen(gen);
     uint8_t cluster_sender_id = uint8_t_gen(gen);
     uint8_t cluster_receiver_id = uint8_t_gen(gen);
-    generated.emplace_back(std::make_shared<compute_result_t<data_type>>(
+    generated.emplace_back(std::make_shared<compute_result_t>(
         num_neighbors, nbr_ids, nbr_distances, query_id, node_id, expanded_dist,
-									 receiver_thread_id, cluster_sender_id, cluster_receiver_id));
+							      receiver_thread_id, cluster_sender_id, cluster_receiver_id));
   }
   return generated;
 }
 
 
-TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", float, uint8_t, int8_t) {
+TEST_CASE("Testing serialization of compute result") {
   uint32_t num_queries = 10'000;
   uint32_t R = 32;
   uint32_t min_batch_size = 1;
@@ -313,14 +308,14 @@ TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", floa
 						     0.0, std::numeric_limits<float>::max());
   std::uniform_int_distribution<uint32_t> uint32_t_gen(
 						      0, std::numeric_limits<uint32_t>::max());
-  ComputeResultBatcher<TestType> batcher(max_batch_size + 1);
+  ComputeResultBatcher batcher(max_batch_size + 1);
   while (start_batch_index < num_queries) {
     uint32_t num_queries_left = num_queries - start_batch_index;
     uint32_t rand_batch_size = batch_size_gen(gen);
     uint32_t batch_size = std::min(num_queries_left, rand_batch_size);
 
-    std::vector<std::shared_ptr<compute_result_t<TestType>>> generated =
-      generate_random_compute_results<TestType>(batch_size, R);
+    std::vector<std::shared_ptr<compute_result_t>> generated =
+      generate_random_compute_results(batch_size, R);
     
     for (uint32_t i = 0; i < batch_size; i++) {
       batcher.push(generated[i]);
@@ -330,7 +325,7 @@ TEMPLATE_TEST_CASE("Testing serialization of compute result", "[template]", floa
 				      new uint8_t[batcher.get_serialize_size()]);
     batcher.write_serialize(buffer.get());
 
-    ComputeResultBatchManager<TestType> manager(buffer.get(),
+    ComputeResultBatchManager manager(buffer.get(),
                                       batcher.get_serialize_size());
 
     const auto &results  = manager.get_results();
@@ -517,8 +512,8 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
 					       K, L);
 
     uint32_t compute_result_batch_size = batch_size_gen(gen);
-    std::vector<std::shared_ptr<compute_result_t<TestType>>> compute_results =
-      generate_random_compute_results<TestType>(compute_result_batch_size, R);
+    std::vector<std::shared_ptr<compute_result_t>> compute_results =
+      generate_random_compute_results(compute_result_batch_size, R);
         
     
     uint32_t compute_query_batch_size = batch_size_gen(gen);
@@ -600,8 +595,7 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
     REQUIRE(managed_compute_results.size() == compute_results.size());
 
     for (uint32_t i = 0; i < managed_compute_results.size(); i++) {
-      const std::shared_ptr<ComputeResult<TestType>> &result =
-        managed_compute_results[i];
+      const std::shared_ptr<ComputeResult> &result = managed_compute_results[i];
 
       REQUIRE(result->get_num_neighbors() == compute_results[i]->num_neighbors);
       REQUIRE(std::memcmp(

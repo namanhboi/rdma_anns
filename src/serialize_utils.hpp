@@ -849,7 +849,6 @@ are unvisited. Mark all of these nodes as visited
 
 will also send back full embedding of node id as well for reranking purposes later.
  */
-template<typename data_type>
 struct compute_result_t {
   uint32_t num_neighbors;
   std::shared_ptr<uint32_t[]> nbr_ids;
@@ -921,7 +920,6 @@ struct compute_result_t {
 
 // reason for this class to exist is because of shared ptr to buffer. Don't want
 // to deallocate memory when it's still needed.
-template<typename data_type>
 class ComputeResult {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
@@ -1024,16 +1022,15 @@ public:
 };
 
 
-template<typename data_type>
 class ComputeResultBatcher {
   std::shared_ptr<derecho::cascade::Blob> blob;
-  std::vector<std::shared_ptr<compute_result_t<data_type>>> results;
+  std::vector<std::shared_ptr<compute_result_t>> results;
 public:
   ComputeResultBatcher() {}
 
   ComputeResultBatcher(uint32_t size_hint) { results.reserve(size_hint); }
 
-  void push(std::shared_ptr<compute_result_t<data_type>> result) {
+  void push(std::shared_ptr<compute_result_t> result) {
     results.emplace_back(std::move(result));
   }
 
@@ -1086,20 +1083,18 @@ public:
   }    
 };
 
-template<typename data_type>
 class ComputeResultBatchManager {
   std::shared_ptr<uint8_t[]> buffer;
   uint64_t buffer_size;
   uint32_t num_results;
   uint32_t data_position;
 
-  std::vector<std::shared_ptr<ComputeResult<data_type>>> results;
+  std::vector<std::shared_ptr<ComputeResult>> results;
   void create_results() {
-    uint32_t offset = data_position + ComputeResultBatcher<data_type>::get_header_size();
+    uint32_t offset = data_position + ComputeResultBatcher::get_header_size();
     for (uint32_t i = 0; i < num_results; i++) {
-      std::shared_ptr<ComputeResult<data_type>> tmp_res =
-          std::make_shared<ComputeResult<data_type>>(buffer, buffer_size,
-                                                     offset);
+      std::shared_ptr<ComputeResult> tmp_res =
+        std::make_shared<ComputeResult>(buffer, buffer_size, offset);
       results.emplace_back(std::move(tmp_res));
       offset += results[i]->get_serialize_size();
     }
@@ -1123,7 +1118,7 @@ public:
       *reinterpret_cast<const uint32_t *>(this->buffer.get() + data_position);
   }
 
-  std::vector<std::shared_ptr<ComputeResult<data_type>>> &get_results() {
+  std::vector<std::shared_ptr<ComputeResult>> &get_results() {
     if (results.empty()) {
       create_results();
     }
@@ -1373,7 +1368,7 @@ class GlobalSearchMessageBatcher {
   EmbeddingQueryBatcher<data_type> query_embeddings_batcher;
   GreedySearchQueryBatcher<data_type> search_queries_batcher;
   ComputeQueryBatcher compute_queries_batcher;
-  ComputeResultBatcher<data_type> compute_results_batcher;
+  ComputeResultBatcher compute_results_batcher;
 
   // std::vector<global_search_message<data_type>> messages;
   uint32_t query_emb_dim; // this is only used for head search udl
@@ -1385,7 +1380,7 @@ public:
     this->search_queries_batcher =
       GreedySearchQueryBatcher<data_type>(emb_dim, size_hint);
     this->compute_queries_batcher = ComputeQueryBatcher(size_hint);
-    this->compute_results_batcher = ComputeResultBatcher<data_type>(size_hint);
+    this->compute_results_batcher = ComputeResultBatcher(size_hint);
     this->query_embeddings_batcher =
       EmbeddingQueryBatcher<data_type>(emb_dim, size_hint);
   }
@@ -1399,7 +1394,7 @@ public:
     this->compute_queries_batcher.push(compute_query);
   }
 
-  void push_compute_result(std::shared_ptr<compute_result_t<data_type>> compute_result) {
+  void push_compute_result(std::shared_ptr<compute_result_t>compute_result) {
     this->compute_results_batcher.push(std::move(compute_result));
   }
   void push_embedding_query(
@@ -1475,7 +1470,7 @@ template <typename data_type> class GlobalSearchMessageBatchManager {
   uint64_t buffer_size;
   std::unique_ptr<GreedySearchQueryBatchManager<data_type>> greedy_search_manager;
   std::unique_ptr<ComputeQueryBatchManager> compute_query_manager;
-  std::unique_ptr<ComputeResultBatchManager<data_type>> compute_result_manager;
+  std::unique_ptr<ComputeResultBatchManager> compute_result_manager;
   std::unique_ptr<EmbeddingQueryBatchManager<data_type>> embedding_query_manager;
   
 public:
@@ -1497,8 +1492,8 @@ public:
 									      this->buffer, this->buffer_size, embedding_queries_position);
     greedy_search_manager = std::make_unique<GreedySearchQueryBatchManager<data_type>>(
 									       this->buffer, this->buffer_size, search_queries_position);
-    compute_result_manager = std::make_unique<ComputeResultBatchManager<data_type>>(
-								 this->buffer, this->buffer_size, compute_results_position);
+    compute_result_manager = std::make_unique<ComputeResultBatchManager>(
+									 this->buffer, this->buffer_size, compute_results_position);
     compute_query_manager = std::make_unique<ComputeQueryBatchManager>(
 								       this->buffer, this->buffer_size, compute_queries_position);
   }
@@ -1517,7 +1512,7 @@ public:
     return this->compute_query_manager->get_queries();
   }
 
-  std::vector<std::shared_ptr<ComputeResult<data_type>>> &get_compute_results() {
+  std::vector<std::shared_ptr<ComputeResult>> &get_compute_results() {
     return this->compute_result_manager->get_results();
   }
 

@@ -48,11 +48,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::queue<std::shared_ptr<GreedySearchQuery<data_type>>> query_queue;
 
 
-    std::shared_ptr<diskann::ConcurrentNeighborPriorityQueue> retset =
-        std::make_shared<diskann::ConcurrentNeighborPriorityQueue>();
-
+    // contains thread safe data structures for receiving compute results from
+    // another thread
+    std::shared_ptr<ConcurrentSearchData> search_data;
     
-
     bool initialized_thread_data = false;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
@@ -74,6 +73,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
+        std::cout << "=================================" << std::endl;
+        std::cout << "starting query " << query_id << std::endl;
+        
+            
 
         // std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
 	// ComputeResult empty_res;
@@ -111,14 +114,21 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 #elif defined(DISK_FS_DISTRIBUTED)
         if (!initialized_thread_data) {
 	  // this is safe because every data structure invovled has internal locks
-          parent->index->setup_search_thread_data(4096);
+          parent->index->setup_search_thread_data(0);
+	  // we won't use the priority queue, visited set, full result set from
+          // ssdqueryscratch because we created our own class ConcurrentSearchData
+          // so we will reserve 0 for the ssdqueryscratch and 4096 for ours
+	  search_data = std::make_shared<ConcurrentSearchData>(4096);
 	  initialized_thread_data = true;
         }
-
-	retset->start_new_query(query_id);
+	search_data->start_new_query(query_id);
+	parent->index->search(typed_ctxt, query->get_embedding_ptr(), query->get_query_id(), my_thread_id , K, L, result_64.get(), nullptr, query->get_candidate_queue(), search_data);
 	
-	parent->index->search(typed_ctxt, query->get_embedding_ptr(), query->get_query_id(), my_thread_id , K, L, result_64.get(), nullptr, query->get_candidate_queue(), retset);
-	retset->clear();
+	search_data->clear();
+	std::cout << "done with query " << query_id << std::endl;
+	std::cout << "=================================" << std::endl;
+
+	
 #elif defined(DISK_KV)
 	// std::cout << "disk kv search called " << std::endl;
 	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
@@ -137,16 +147,28 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     SearchThread(uint64_t thread_id, GlobalSearchOCDPO<data_type> *parent)
     : my_thread_id(thread_id), parent(parent) {}
 
-    void push_compute_result(
-				std::shared_ptr<ComputeResult<data_type>> compute_result) {
-      if (retset == nullptr) {
-	throw std::runtime_error("concurrent neighbor pq retset is nullptr");
+    void push_compute_result(std::shared_ptr<ComputeResult> compute_result) {
+      if (search_data == nullptr) {
+        std::stringstream err;
+        err << " seach thread data hasn't been initialized "
+            << "compute result intended cluster receiver is "
+        << static_cast<int>(compute_result->get_cluster_receiver_id())
+        << ". This shard id is  " << parent->shard_id << std::endl;
+        throw std::runtime_error(err.str());
+        
       }
-      // std::cout << "compute result arrived " << compute_result->get_query_id()
+
+      // std::cout << "compute result arrived " << std::endl;
+      // std::cout << "computer result cluster id is "
+                // << static_cast<int>(compute_result->get_cluster_receiver_id())
+                // << " "
+                // << ", this cluster is " << static_cast<int>(parent->cluster_id)
       // << std::endl;
-      retset->check_query_id_insert_nbrs(
-          compute_result->get_query_id(), compute_result->get_num_neighbors(),
-					 compute_result->get_nbr_ids(), compute_result->get_nbr_distances());
+      // std::cout << " receiver thread from result is "
+                // << compute_result->get_receiver_thread_id()
+      // << ", this thread id is " << my_thread_id << std::endl;
+      
+      search_data->receive_result(std::move(compute_result));
     }
 
 
@@ -251,7 +273,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           parent->index->setup_compute_thread_data();
 	  initialized_thread_data = true;
         }
-        std::shared_ptr<compute_result_t<data_type>> compute_result =
+        std::shared_ptr<compute_result_t> compute_result =
             parent->index->execute_compute_query(typed_ctxt, compute_query,
                                                  query_emb_ptr);
         index_lock.unlock();
@@ -316,10 +338,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     */
     struct message {
       message_type msg_type;
-      std::variant<std::shared_ptr<compute_result_t<data_type>>,
+      std::variant<std::shared_ptr<compute_result_t>,
                    compute_query_t>
           msg;
     };
+    
     
     GlobalSearchOCDPO<data_type> *parent;
     uint64_t thread_id;
@@ -413,9 +436,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
               if (messages->at(i).msg_type == message_type::COMPUTE_RESULT) {
 
-                message_batcher.push_compute_result(std::move(
-                    std::get<std::shared_ptr<compute_result_t<data_type>>>(
-									   messages->at(i).msg)));
+                message_batcher.push_compute_result(
+                    std::move(std::get<std::shared_ptr<compute_result_t>>(
+									  messages->at(i).msg)));
               } else if (messages->at(i).msg_type ==
                          message_type::COMPUTE_QUERY) {
 
@@ -482,7 +505,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       cluster_messages[query.cluster_receiver_id]->emplace_back(std::move(msg));
     }
 
-    void push_compute_res(std::shared_ptr<compute_result_t<data_type>> res) {
+    void push_compute_res(std::shared_ptr<compute_result_t> res) {
       
       std::scoped_lock<std::mutex> lock(messages_mutex);      
       uint8_t receiver_id = res->cluster_receiver_id;
@@ -554,9 +577,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
   std::unique_ptr<BatchingThread> batch_thread;
   std::unique_ptr<DistanceComputeThread> distance_compute_thread;
-  
+
   uint8_t cluster_id;
 
+  uint32_t shard_id;
   uint32_t my_id;
   uint32_t dim;
   uint32_t num_search_threads;
@@ -620,7 +644,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   }
 
   void validate_compute_result(
-			       const std::shared_ptr<ComputeResult<data_type>> &compute_res) {
+			       const std::shared_ptr<ComputeResult> &compute_res) {
     if (compute_res->get_cluster_receiver_id() != this->cluster_id) {
       throw std::runtime_error(
           "Global UDL: " +
@@ -657,6 +681,10 @@ public:
       if (initialized_index == false) {
 	// std::cout << "index not initialized" << std::endl;
         cluster_id = get_cluster_id(key_string);
+        if (cluster_id != shard_id) {
+          std::cout << "cluster id different from shard id " << cluster_id
+          << " " << shard_id << std::endl;
+        }
 	cluster_data_prefix += std::to_string(cluster_id);
 	cluster_search_prefix += std::to_string(cluster_id);
 	// std::cout << cluster_data_prefix << std::endl;
@@ -735,8 +763,9 @@ public:
       distance_compute_thread->push_compute_query(std::move(query));
     }
 
-    for (std::shared_ptr<ComputeResult<data_type>> &result : manager.get_compute_results()) {
+    for (std::shared_ptr<ComputeResult> &result : manager.get_compute_results()) {
       validate_compute_result(result);
+      // std::cout << result->get_receiver_thread_id() << std::endl;
       search_threads[result->get_receiver_thread_id()]->push_compute_result(
 									    std::move(result));
     }
@@ -756,9 +785,11 @@ public:
     std::cout << "members "
               << typed_ctxt->get_service_client_ref().get_members()
     << std::endl;
-    std::cout << "my shard "
-    << typed_ctxt->get_service_client_ref().get_my_shard<VolatileCascadeStoreWithStringKey>(UDL2_SUBGROUP_INDEX)
-    << std::endl;    
+
+    shard_id = typed_ctxt->get_service_client_ref()
+                   .get_my_shard<VolatileCascadeStoreWithStringKey>(
+								    UDL2_SUBGROUP_INDEX);
+    std::cout << "my shard " << shard_id << std::endl;
     try {
       if (config.contains("cluster_assignment_bin_file")) {
         this->cluster_assignment_bin_file =
