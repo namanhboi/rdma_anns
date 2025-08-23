@@ -29,8 +29,10 @@ namespace cascade {
 #define MY_DESC                                                                \
   "UDL for searching the head index + pull push mode as described in cotra "   \
   "paper"
-#define DATA_TYPE "float"
 
+#ifndef DATA_TYPE
+#define DATA_TYPE "float"
+#endif
 std::string get_uuid();
 
 std::string get_description();
@@ -51,8 +53,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // contains thread safe data structures for receiving compute results from
     // another thread
     std::shared_ptr<ConcurrentSearchData> search_data;
-    
+
     bool initialized_thread_data = false;
+
+    std::unordered_map<uint32_t, uint32_t> query_id_order_map;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       // std::cout << "Search thread id is " << std::this_thread::get_id() << std::endl;
@@ -60,6 +64,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex,
                                                      std::defer_lock);
 
+      uint32_t q_index = 0;
       while (running) {
         query_queue_lock.lock();
 
@@ -73,10 +78,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
+        query_id_order_map[query_id] = q_index;
+        q_index++;
         std::cout << "=================================" << std::endl;
-        std::cout << "starting query " << query_id << std::endl;
-        
-            
+        std::cout << "starting query " << query_id << " which has order"
+        << query_id_order_map[query_id] << std::endl;
 
         // std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
 	// ComputeResult empty_res;
@@ -122,8 +128,14 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	  initialized_thread_data = true;
         }
 	search_data->start_new_query(query_id);
-	parent->index->search(typed_ctxt, query->get_embedding_ptr(), query->get_query_id(), my_thread_id , K, L, result_64.get(), nullptr, query->get_candidate_queue(), search_data);
+
+	TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_START,
+                             query->get_client_node_id(), query->get_query_id(), 0ull);
 	
+	uint32_t client_node_id = query->get_client_node_id();
+	parent->index->search(typed_ctxt, query->get_embedding_ptr(), query->get_query_id(), client_node_id, my_thread_id , K, L, result_64.get(), nullptr, query->get_candidate_queue(), search_data);
+	TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_END,
+			     query->get_client_node_id(), query->get_query_id(), 0ull);
 	search_data->clear();
 	std::cout << "done with query " << query_id << std::endl;
 	std::cout << "=================================" << std::endl;
@@ -155,9 +167,8 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         << static_cast<int>(compute_result->get_cluster_receiver_id())
         << ". This shard id is  " << parent->shard_id << std::endl;
         throw std::runtime_error(err.str());
-        
       }
-
+      
       // std::cout << "compute result arrived " << std::endl;
       // std::cout << "computer result cluster id is "
                 // << static_cast<int>(compute_result->get_cluster_receiver_id())
@@ -167,10 +178,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       // std::cout << " receiver thread from result is "
                 // << compute_result->get_receiver_thread_id()
       // << ", this thread id is " << my_thread_id << std::endl;
-      
-      search_data->receive_result(std::move(compute_result));
+      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_RECEIVE_COMPUTE,
+                           compute_result->get_client_node_id(),
+                           compute_result->get_msg_id(), 0ull);
+      search_data->receive_result(std::move(compute_result), query_id_order_map);
     }
-
 
     void push_search_query(std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
       std::scoped_lock<std::mutex> lock(query_queue_mutex);
@@ -258,7 +270,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           queue_lock.lock();
           compute_queue.emplace(std::move(compute_query));
           queue_lock.unlock();
-          
         } else {
           query_emb_ptr = query_map[compute_query.query_id];
         }
@@ -273,9 +284,16 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           parent->index->setup_compute_thread_data();
 	  initialized_thread_data = true;
         }
+        TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_START,
+                             compute_query.client_node_id,
+                             compute_query.get_msg_id(), 0ull);
+        
         std::shared_ptr<compute_result_t> compute_result =
             parent->index->execute_compute_query(typed_ctxt, compute_query,
                                                  query_emb_ptr);
+        TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_END,
+                             compute_query.client_node_id,
+                             compute_query.get_msg_id(), 0ull);
         index_lock.unlock();
         
         parent->batch_thread->push_compute_res(compute_result);
@@ -668,18 +686,23 @@ public:
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    // std::cout << "Global index called " << key_string << std::endl;
-    // can probably optimize this part by doing shared ptr for compute query and
-    // compute result
+    dbg_default_trace("[global search ocdpo]: I({}) received an object from "
+                      "sender:{} with key={}",
+                      worker_id, sender, key_string);
 
+    if (key_string == "flush_logs") {
+        std::string log_file_name = "node" + std::to_string(my_id) + "_udls_timestamp.dat";
+        TimestampLogger::flush(log_file_name);
+        std::cout << "Flushed logs to " << log_file_name <<"."<< std::endl;
+        return;
+    }
 
     // double check locking with atomic bool should be good according to
     // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern
-    
     if (initialized_index == false) {
       std::unique_lock lock(index_mutex);
       if (initialized_index == false) {
-	// std::cout << "index not initialized" << std::endl;
+	TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_START, this->my_id, 0, 0);
         cluster_id = get_cluster_id(key_string);
         if (cluster_id != shard_id) {
           std::cout << "cluster id different from shard id " << cluster_id
@@ -731,6 +754,7 @@ public:
         // std::cout << "done creating SSDINDEXKV" << std::endl;
 #endif
         initialized_index = true;
+        TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_END, this->my_id, 0, 0);
       }
     }
     if (get_cluster_id(key_string) != cluster_id) {

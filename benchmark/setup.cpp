@@ -6,6 +6,7 @@
 #include "defs.h"
 #include "metis_io.h"
 #include <boost/program_options.hpp>
+#include <boost/program_options/value_semantic.hpp>
 #include <cascade/service_client_api.hpp>
 #include <cstddef>
 #include <filesystem>
@@ -29,23 +30,6 @@
 namespace po = boost::program_options;
 using namespace derecho::cascade;
 using namespace parlayANN;
-
-
-template <typename data_type>
-void load_data_fs(ServiceClientAPI &capi, const std::string &data_file, const std::string &index_path_prefix,
-		  const int num_clusters, const std::string &clusters_folder, const std::string &pq_vectors) {
-  Clusters clusters = get_clusters_from_diskann_graph<data_type>(
-								 index_path_prefix, num_clusters);
-  write_cluster_data_folder(clusters, clusters_folder);
-
-  create_cluster_index_files<data_type>(clusters, data_file, index_path_prefix,
-                                        clusters_folder);
-  // need to load pq data in as well
-#ifdef PQ_KV
-  load_diskann_pq_into_cascade(capi, pq_vectors, clusters);
-#endif
-}
-
 
 template <typename data_type>
 void load_data_kv(ServiceClientAPI &capi, const std::string &index_path_prefix,
@@ -83,6 +67,7 @@ void test_head_index(const std::string &index_path_prefix,
 
 int main(int argc, char **argv) {
   po::options_description desc("Program Input");
+  bool built_indices = false;
   std::string index_path_prefix;
   std::string dist_fn;
   std::string data_type;
@@ -97,15 +82,15 @@ int main(int argc, char **argv) {
 
   desc.add_options()("help,h", "show help message")(
       "index_path_prefix,P",
-      po::value<std::string>(&index_path_prefix)->required(),
+      po::value<std::string>(&index_path_prefix),
       "Path to disk index file.")(
-      "data_type,T", po::value<std::string>(&data_type)->required(),
+      "data_type,T", po::value<std::string>(&data_type),
       "Data type of vectors, could be float, uint8, int8")(
-      "num_clusters,N", po::value<int>(&num_clusters)->required(),
+      "num_clusters,N", po::value<int>(&num_clusters),
       "Number of partiptions to divide the whole graph into")(
-      "clusters_folder,O", po::value<std::string>(&clusters_folder)->required(),
+      "clusters_folder,O", po::value<std::string>(&clusters_folder),
       "Path to write the clusters")(
-      "dist_fn,F", po::value<std::string>(&dist_fn)->required(),
+				    "dist_fn,F", po::value<std::string>(&dist_fn),
       "Distance function, could be Euclidian or ?. RN only support Euclidian")(
       "head_index_path", po::value<std::string>(&head_index_path),
       "Path to in mem index, if not built then build it and save it there")(
@@ -116,7 +101,10 @@ int main(int argc, char **argv) {
       "data_file", po::value<std::string>(&data_file),
       "Path to in data file, like sift learn")(
       "pq_vectors", po::value<std::string>(&pq_vectors),
-					       "Path to pq compressed vectors bin file");
+      "Path to pq compressed vectors bin file")(
+      "built_indices", po::bool_switch(&built_indices),
+						"whether all the files for the clusters are built");
+
   po::variables_map vm;
 
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -139,13 +127,16 @@ int main(int argc, char **argv) {
 
   // if not test udl1 and udl2 then must be running fr, so we need to create head index
 #if !defined(TEST_UDL2)
-  if (data_type == "uint8") {
-    build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
-  } else if (data_type == "int8") {
-    build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
-  } else if (data_type == "float") {
-    build_and_save_head_index<float>(index_path_prefix, head_index_path);
-  }  
+  if (!built_indices) {
+    std::cout << "rebuildingthe indices" << std::endl;
+    if (data_type == "uint8") {
+      build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
+    } else if (data_type == "int8") {
+      build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
+    } else if (data_type == "float") {
+      build_and_save_head_index<float>(index_path_prefix, head_index_path);
+    }
+  }
 #endif
 
 #if  (defined(IN_MEM) || defined(DISK_KV))
@@ -158,13 +149,22 @@ int main(int argc, char **argv) {
     load_data_kv<float>(capi, index_path_prefix, num_clusters, clusters_folder);
   }
 #elif defined(DISK_FS_DISKANN_WRAPPER) || defined(DISK_FS_DISTRIBUTED)
-  if (data_type == "uint8") {
-    load_data_fs<uint8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
-  } else if (data_type == "int8") {
-    load_data_fs<int8_t>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
-  } else if (data_type == "float") {
-    load_data_fs<float>(capi, data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
+  if (!built_indices) {
+    std::cout << "rebuilding clustesrs" << std::endl;
+    if (data_type == "uint8") {
+      write_all_cluster_data<uint8_t>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
+    } else if (data_type == "int8") {
+      write_all_cluster_data<int8_t>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
+    } else if (data_type == "float") {
+      write_all_cluster_data<float>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
+    }
   }
+
+#ifdef PQ_KV
+  load_diskann_pq_into_cascade(capi, pq_vectors, clusters);
+#endif
+
+  
 #endif
 #endif  
   return 0;

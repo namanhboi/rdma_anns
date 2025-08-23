@@ -14,7 +14,6 @@
 
 void free_const(const void* ptr) noexcept;
 
-
 /**
    Explanation about the naming conventions in this file:
    - greedy_query_t, query_t,... : this is the intermedidate representation of
@@ -28,8 +27,6 @@ stuff to be sent to the batcher to serialize.
    - Batcher: serializes the data that it manages so that this data can be moved
    into a blob and sent to the appropriate object pool to trigger whatever udl
 */
-
-
 
 /*
  * EmbeddingQuery encapsulates a single embedding query that is part of a batch.
@@ -1041,6 +1038,11 @@ public:
   uint8_t get_cluster_sender_id() const { return cluster_sender_id; }
 
   uint8_t get_cluster_receiver_id() const { return cluster_receiver_id; }
+
+  uint64_t get_msg_id() const {
+    uint64_t msg_id = (static_cast<uint64_t>(query_id) << 32) | node_id;
+    return msg_id;
+  }
 };
 
 

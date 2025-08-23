@@ -6,6 +6,12 @@ target_link_libraries(setup PRIVATE ParlayANN derecho::cascade Boost::program_op
 target_compile_options(setup PRIVATE -g -O0 -Wall)
 
 
+add_executable(create_clusters create_clusters.cpp data_loading_utils.cpp data_loading_utils.hpp)
+target_compile_features(create_clusters PRIVATE cxx_std_20)
+target_include_directories(create_clusters PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/include) # needed to include this to access the methods of diskann library
+target_link_libraries(create_clusters PRIVATE ParlayANN derecho::cascade Boost::program_options partition_lib diskann aio)
+# target_compile_definitions(setup PRIVATE TEST_UDL1)
+target_compile_options(create_clusters PRIVATE -g -O0 -Wall)
 
 add_executable(run_benchmark run_benchmark.cpp benchmark_dataset.hpp)
 target_compile_features(run_benchmark PRIVATE cxx_std_20)

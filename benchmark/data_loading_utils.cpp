@@ -134,8 +134,9 @@ void write_cluster_data_folder(const Clusters &clusters,
 }
 
 
-std::vector<uint8_t> parse_cluster_assignment_bin_file(
-						       const std::string &cluster_assignment_bin_file) {
+Clusters parse_cluster_assignment_bin_file(
+					   const std::string &cluster_assignment_bin_file) {
+  
   std::ifstream in(cluster_assignment_bin_file, std::ios::binary);
   uint32_t num_nodes;
   uint8_t num_clusters;
@@ -143,7 +144,11 @@ std::vector<uint8_t> parse_cluster_assignment_bin_file(
   in.read((char *)&num_clusters, sizeof(num_clusters));
   std::vector<uint8_t> cluster_assignment(num_nodes);
   in.read((char *)cluster_assignment.data(), sizeof(uint8_t) * num_nodes);
-  return cluster_assignment;
+  std::vector<std::vector<uint32_t>> clusters(num_clusters);
+  for (size_t i = 0; i < num_nodes; i++) {
+    clusters[cluster_assignment[i]].push_back(i);
+  }
+  return clusters;
 }
 
 std::vector<uint32_t>

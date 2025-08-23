@@ -68,6 +68,8 @@ void test_pq_flash(const std::string &index_path_prefix, const std::string &quer
 }
 
 
+
+
 /**
    TODO
    create the index files for each cluster.
@@ -115,6 +117,9 @@ void create_cluster_index_files(const Clusters &clusters,
   READ_U64(index_metadata, _max_node_len);
   READ_U64(index_metadata, _nnodes_per_sector);
   index_metadata.close();
+
+  _disk_bytes_per_point = disk_ndims * sizeof(data_type);
+  
   uint32_t max_degree = ((_max_node_len - _disk_bytes_per_point) / sizeof(uint32_t)) - 1;
   std::cout << "max degree is " << max_degree << std::endl;
 
@@ -547,160 +552,6 @@ void build_and_save_head_index(const std::string &index_path_prefix,
 }
 
 
-/**
-   deprecated
-*/
-// template <typename data_type>
-// void load_diskann_in_mem_index(ServiceClientAPI &capi, const std::string &in_mem_index_path) {
-//   std::ifstream data_store_in;
-//   data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-//   data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
-//   data_store_in.seekg(0, data_store_in.beg);
-
-
-//   uint32_t num_pts, dim;
-//   data_store_in.read((char *)&num_pts, sizeof(uint32_t));
-//   data_store_in.read((char *)&dim, sizeof(uint32_t));
-//   data_store_in.close();
-
-//   std::unique_ptr<diskann::Distance<data_type>> dist;
-//   dist.reset((diskann::Distance<data_type> *)diskann::get_distance_function<data_type>(diskann::Metric::L2));
-//   diskann::InMemDataStore<data_type> data_store(
-// 						num_pts, dim, std::move(dist));
-//   data_store.load(in_mem_index_path + ".data");
-
-//   std::ifstream graph_store_in;
-//   graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-//   graph_store_in.open(in_mem_index_path, std::ios::binary);
-//   graph_store_in.seekg(0, data_store_in.beg);
-
-//   uint64_t graph_expected_file_size;
-//   uint32_t max_deg;
-//   graph_store_in.read((char *)&graph_expected_file_size, sizeof(uint64_t));
-//   graph_store_in.read((char *)&max_deg, sizeof(uint32_t));
-//   graph_store_in.close();
-
-  
-//   diskann::InMemGraphStore graph_store(num_pts, max_deg);
-//   auto [nodes_read, start, num_frozen_points] =
-//     graph_store.load(in_mem_index_path, num_pts);
-
-//   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-// 								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
-//   uint32_t header[] = {num_pts, dim, max_deg};
-//   ObjectWithStringKey in_mem_graph_header;
-//   in_mem_graph_header.key = HEAD_INDEX_PREFIX "/header";
-//   in_mem_graph_header.blob = Blob(reinterpret_cast<const uint8_t*>(header), sizeof(uint32_t) * 3);
-
-//   capi.put_and_forget(in_mem_graph_header, false);
-
-//   parlay::parallel_for(0, num_pts, [&] (size_t i) {
-//   // for (uint32_t i = 0; i < num_pts; i++) {
-//     std::vector<uint32_t> nbrs = graph_store.get_neighbours(i);
-//     ObjectWithStringKey nbr_i;
-//     nbr_i.key = HEAD_INDEX_PREFIX "/nbr_" + std::to_string(i);
-//     // nbr_i.blob = Blob(
-//         // [&](uint8_t *buffer, const std::size_t size) {
-//           // uint32_t num_nbrs = nbrs.size();
-//           // std::memcpy(buffer, &num_nbrs, sizeof(uint32_t));
-//           // std::memcpy(buffer, nbrs.data(), sizeof(uint32_t) * num_nbrs);
-//           // return size;
-//         // },
-// 		      // sizeof(uint32_t) * (nbrs.size() + 1));
-    
-    
-//     nbr_i.blob = Blob(reinterpret_cast<const uint8_t *>(nbrs.data()),
-//                       nbrs.size() * sizeof(uint32_t));
-//     nbr_i.previous_version = INVALID_VERSION;
-//     nbr_i.previous_version_by_key = INVALID_VERSION;
-
-//     capi.put_and_forget(nbr_i, false);
-    
-//     data_type vector_data[dim];
-//     data_store.get_vector(i, vector_data);
-//     ObjectWithStringKey data_i;
-//     data_i.key = HEAD_INDEX_PREFIX "/emb_" + std::to_string(i);
-//     data_i.blob = Blob(reinterpret_cast<const uint8_t *>(vector_data),
-//                        dim * sizeof(data_type));
-//     data_i.previous_version = INVALID_VERSION;
-//     data_i.previous_version_by_key = INVALID_VERSION;
-//     capi.put_and_forget(data_i, false);
-//   });
-// }
-
-
-/**
-   Deprecated
-*/
-// template <typename data_type>
-// void load_diskann_head_index_into_cascade(
-//     ServiceClientAPI &capi, const std::string &in_mem_index_path) {
-  
-//   std::cout << in_mem_index_path << std::endl;
-//   std::ifstream data_store_in;
-//   data_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-//   std::cout << "hello done creating data store obj" << std::endl;
-//   data_store_in.open(in_mem_index_path + ".data", std::ios::binary);
-//   std::cout << "done opening " << in_mem_index_path + ".data";
-//   data_store_in.seekg(0, data_store_in.end);
-//   std::cout << "seeking";
-//   size_t expected_file_size_data = data_store_in.tellg();
-//   data_store_in.seekg(0, data_store_in.beg);
-//   uint8_t* data_store_data = new uint8_t[expected_file_size_data];
-//   data_store_in.read((char *)data_store_data, expected_file_size_data);
-//   std::cout << "Successfully read the data_store file with "
-//   << expected_file_size_data << " bytes" << std::endl;
-//   uint32_t num_pts, dim;
-//   std::memcpy(&num_pts, data_store_data, sizeof(uint32_t));
-//   std::memcpy(&dim, data_store_data + sizeof(uint32_t), sizeof(uint32_t));
-
-//     capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(
-// 								      HEAD_INDEX_PREFIX, HEAD_INDEX_SUBGROUP_INDEX);
-//   ObjectWithStringKey data_store_obj;
-//   data_store_obj.key = HEAD_INDEX_PREFIX "/data_store";
-//   data_store_obj.blob = Blob(data_store_data, expected_file_size_data);
-//   data_store_obj.previous_version = INVALID_VERSION;
-//   data_store_obj.previous_version_by_key = INVALID_VERSION;
-
-//   auto data_store_put_res = capi.put(data_store_obj, false);
-//   for (auto &reply_future : data_store_put_res.get()) {
-//     auto reply = reply_future.second.get();
-//   }
-
-//   std::cout << "Successfully put the data_store file " << std::endl;
-
-//   std::ifstream graph_store_in;
-//   graph_store_in.exceptions(std::ios::badbit | std::ios::failbit);
-//   graph_store_in.open(in_mem_index_path, std::ios::binary);
-//   std::cout << "done reading the graph streo" ;
-//   graph_store_in.seekg(0, graph_store_in.beg);
-//   size_t expected_file_size;
-//   graph_store_in.read((char *)&expected_file_size, sizeof(size_t));
-//   uint8_t *graph_store_data =
-//       new uint8_t[expected_file_size - sizeof(size_t) +
-//                   sizeof(uint32_t)]; // don't include the
-//                                      // expected_file_size in this buffer,
-//                                      // replace it with the number of pts
-  
-  
-//   std::memcpy(graph_store_data, &num_pts, sizeof(uint32_t));
-//   graph_store_in.read((char *)(graph_store_data + sizeof(uint32_t)), expected_file_size - sizeof(size_t));
-  
-//   ObjectWithStringKey graph_store_obj;
-//   graph_store_obj.key = HEAD_INDEX_PREFIX "/graph_store";
-//   graph_store_obj.blob = Blob(graph_store_data, expected_file_size);
-//   graph_store_obj.previous_version = INVALID_VERSION;
-//   graph_store_obj.previous_version_by_key = INVALID_VERSION;
-
-//   auto graph_store_put_res = capi.put(graph_store_obj, false);
-//   for (auto &reply_future : graph_store_put_res.get()) {
-//     auto reply = reply_future.second.get();
-//   }
-//   std::cout << "Successfully put the graph_store file " << std::endl;
-//   delete[] data_store_data;
-//   delete[] graph_store_data;
-// }
-
 template <typename data_type>
 void convert_diskann_graph_to_adjgraph(
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
@@ -727,34 +578,6 @@ void convert_diskann_graph_to_adjgraph(
         delete[] neighbors_ptr;
       });
 }
-
-
-
-
-// template<typename data_type>
-// void load_diskann_pq_into_cascade(
-//     ServiceClientAPI &capi,
-//     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex) {
-//   capi.template create_object_pool<VolatileCascadeStoreWithStringKey>(PQ_PREFIX
-// 								      , PQ_SUBGROUP_INDEX);  
-//   parlay::parallel_for(0, _pFlashIndex->get_num_points(), [&](size_t i) {
-//     std::vector<uint8_t> pq_vector = _pFlashIndex->get_pq_vector(i);
-//     ObjectWithStringKey pq_vector_obj;
-//     pq_vector_obj.key = PQ_PREFIX "/vector_" + std::to_string(i);
-//     pq_vector_obj.previous_version = INVALID_VERSION;
-//     pq_vector_obj.previous_version_by_key = INVALID_VERSION;
-
-//     pq_vector_obj.blob =
-//         Blob(reinterpret_cast<const uint8_t *>(pq_vector.data()),
-//              pq_vector.size() * sizeof(uint8_t));
-    
-  
-//     auto result = capi.put(pq_vector_obj, false);
-//     for (auto &reply_future : result.get()) {
-//       auto reply = reply_future.second.get();
-//     }
-//   });
-// }
 
 
 
@@ -903,7 +726,7 @@ std::vector<std::vector<uint32_t>> parse_cluster_bin_file(const std::string &clu
 void write_cluster_assignment_bin_file(const Clusters &clusters,
                             const std::string &output_cluster_assignment);
 
-std::vector<uint8_t>
+Clusters
 parse_cluster_assignment_bin_file(const std::string& cluster_assignment_bin_file);
 
 
@@ -924,3 +747,28 @@ void write_cluster_data_folder(const Clusters &clusters,
 
 std::vector<uint32_t>
 parse_cluster_nodes_bin_file(const std::string &cluster_nodes_bin_file);
+
+
+
+/**
+   given a data file, and index path prefix for disk index files, create the
+   cluster folder with all cluster related data including index files
+*/
+template <typename data_type>
+void write_all_cluster_data(const std::string &data_file,
+                  const std::string &index_path_prefix, const int num_clusters,
+                  const std::string &clusters_folder,
+                  const std::string &pq_vectors) {
+  std::cout << "clustering the index" << std::endl;
+  Clusters clusters = get_clusters_from_diskann_graph<data_type>(
+								 index_path_prefix, num_clusters);
+  
+  std::cout << "writing clusters to file" << std::endl;
+
+  write_cluster_data_folder(clusters, clusters_folder);
+
+  create_cluster_index_files<data_type>(clusters, data_file, index_path_prefix,
+                                        clusters_folder);
+}
+
+

@@ -592,8 +592,8 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       REQUIRE(query->get_dim() == greedy_emb->get_dim());
 
       REQUIRE(std::memcmp(query->get_embedding_ptr(),
-			  greedy_emb->get_embedding_ptr(),
-			  greedy_emb->get_dim() * sizeof(TestType)) == 0);
+                          greedy_emb->get_embedding_ptr(),
+                          greedy_emb->get_dim() * sizeof(TestType)) == 0);
     }
 
     const auto &managed_compute_results = manager.get_compute_results();

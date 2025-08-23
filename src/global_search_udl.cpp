@@ -11,9 +11,9 @@ namespace cascade {
     if (std::string(DATA_TYPE) == "float") {
       GlobalSearchOCDPO<float>::initialize();
 
-    } else if (std::string(DATA_TYPE) == "uint8_t") {
+    } else if (std::string(DATA_TYPE) == "uint8") {
       GlobalSearchOCDPO<uint8_t>::initialize();
-    } else if (std::string(DATA_TYPE) == "int8_t") {
+    } else if (std::string(DATA_TYPE) == "int8") {
       GlobalSearchOCDPO<int8_t>::initialize();
     } else {
       throw std::runtime_error("DATA_TYPE macro in global_search_udl.hpp has weird value: " DATA_TYPE);
@@ -32,12 +32,12 @@ get_observer(ICascadeContext *ctxt, const nlohmann::json &config) {
 						       GlobalSearchOCDPO<float>::get())
         ->set_config(typed_ctxt, config);
     return GlobalSearchOCDPO<float>::get();
-  } else if (std::string(DATA_TYPE) == "uint8_t") {
+  } else if (std::string(DATA_TYPE) == "uint8") {
     std::static_pointer_cast<GlobalSearchOCDPO<uint8_t>>(
 							 GlobalSearchOCDPO<uint8_t>::get())
         ->set_config(typed_ctxt, config);
     return GlobalSearchOCDPO<uint8_t>::get();    
-  } else if (std::string(DATA_TYPE) == "int8_t") {
+  } else if (std::string(DATA_TYPE) == "int8") {
     std::static_pointer_cast<GlobalSearchOCDPO<int8_t>>(
         GlobalSearchOCDPO<int8_t>::get())
         ->set_config(typed_ctxt, config);

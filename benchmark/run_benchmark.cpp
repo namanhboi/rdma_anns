@@ -241,11 +241,11 @@ int main(int argc, char **argv) {
     benchmark<float>(query_file, gt_file, batch_min_size, batch_max_size,
                      batch_time_us, num_result_threads, num_warmup, send_rate,
                      K, L, cluster_id, start_node_id, num_queries_to_send);
-  } else if (data_type == "uint8_t") {
+  } else if (data_type == "uint8") {
     benchmark<uint8_t>(query_file, gt_file, batch_min_size, batch_max_size,
                        batch_time_us, num_result_threads, num_warmup, send_rate,
                        K, L, cluster_id, start_node_id, num_queries_to_send);
-  } else if (data_type == "int8_t") {
+  } else if (data_type == "int8") {
     benchmark<int8_t>(query_file, gt_file, batch_min_size, batch_max_size,
                       batch_time_us, num_result_threads, num_warmup, send_rate,
                       K, L, cluster_id, start_node_id, num_queries_to_send);

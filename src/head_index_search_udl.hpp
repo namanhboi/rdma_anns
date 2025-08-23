@@ -26,7 +26,10 @@ namespace cascade {
 #define MY_DESC                                                                \
   "UDL for searching the head index to find good starting points in clusters " \
   "for greedy/beam search udl"
-#define DATA_TYPE "float"
+
+#ifndef DATA_TYPE
+#define DATA_TYPE "float" 
+#endif
 
 #define MAX_PTS 1'000'000
 std::string get_uuid();
@@ -98,24 +101,38 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         }
         lock.unlock();
 
-	std::vector<uint32_t> search_results;
+	std::vector<uint32_t> search_results(query->get_K());
         try {
+          TimestampLogger::log(LOG_HEAD_INDEX_SEARCH_START,
+                               query->get_client_node_id(),
+                               query->get_query_id(), parent->my_id);
           head_index_search(query, search_results);
-        } catch (std::exception &e) {
+          TimestampLogger::log(LOG_HEAD_INDEX_SEARCH_END,
+                               query->get_client_node_id(),
+                               query->get_query_id(), parent->my_id);
+         } catch (std::exception &e) {
           std::cout << "exception from head_index_search " << e.what()
           << std::endl;
           throw e;
         }
-        parent->batch_thread->push(
-				   determine_candidate_queues(std::move(search_results)), query);
+        TimestampLogger::log(LOG_HEAD_INDEX_DETERMINE_CAND_Q_START,
+                             query->get_client_node_id(), query->get_query_id(),
+                             parent->my_id);
+        std::unordered_map<uint8_t, std::vector<uint32_t>> candidate_queues =
+          determine_candidate_queues(std::move(search_results));
+        TimestampLogger::log(LOG_HEAD_INDEX_DETERMINE_CAND_Q_END,
+                             query->get_client_node_id(), query->get_query_id(),
+                             parent->my_id);
+        parent->batch_thread->push(std::move(candidate_queues),
+                                   query); // could prob std::move query here
       }
     }
 
     void head_index_search(std::shared_ptr<EmbeddingQuery<data_type>> &query, std::vector<uint32_t> &search_results) {
-      search_results.resize(query->get_K());
+      // search_results.resize(query->get_K());
       const data_type *emb = query->get_embedding_ptr();
-      
-      if (emb == nullptr) throw std::runtime_error("embedding nullptr");
+      if (emb == nullptr)
+        throw std::runtime_error("embedding nullptr");
       auto [hops, dist_cmps] = parent->head_index->search(
 							  emb, query->get_K(), query->get_L(), search_results.data());
     }
@@ -433,6 +450,8 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   std::string cluster_assignment_bin_file = "";
 
   void retrieve_and_cache_head_index_fs(DefaultCascadeContextType *typed_ctxt) {
+    TimestampLogger::log(LOG_HEAD_INDEX_LOADING_START, this->my_id, 0, 0);
+    
     if (index_path == "") {
       throw std::runtime_error("index path not specified");
     }
@@ -486,6 +505,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     id_mapping.resize(num_pts);
 
     cached_head_index = true;
+    TimestampLogger::log(LOG_HEAD_INDEX_LOADING_END, this->my_id, 0, 0);
   }
 
   void ocdpo_handler(const node_id_t sender,
@@ -494,17 +514,28 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
-    // std::cout << "Head index called " << std::endl;
-    // if (cached_head_index == false) {
+    auto [client_id, batch_id] = parse_client_and_batch_id(key_string);
+    TimestampLogger::log(LOG_HEAD_INDEX_UDL_START, client_id, batch_id,
+                         this->my_id);
+
+    dbg_default_trace(
+        "[head index search ocdpo]: I({}) received an object from "
+        "sender:{} with key={}",
+		      worker_id, sender, key_string);
+
     std::call_once(
         initialized_index,
         &HeadIndexSearchOCDPO<data_type>::retrieve_and_cache_head_index_fs,
 		   this, typed_ctxt);
-      // retrieve_and_cache_head_index_fs(typed_ctxt);
-    // }
+
+    TimestampLogger::log(LOG_HEAD_INDEX_DESERIALIZE_START, client_id, batch_id, this->my_id);
     std::unique_ptr<EmbeddingQueryBatchManager<data_type>> batch_manager =
         std::make_unique<EmbeddingQueryBatchManager<data_type>>(
 								object.blob.bytes, object.blob.size);
+    TimestampLogger::log(LOG_HEAD_INDEX_DESERIALIZE_END, client_id, batch_id,
+                         this->my_id);
+    
+    
     for (auto &query : batch_manager->get_queries()) {
       if (query->get_dim() != dim) {
         throw std::runtime_error(
@@ -514,6 +545,8 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       search_threads[next_search_thread]->push(query);
       next_search_thread = (next_search_thread + 1) % num_search_threads;
     }
+    TimestampLogger::log(LOG_HEAD_INDEX_UDL_END, client_id, batch_id,
+                         this->my_id);
   }
   static std::shared_ptr<OffCriticalDataPathObserver> ocdpo_ptr;
 
@@ -530,8 +563,9 @@ public:
                   const nlohmann::json &config) {
     this->my_id = typed_ctxt->get_service_client_ref().get_my_id();
     try{
-      if (config.contains("dim"))
+      if (config.contains("dim")) {
         this->dim = config["dim"].get<int>();
+      }
       if (config.contains("num_search_threads")) {
         this->num_search_threads = config["num_search_threads"].get<int>();
       }

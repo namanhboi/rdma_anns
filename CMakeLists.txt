@@ -64,6 +64,10 @@ if(DISK_KV)
     add_compile_definitions(DISK_KV)
 endif()
 
+# Allow DATA_TYPE to be set from command line
+if(NOT DEFINED DATA_TYPE)
+    set(DATA_TYPE "float")  # default
+endif()
 
 add_subdirectory(extern/gp-ann)
 add_subdirectory(extern/DiskANN)
