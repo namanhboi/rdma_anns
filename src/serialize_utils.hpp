@@ -665,6 +665,7 @@ public:
 struct compute_query_t {
   uint32_t node_id;
   uint32_t query_id;
+  uint32_t client_node_id;
   float min_distance;
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
@@ -672,15 +673,16 @@ struct compute_query_t {
 
   compute_query_t()
       : node_id(0), query_id(0), min_distance(0), cluster_sender_id(0),
-      cluster_receiver_id(0), receiver_thread_id(0) {}
+      cluster_receiver_id(0), receiver_thread_id(0), client_node_id(0) {}
 
-  compute_query_t(uint32_t node_id, uint32_t query_id, float min_distance,
-                  uint8_t cluster_sender_id, uint8_t cluster_receiver_id,
-                  uint32_t receiver_thread_id)
-      : node_id{node_id}, query_id{query_id}, min_distance{min_distance},
-        cluster_sender_id{cluster_sender_id},
+  compute_query_t(uint32_t node_id, uint32_t query_id, uint32_t client_node_id,
+                  float min_distance, uint8_t cluster_sender_id,
+                  uint8_t cluster_receiver_id, uint32_t receiver_thread_id)
+      : node_id{node_id}, query_id{query_id}, client_node_id(client_node_id),
+        min_distance{min_distance}, cluster_sender_id{cluster_sender_id},
         cluster_receiver_id{cluster_receiver_id},
         receiver_thread_id(receiver_thread_id) {}
+
   compute_query_t(const uint8_t* buffer, uint64_t buffer_size,
                   uint32_t data_position) {
     uint32_t offset = data_position;
@@ -689,6 +691,9 @@ struct compute_query_t {
 
     this->query_id = *reinterpret_cast<const uint32_t *>(buffer + offset);
     offset += sizeof(this->query_id);
+
+    this->client_node_id = *reinterpret_cast<const uint32_t *>(buffer + offset);
+    offset += sizeof(this->client_node_id);
 
     this->min_distance = *reinterpret_cast<const float *>(buffer + offset);
     offset += sizeof(this->min_distance);
@@ -709,7 +714,16 @@ struct compute_query_t {
 
   size_t get_serialize_size() const {
     return sizeof(node_id) + sizeof(query_id) + sizeof(min_distance) +
-           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id);
+           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id) + sizeof(client_node_id);
+  }
+
+  /*
+    used for logging purposes
+  */
+  uint64_t get_msg_id() {
+    uint64_t msg_id =
+      (static_cast<uint64_t>(this->query_id) << 32) | this->node_id;
+    return msg_id;
   }
 
   void write_serialize(uint8_t *buffer) const {
@@ -719,6 +733,9 @@ struct compute_query_t {
 
     std::memcpy(buffer + offset, &query_id, sizeof(query_id));
     offset += sizeof(query_id);
+
+    std::memcpy(buffer + offset, &client_node_id, sizeof(client_node_id));
+    offset += sizeof(client_node_id);
 
     std::memcpy(buffer + offset, &min_distance, sizeof(query_id));
     offset += sizeof(query_id);
@@ -855,6 +872,7 @@ struct compute_result_t {
   std::shared_ptr<float[]> nbr_distances;
   uint32_t query_id;
   uint32_t node_id;
+  uint32_t client_node_id;
   float expanded_dist;
   uint32_t receiver_thread_id;
   uint8_t cluster_sender_id;
@@ -862,23 +880,23 @@ struct compute_result_t {
 
   compute_result_t()
       : cluster_sender_id(0), cluster_receiver_id(0), receiver_thread_id(0),
-        nbr_ids(nullptr), nbr_distances(nullptr), query_id(0), node_id(0),
+      nbr_ids(nullptr), nbr_distances(nullptr), query_id(0), node_id(0), client_node_id(0),
         expanded_dist(0) {}
 
   compute_result_t(uint32_t num_neighbors, std::shared_ptr<uint32_t[]> nbr_ids,
                    std::shared_ptr<float[]> nbr_distances, uint32_t query_id,
-                   uint32_t node_id, float expanded_dist,
-                   uint32_t receiver_thread_id, uint8_t cluster_sender_id,
-                   uint8_t cluster_receiver_id)
+                   uint32_t node_id, uint32_t client_node_id,
+                   float expanded_dist, uint32_t receiver_thread_id,
+                   uint8_t cluster_sender_id, uint8_t cluster_receiver_id)
       : num_neighbors(num_neighbors), nbr_ids(nbr_ids),
-        nbr_distances(nbr_distances), query_id(query_id), node_id(node_id),
+      nbr_distances(nbr_distances), query_id(query_id), node_id(node_id), client_node_id(client_node_id),
         expanded_dist(expanded_dist), receiver_thread_id(receiver_thread_id),
         cluster_sender_id(cluster_sender_id),
         cluster_receiver_id(cluster_receiver_id) {}
   
   size_t get_serialize_size() const {
     return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
-           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
+           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) + sizeof(client_node_id) + 
            sizeof(expanded_dist) + sizeof(receiver_thread_id) +
            sizeof(cluster_receiver_id) + sizeof(cluster_sender_id);
   }
@@ -901,6 +919,9 @@ struct compute_result_t {
 
     std::memcpy(buffer + offset, &node_id, sizeof(node_id));
     offset += sizeof(node_id);
+
+    std::memcpy(buffer + offset, &client_node_id, sizeof(client_node_id));
+    offset += sizeof(client_node_id);
 
     std::memcpy(buffer + offset, &expanded_dist, sizeof(expanded_dist));
     offset += sizeof(expanded_dist);
@@ -929,6 +950,7 @@ class ComputeResult {
   const float *nbr_distances;
   uint32_t query_id;
   uint32_t node_id;
+  uint32_t client_node_id;
   float expanded_dist;
   uint32_t receiver_thread_id;
   
@@ -968,6 +990,9 @@ public:
     this->node_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
     offset += sizeof(uint32_t);
 
+    this->client_node_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
+    offset += sizeof(client_node_id);
+
     this->expanded_dist = *reinterpret_cast<const float *>(buffer.get() + offset);
     offset += sizeof(float);
 
@@ -984,8 +1009,9 @@ public:
   size_t get_serialize_size() const {
     return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
            sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
-           sizeof(expanded_dist) + sizeof(receiver_thread_id) +
-           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id);
+           sizeof(client_node_id) + sizeof(expanded_dist) +
+           sizeof(receiver_thread_id) + sizeof(cluster_sender_id) +
+           sizeof(cluster_receiver_id);
   }
 
   uint32_t get_num_neighbors() const {
@@ -1003,22 +1029,18 @@ public:
   uint32_t get_query_id() const {
     return query_id;
   }
-  
-  uint32_t get_node_id() const {
-    return node_id;
-  }
+
+  uint32_t get_node_id() const { return node_id; }
+
+  uint32_t get_client_node_id() const { return client_node_id; }
 
   uint32_t get_receiver_thread_id() const { return receiver_thread_id; }
 
   float get_expanded_dist() const { return expanded_dist; }
-  
-  uint8_t get_cluster_sender_id() const {
-    return cluster_sender_id;
-  }
-  
-  uint8_t get_cluster_receiver_id() const {
-    return cluster_receiver_id;
-  }
+
+  uint8_t get_cluster_sender_id() const { return cluster_sender_id; }
+
+  uint8_t get_cluster_receiver_id() const { return cluster_receiver_id; }
 };
 
 
@@ -1526,3 +1548,4 @@ public:
 
 uint8_t get_cluster_id(const std::string &key);
 
+std::pair<uint32_t, uint64_t> parse_client_and_batch_id(const std::string&key);

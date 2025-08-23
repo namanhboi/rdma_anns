@@ -19,3 +19,10 @@ uint8_t get_cluster_id(const std::string &key) {
 void free_const(const void* ptr) noexcept {
     free(const_cast<void*>(ptr));
 }
+std::pair<uint32_t, uint64_t>
+parse_client_and_batch_id(const std::string &key_string) {
+  size_t pos = key_string.find("_");
+  uint32_t client_id = std::stoll(key_string.substr(0,pos));
+  uint64_t batch_id = std::stoull(key_string.substr(pos+1));
+  return std::make_pair(client_id,batch_id);
+}

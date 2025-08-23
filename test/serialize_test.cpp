@@ -189,9 +189,9 @@ generate_random_compute_queries(uint32_t num_queries) {
   std::uniform_int_distribution<uint32_t> node_id_gen(
 						      0, std::numeric_limits<uint32_t>::max());
   for (uint32_t i = 0; i < num_queries; i++) {
-    compute_query_t query(node_id_gen(gen), node_id_gen(gen), distance_gen(gen),
-                          cluster_id_gen(gen), cluster_id_gen(gen),
-                          node_id_gen(gen));
+    compute_query_t query(node_id_gen(gen), node_id_gen(gen), node_id_gen(gen),
+                          distance_gen(gen), cluster_id_gen(gen),
+                          cluster_id_gen(gen), node_id_gen(gen));
     
     generated.push_back(query);
   }
@@ -227,8 +227,9 @@ TEST_CASE("Testing serialization of compute queries") {
     
     for (uint32_t i = 0; i < batch_size; i++) {
       compute_query_t query(node_id_gen(gen), node_id_gen(gen),
-                            distance_gen(gen), cluster_id_gen(gen),
-                            cluster_id_gen(gen), node_id_gen(gen));
+                            node_id_gen(gen), distance_gen(gen),
+                            cluster_id_gen(gen), cluster_id_gen(gen),
+                            node_id_gen(gen));
       generated.push_back(query);
       batcher.push(query);
     }
@@ -244,6 +245,7 @@ TEST_CASE("Testing serialization of compute queries") {
     for (uint32_t i = 0; i < queries.size(); i++) {
       REQUIRE(queries[i].node_id == generated[i].node_id);
       REQUIRE(queries[i].query_id == generated[i].query_id);
+      REQUIRE(queries[i].client_node_id == generated[i].client_node_id);
       REQUIRE(queries[i].min_distance == generated[i].min_distance);
       REQUIRE(queries[i].cluster_receiver_id ==
               generated[i].cluster_receiver_id);
@@ -278,13 +280,15 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
     }
     uint32_t query_id = uint32_t_gen(gen);
     uint32_t node_id = uint32_t_gen(gen);
+    uint32_t client_node_id = uint32_t_gen(gen);
     float expanded_dist = float_gen(gen);
     uint32_t receiver_thread_id = uint32_t_gen(gen);
     uint8_t cluster_sender_id = uint8_t_gen(gen);
     uint8_t cluster_receiver_id = uint8_t_gen(gen);
     generated.emplace_back(std::make_shared<compute_result_t>(
-        num_neighbors, nbr_ids, nbr_distances, query_id, node_id, expanded_dist,
-							      receiver_thread_id, cluster_sender_id, cluster_receiver_id));
+        num_neighbors, nbr_ids, nbr_distances, query_id, node_id,
+        client_node_id, expanded_dist, receiver_thread_id, cluster_sender_id,
+							      cluster_receiver_id));
   }
   return generated;
 }
@@ -342,6 +346,7 @@ TEST_CASE("Testing serialization of compute result") {
                             sizeof(float) * generated[i]->num_neighbors) == 0);
         REQUIRE(result->get_query_id() == generated[i]->query_id);
         REQUIRE(result->get_node_id() == generated[i]->node_id);
+        REQUIRE(result->get_client_node_id() == generated[i]->client_node_id);
         REQUIRE(result->get_expanded_dist() == generated[i]->expanded_dist);
         REQUIRE(result->get_receiver_thread_id() ==
                 generated[i]->receiver_thread_id);
@@ -607,6 +612,8 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
               0);
       REQUIRE(result->get_query_id() == compute_results[i]->query_id);
       REQUIRE(result->get_node_id() == compute_results[i]->node_id);
+      REQUIRE(result->get_client_node_id() ==
+              compute_results[i]->client_node_id);
       REQUIRE(result->get_receiver_thread_id() ==
               compute_results[i]->receiver_thread_id);
       REQUIRE(result->get_expanded_dist() == compute_results[i]->expanded_dist);
@@ -621,6 +628,7 @@ TEMPLATE_TEST_CASE("testing global search message serialization", "[template]", 
       const auto &query = managed_compute_queries[i];
       REQUIRE(query.node_id == compute_queries[i].node_id);
       REQUIRE(query.query_id == compute_queries[i].query_id);
+      REQUIRE(query.client_node_id == compute_queries[i].client_node_id);
       REQUIRE(query.min_distance == compute_queries[i].min_distance);
       REQUIRE(query.cluster_receiver_id ==
               compute_queries[i].cluster_receiver_id);
