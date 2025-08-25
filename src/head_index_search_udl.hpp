@@ -514,6 +514,13 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                      const ObjectWithStringKey &object, const emit_func_t &emit,
                      DefaultCascadeContextType *typed_ctxt,
                      uint32_t worker_id) override {
+    if (key_string == "flush_logs") {
+        std::string log_file_name = "node" + std::to_string(my_id) + "_udls_timestamp.dat";
+        TimestampLogger::flush(log_file_name);
+        std::cout << "Flushed logs to " << log_file_name <<"."<< std::endl;
+        return;
+    }
+    
     auto [client_id, batch_id] = parse_client_and_batch_id(key_string);
     TimestampLogger::log(LOG_HEAD_INDEX_UDL_START, client_id, batch_id,
                          this->my_id);
@@ -527,6 +534,9 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         initialized_index,
         &HeadIndexSearchOCDPO<data_type>::retrieve_and_cache_head_index_fs,
 		   this, typed_ctxt);
+
+    
+
 
     TimestampLogger::log(LOG_HEAD_INDEX_DESERIALIZE_START, client_id, batch_id, this->my_id);
     std::unique_ptr<EmbeddingQueryBatchManager<data_type>> batch_manager =

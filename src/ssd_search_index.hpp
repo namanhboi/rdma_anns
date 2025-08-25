@@ -581,7 +581,7 @@ no caching suppport rn, since there is the head index?
       // used to determine which nodes to do get request, reason this exist is
       // because we might want to increase beamwidth in the future
 
-      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_BEGIN_SEARCH,
+      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_SEARCH_START,
                            client_node_id, query_id, 0ull);
       while (retset.has_unexpanded_node()) {
         sector_scratch_idx = 0;
@@ -607,7 +607,7 @@ no caching suppport rn, since there is the head index?
           compute_query_t query(node_id, query_id, client_node_id, min_distance,
                                 this->cluster_id, nbr_cluster,
                                 search_thread_id);
-          TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_SEND_COMPUTE,
+          TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND,
                                client_node_id, query.get_msg_id(), 0ull);
           this->send_compute_query_fn(query);
           continue;
@@ -618,6 +618,7 @@ no caching suppport rn, since there is the head index?
 
         TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_READ_START, client_node_id,
                              read_msg_id, 0ull);
+        
         reader->read(read_reqs, ctx);
         TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_READ_END, client_node_id,
                              read_msg_id, 0ull);
@@ -685,7 +686,7 @@ no caching suppport rn, since there is the head index?
       }
 
       full_retset.sort_and_write(indices, distances, K);
-      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_END_SEARCH, client_node_id,
+      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_SEARCH_END, client_node_id,
                            query_id, 0ull);
     }
     ~SSDIndex() {

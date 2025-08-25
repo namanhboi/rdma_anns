@@ -165,6 +165,7 @@ void benchmark(const std::string &query_file, const std::string &gt_file,
   std::cout << "recall is " << recall << std::endl;
   std::cout << "bad queries number: " << bad_queries.size() << std::endl;
 
+  client.dump_timestamp();
   delete[] query_result;
   delete[] query_data;
 }

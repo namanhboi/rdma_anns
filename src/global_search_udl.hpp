@@ -178,7 +178,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       // std::cout << " receiver thread from result is "
                 // << compute_result->get_receiver_thread_id()
       // << ", this thread id is " << my_thread_id << std::endl;
-      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_RECEIVE_COMPUTE,
+      TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE,
                            compute_result->get_client_node_id(),
                            compute_result->get_msg_id(), 0ull);
       search_data->receive_result(std::move(compute_result), query_id_order_map);
@@ -689,13 +689,6 @@ public:
     dbg_default_trace("[global search ocdpo]: I({}) received an object from "
                       "sender:{} with key={}",
                       worker_id, sender, key_string);
-
-    if (key_string == "flush_logs") {
-        std::string log_file_name = "node" + std::to_string(my_id) + "_udls_timestamp.dat";
-        TimestampLogger::flush(log_file_name);
-        std::cout << "Flushed logs to " << log_file_name <<"."<< std::endl;
-        return;
-    }
 
     // double check locking with atomic bool should be good according to
     // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern

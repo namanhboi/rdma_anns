@@ -490,5 +490,21 @@ public:
     return results[query_id];
   }
 #endif
+
+  void dump_timestamp() {
+    TimestampLogger::flush("client" + std::to_string(my_id) + ".dat");
+    auto shards = capi.get_subgroup_members<VolatileCascadeStoreWithStringKey>(
+									       RESULTS_OBJ_POOL_SUBGROUP_INDEX);
+    uint32_t shard_id =0;
+    for (auto &shard : shards) {
+      ObjectWithStringKey obj;
+      obj.key = UDL1_PATHNAME "/flush_logs";
+      for (int j = 0; j < shard.size(); j++) {
+        auto res = capi.trigger_put<VolatileCascadeStoreWithStringKey>(
+								       obj, RESULTS_OBJ_POOL_SUBGROUP_INDEX, shard_id);
+      }
+      shard_id++;
+    }
+  }    
 };
   
