@@ -898,6 +898,11 @@ struct compute_result_t {
            sizeof(cluster_receiver_id) + sizeof(cluster_sender_id);
   }
 
+  uint64_t get_msg_id() const {
+    uint64_t msg_id = (static_cast<uint64_t>(query_id) << 32) | node_id;
+    return msg_id;
+  }
+
   void write_serialize(uint8_t *buffer) const {
     uint32_t offset = 0;
     std::memcpy(buffer + offset, &num_neighbors, sizeof(num_neighbors));
@@ -1461,6 +1466,7 @@ public:
   }
 
   void serialize() {
+    // for (auto compute__
     size_t total_size = get_serialize_size();
 
     this->blob = std::make_shared<derecho::cascade::Blob>(

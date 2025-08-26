@@ -81,6 +81,8 @@ def get_durations(log_df, start_tag, end_tag, tag_type, group_by_columns=['clien
      # print("num malformed", num_malformed)
      return duration_df
 
+
+
 if __name__ == "__main__":
     pass
         

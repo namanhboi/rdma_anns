@@ -81,11 +81,12 @@ def clean_log_dataframe(log_data, drop_warmup=0):
     return df
 
 def add_query_id_node_id_dataframe(df):
-    start_end_type_log_tags = get_start_end_type_log_tags(get_log_tags_dataframe())
+    log_tags_df = get_log_tags_dataframe()
     tag_type_dict = dict()
-    for start_tag, end_tag, tag_type in start_end_type_log_tags:
-        tag_type_dict[start_tag] = tag_type
-        tag_type_dict[end_tag] = tag_type
+    for index, row in log_tags_df.iterrows():
+        tag_type_dict[row["tag_value"]] = str(row["msg_id_type"])
+        print(row["tag_value"], row["msg_id_type"])
+
     df["query_id"] = df.apply(lambda row: row["msg_id"] if tag_type_dict[row["tag"].item()] == "query_id" else (row["msg_id"] //MULTIPLIER), axis = 1)
     df["node_id"] = df.apply(lambda row: pd.NA if tag_type_dict[row["tag"].item()] == "query_id" else (row["msg_id"] % MULTIPLIER), axis = 1)
     return df
@@ -111,23 +112,43 @@ if __name__ == "__main__":
     log_tags_df = get_log_tags_dataframe()
     start_end_type_tags = get_start_end_type_log_tags(log_tags_df)
 
-    for start_tag, end_tag, tag_type in start_end_type_tags:
-        data_df = None
-        if tag_type == "query_id":
-            data_df = get_durations(df, start_tag, end_tag, tag_type, ['client_node_id', 'query_id'])
-        elif tag_type == "query_id_and_node_id":
-            data_df = (get_durations(df, start_tag, end_tag, tag_type, ['client_node_id', 'query_id', 'node_id']))
+    # for start_tag, end_tag, tag_type in start_end_type_tags:
+    #     data_df = None
+    #     if tag_type == "query_id":
+    #         data_df = get_durations(df, start_tag, end_tag, tag_type, ['client_node_id', 'query_id'])
+    #     elif tag_type == "query_id_and_node_id":
+    #         data_df = (get_durations(df, start_tag, end_tag, tag_type, ['client_node_id', 'query_id', 'node_id']))
 
-        if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_SEARCH_COMPUTE"):
-            print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
-            print_summary_start_series(data_df["latency"])
+    #     if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_SEARCH_COMPUTE"):
+    #         print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
+    #         print_summary_start_series(data_df["latency"])
 
-        if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_SEARCH_READ"):
-            print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
-            print_summary_start_series(data_df["latency"])
+    #     if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_SEARCH_READ"):
+    #         print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
+    #         print_summary_start_series(data_df["latency"])
 
-        if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_COMPUTE_READ"):
-            print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
-            print_summary_start_series(data_df["latency"])
-            
-            
+    #     if tag_value_to_name(log_tags_df, start_tag).startswith("LOG_GLOBAL_INDEX_COMPUTE_READ"):
+    #         print("===", tag_value_to_name(log_tags_df, start_tag), tag_value_to_name(log_tags_df, end_tag), "===")
+    #         print_summary_start_series(data_df["latency"])
+
+
+    print("round trip latency of compute task")
+    data_df = get_durations(df, 20120, 20121, "query_id_and_node_id", ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(data_df["latency"])
+    
+    print(" time from sending to it being pushed to remote cluster compute task queue")
+    data_df = get_durations(df, 20120, 20040, "query_id_and_node_id", ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(data_df["latency"])
+
+    print(" time from it being pushed to it being computed")
+    data_df = get_durations(df, 20040, 20020 ,"query_id_and_node_id", ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(data_df["latency"])
+
+    print("time from the computation done to the requesting thread actually receiving the results")
+    data_df = get_durations(df, 20021, 20121 ,"query_id_and_node_id", ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(data_df["latency"])
+
+    print("compute results serialization time")
+    data_df = get_durations(df, 20072, 20073 ,"query_id_and_node_id", ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(data_df["latency"])
+

@@ -67,12 +67,14 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 #ifdef TEST_UDL1
         const uint8_t &cluster_id = 0;
 #else
+	// std::cout << "cluster assignment" << std::endl;
         const uint8_t &cluster_id = parent->cluster_assignment[node_id];
 #endif
         if (candidate_queues_per_cluster.count(cluster_id) == 0) {
           candidate_queues_per_cluster[cluster_id] = std::vector<uint32_t>();
         }
-        candidate_queues_per_cluster[cluster_id].push_back(node_id);
+	// std::cout << parent->id_mapping[node_id] << std::endl;
+        candidate_queues_per_cluster[cluster_id].push_back(parent->id_mapping[node_id]);
         if (candidate_queues_per_cluster[cluster_id].size() > max_elements) {
 	  max_elements = candidate_queues_per_cluster[cluster_id].size();
 	  max_element_cluster_id = cluster_id;
@@ -496,16 +498,25 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     cluster_assignment_in.read((char *)cluster_assignment.data(),
                                whole_graph_num_pts * sizeof(uint8_t));
 
-    id_mapping = std::vector<uint32_t>(MAX_PTS);
+    // id_mapping = std::vector<uint32_t>(MAX_PTS);
+    uint32_t *id_mapping_ptr;
     size_t num_dim_file;
     size_t num_aligned_dim_file;
-    uint32_t *ptr = id_mapping.data();
-    diskann::load_bin<uint32_t>(id_mapping_path, ptr, num_pts, num_dim_file);
+    // uint32_t *ptr = id_mapping.data();
+    diskann::load_bin<uint32_t>(id_mapping_path, id_mapping_ptr, num_pts, num_dim_file);
     assert(num_dim_file == 1);
-    id_mapping.resize(num_pts);
+    std::cout << "number of points loaded is " << num_pts << std::endl;
+    id_mapping =
+      std::vector<uint32_t>(id_mapping_ptr, id_mapping_ptr + num_pts);
+    for (auto  x = 0; x < 1000; x++) {
+      std::cout << id_mapping[x] <<std::endl;
+    }
+    // id_mapping.resize(num_pts);
 
     cached_head_index = true;
+    delete[] id_mapping_ptr;
     TimestampLogger::log(LOG_HEAD_INDEX_LOADING_END, this->my_id, 0, 0);
+    
   }
 
   void ocdpo_handler(const node_id_t sender,

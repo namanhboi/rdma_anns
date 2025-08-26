@@ -22,6 +22,7 @@
 #include "in_mem_search_index.hpp"
 #include "ssd_search_index.hpp"
 
+
 namespace derecho {
 namespace cascade {
 
@@ -56,7 +57,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     bool initialized_thread_data = false;
 
-    std::unordered_map<uint32_t, uint32_t> query_id_order_map;
+    // std::unordered_map<uint32_t, uint32_t> query_id_order_map;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       // std::cout << "Search thread id is " << std::this_thread::get_id() << std::endl;
@@ -78,11 +79,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
-        query_id_order_map[query_id] = q_index;
+        // query_id_order_map[query_id] = q_index;
         q_index++;
-        std::cout << "=================================" << std::endl;
-        std::cout << "starting query " << query_id << " which has order"
-        << query_id_order_map[query_id] << std::endl;
+        // std::cout << "=================================" << std::endl;
+        // std::cout << "starting query " << query_id << " which has order"
+        // << query_id_order_map[query_id] << std::endl;
 
         // std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
 	// ComputeResult empty_res;
@@ -137,8 +138,8 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_END,
 			     query->get_client_node_id(), query->get_query_id(), 0ull);
 	search_data->clear();
-	std::cout << "done with query " << query_id << std::endl;
-	std::cout << "=================================" << std::endl;
+	// std::cout << "done with query " << query_id << std::endl;
+	// std::cout << "=================================" << std::endl;
 
 	
 #elif defined(DISK_KV)
@@ -181,7 +182,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE,
                            compute_result->get_client_node_id(),
                            compute_result->get_msg_id(), 0ull);
-      search_data->receive_result(std::move(compute_result), query_id_order_map);
+      search_data->receive_result(std::move(compute_result));
     }
 
     void push_search_query(std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
@@ -325,6 +326,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     }
     void push_compute_query(compute_query_t compute_query) {
       std::scoped_lock<std::mutex> lock(compute_queue_mutex);
+      TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED,
+                           compute_query.client_node_id,
+                           compute_query.get_msg_id(), 0ull);
+      // std::cout << "number of items in the queue " << compute_queue.size() << std::endl;
       compute_queue.emplace(std::move(compute_query));
       compute_queue_cv.notify_all();
     }
@@ -444,26 +449,36 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         }
         lock.unlock();
 
+        std::vector<std::pair<uint32_t, uint64_t>> serialized_compute_result;
+        serialized_compute_result.reserve(parent->max_batch_size);
+        
         for (auto &[cluster_id, messages] : messages_to_send) {
           uint64_t num_sent = 0;
           uint64_t total = messages->size();
-
+	  
           while (num_sent < total) {
             uint32_t left = total - num_sent;
             uint32_t batch_size = std::min(parent->max_batch_size, left);
+
             for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
               if (messages->at(i).msg_type == message_type::COMPUTE_RESULT) {
-
-                message_batcher.push_compute_result(
-                    std::move(std::get<std::shared_ptr<compute_result_t>>(
-									  messages->at(i).msg)));
+                std::shared_ptr<compute_result_t> result =
+                  std::move(std::get<std::shared_ptr<compute_result_t>>(
+									messages->at(i).msg));
+                TimestampLogger::log(
+                    LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_START,
+				     result->client_node_id, result->get_msg_id(), 0ull);
+                serialized_compute_result.emplace_back(result->client_node_id,
+                                                       result->get_msg_id());
+                message_batcher.push_compute_result(std::move(result));
               } else if (messages->at(i).msg_type ==
                          message_type::COMPUTE_QUERY) {
 
                 message_batcher.push_compute_query(
 						   std::move(std::get<compute_query_t>(messages->at(i).msg)));
-              } 
+              }
             }
+            // TimestampLogger::log();
             message_batcher.serialize();
             ObjectWithStringKey obj;
             obj.blob = std::move(*message_batcher.get_blob());
@@ -473,6 +488,12 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             // send data to the correct cluster, send using pathname because
             // that is how you trigger the udl handler
             obj.key = UDL2_PATHNAME_CLUSTER + std::to_string(cluster_id);
+            for (const auto &[client_node_id, msg_id] :
+                 serialized_compute_result) {
+              TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_END,
+                                   client_node_id, msg_id, 0ull);
+            }
+            serialized_compute_result.clear();
             typed_ctxt->get_service_client_ref()
                 .put_and_forget<UDL2_OBJ_POOL_TYPE>(
                     obj, UDL2_SUBGROUP_INDEX, static_cast<uint32_t>(cluster_id),
