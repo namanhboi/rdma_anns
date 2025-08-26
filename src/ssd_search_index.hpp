@@ -266,7 +266,19 @@ no caching suppport rn, since there is the head index?
       data->ctx = this->reader->get_ctx();
       compute_thread_data.push(data);
     }
-  
+
+    void initialize_pq_scratch(
+        std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch,
+			       data_type* aligned_query_T) {
+      pq_query_scratch->initialize(this->dim, aligned_query_T);
+      pq_table.preprocess_query(pq_query_scratch->rotated_query);
+
+      float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
+      pq_table.populate_chunk_distances(pq_query_scratch->rotated_query,
+                                        pq_dists);
+    }
+
+    
     std::shared_ptr<compute_result_t> execute_compute_query(
         DefaultCascadeContextType *typed_ctxt, compute_query_t compute_query,
 								       std::shared_ptr<EmbeddingQuery<data_type>> query_emb) {
