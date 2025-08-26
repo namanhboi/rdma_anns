@@ -27,6 +27,9 @@ def is_tag_start(tag: str):
 def tag_value_to_name(tags_df, tag_value: int):
     return tags_df[tags_df["tag_value"] == tag_value]["tag_name"].item()
 
+def tag_name_to_value(tags_df, tag_name: str):
+    return tags_df[tags_df["tag_name"] == tag_name]["tag_value"].item()
+
 def get_corresponding_end_tag(start_tag:str):
     """
     precondition is that start_tag must end with one of the suffixes in END_SUFFIX_LIST,
@@ -59,7 +62,7 @@ def get_start_end_type_log_tags(log_tags_df):
                         
     return start_end_type_list
 
-def get_durations(log_df, start_tag, end_tag, tag_type, group_by_columns=['client_node_id'], duration_name='latency'):
+def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'], duration_name='latency'):
      filtered_df = log_df[(log_df['tag'] == start_tag) | (log_df['tag'] == end_tag)]
      grouped = filtered_df.groupby(group_by_columns)['timestamp']
      duration_results = []
