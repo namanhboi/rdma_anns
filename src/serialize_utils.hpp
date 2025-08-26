@@ -93,6 +93,8 @@ public:
   }
 
   uint64_t get_dim() { return this->dim; }
+
+  uint64_t get_aligned_dim() { return ROUND_UP(dim, 8); }
   
 };
 

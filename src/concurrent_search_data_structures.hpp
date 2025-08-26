@@ -174,9 +174,9 @@ public:
   void receive_result(std::shared_ptr<ComputeResult> compute_result) {
     std::scoped_lock l(query_mutex);
     if (compute_result->get_query_id() != query_id) {
-      std::cout << "outdated compute result, compute result id is "
-                << compute_result->get_query_id() << ", current query id is "
-      << query_id << std::endl;
+      // std::cout << "outdated compute result, compute result id is "
+                // << compute_result->get_query_id() << ", current query id is "
+      // << query_id << std::endl;
       return;
     }
     // std::cout << "compute resuxlt not outdated "

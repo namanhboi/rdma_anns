@@ -268,7 +268,7 @@ no caching suppport rn, since there is the head index?
     }
 
     void initialize_pq_scratch(
-        std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch,
+        diskann::PQScratch<data_type> *pq_query_scratch,
 			       data_type* aligned_query_T) {
       pq_query_scratch->initialize(this->dim, aligned_query_T);
       pq_table.preprocess_query(pq_query_scratch->rotated_query);
@@ -278,11 +278,10 @@ no caching suppport rn, since there is the head index?
                                         pq_dists);
     }
 
-    
     std::shared_ptr<compute_result_t> execute_compute_query(
         DefaultCascadeContextType *typed_ctxt, compute_query_t compute_query,
-								       std::shared_ptr<EmbeddingQuery<data_type>> query_emb) {
-
+        std::shared_ptr<EmbeddingQuery<data_type>> query_emb,
+							    std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch, std::once_flag &initialized_pq_scratch) {
       if (!is_in_cluster(compute_query.node_id)) {
         std::stringstream err;
         err << "Compute query " << compute_query.query_id << " for node id " << compute_query.node_id << " is not in the cluster " << cluster_id << std::endl;
@@ -302,8 +301,6 @@ no caching suppport rn, since there is the head index?
       // // all data necessary for querying and pq operations will be accessed
       // // through these 2 pointers.
       auto query_scratch = &(data->scratch);
-      // this contains preallocated ptrs to pq table, pq processed query, etc
-      auto pq_query_scratch = query_scratch->pq_scratch();
 
       query_scratch->reset();
 
@@ -314,11 +311,6 @@ no caching suppport rn, since there is the head index?
       // // aligned malloc memset to 0, need to copy query to here to do
       // // computation since a lot of operations only work on aligned mem address
       data_type *aligned_query_T = query_scratch->aligned_query_T();
-
-      // // aligned malloc for pq computation,
-      // // converts whatever type the query is to a float,
-      // // will contain the same data as aligned_query_T
-      float *query_float = pq_query_scratch->aligned_query_float;
 
       TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_START,
                            compute_query.client_node_id,
@@ -331,10 +323,9 @@ no caching suppport rn, since there is the head index?
       for (size_t i = 0; i < this->dim; i++) {
 	aligned_query_T[i] = query_emb->get_embedding_ptr()[i];
       }
-
-      // // copies data from aligned query to query float and query rotated
-      pq_query_scratch->initialize(this->dim, aligned_query_T);
-
+      std::call_once(initialized_pq_scratch,
+                     &SSDIndex<data_type>::initialize_pq_scratch, this,
+                     pq_query_scratch.get(), aligned_query_T);
 
       // // // this is where the full precision embeddings will be copied into to do
       // // full distance computation with
@@ -355,16 +346,8 @@ no caching suppport rn, since there is the head index?
       // // // won't we be overwriting it constantly?
       // // _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
 
-      pq_table.preprocess_query(query_rotated);
-
       float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
-      pq_table.populate_chunk_distances(query_rotated, pq_dists);
-      // after this, pq query distance to all centroids in pq table is
-      // calcucated in pq_dists, and pq_dists is used for fast look up for pq
-      // distance calculation
 
-      // // this is where you write the pq coordinates of points to do pq
-      // // computation with
       float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
       uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
       TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_END,
@@ -484,24 +467,14 @@ no caching suppport rn, since there is the head index?
       // // computation since a lot of operations only work on aligned mem address
       data_type *aligned_query_T = query_scratch->aligned_query_T();
 
-      // // aligned malloc for pq computation,
-      // // converts whatever type the query is to a float,
-      // // will contain the same data as aligned_query_T
-      float *query_float = pq_query_scratch->aligned_query_float;
-
-      // // whether this is used or not depends on there is a rotation matrix file
-      // // that has index_path_prefix as a path prefix
-      float *query_rotated = pq_query_scratch->rotated_query;
-
       TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_PREP_QUERY_START,
                            client_node_id, query_id, 0ull);
-      
+
       for (size_t i = 0; i < this->dim; i++) {
 	aligned_query_T[i] = query[i];
       }
 
-      // // copies data from aligned query to query float and query rotated
-      pq_query_scratch->initialize(this->dim, aligned_query_T);
+      initialize_pq_scratch(pq_query_scratch, aligned_query_T);
 
       // // // this is where the full precision embeddings will be copied into to do
       // // full distance computation with
@@ -522,16 +495,8 @@ no caching suppport rn, since there is the head index?
       // // // won't we be overwriting it constantly?
       // // _mm_prefetch((char *)full_precision_emb_buffer, _MM_HINT_T1);
 
-      pq_table.preprocess_query(query_rotated);
-
       float *pq_dists = pq_query_scratch->aligned_pqtable_dist_scratch;
-      pq_table.populate_chunk_distances(query_rotated, pq_dists);
-      // after this, pq query distance to all centroids in pq table is
-      // calcucated in pq_dists, and pq_dists is used for fast look up for pq
-      // distance calculation
 
-      // // this is where you write the pq coordinates of points to do pq
-      // // computation with
       float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
       uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
 

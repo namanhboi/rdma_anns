@@ -2,6 +2,7 @@
 #include <chrono>
 #include <derecho/core/detail/p2p_connection.hpp>
 #include <immintrin.h> // needed to include this to make sure that the code compiles since in DiskANN/include/utils.h it uses this library.
+#include "pq_scratch.h"
 #include "serialize_utils.hpp"
 #include <cascade/cascade_interface.hpp>
 #include <cascade/service_types.hpp>
@@ -230,6 +231,18 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     std::unordered_map<uint32_t, std::shared_ptr<EmbeddingQuery<data_type>>>
         query_map;
+
+
+    struct PQScratchEntry {
+      std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch;
+      std::once_flag initialized;
+      PQScratchEntry(
+          std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch)
+      : pq_query_scratch(pq_query_scratch) {}
+    };
+    std::unordered_map<uint32_t, std::shared_ptr<PQScratchEntry>>
+        pq_query_scratch_map;
+
     std::mutex query_map_mutex;
 
     GlobalSearchOCDPO<data_type> *parent;
@@ -246,7 +259,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       while (running) {
         // std::cout << "compute queue size " << compute_queue.size() << std::endl;
         // std::cout << "query map size " << query_map.size() << std::endl;
-	std::shared_ptr<EmbeddingQuery<data_type>> query_emb_ptr;
+        std::shared_ptr<EmbeddingQuery<data_type>> query_emb_ptr;
         queue_lock.lock();
         while (compute_queue.empty()) {
 	  compute_queue_cv.wait(queue_lock);
@@ -267,18 +280,19 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               << " query embedding for compute query " << compute_query.query_id
           << " has not arrived" << std::endl;
           std::cout << err.str() << std::endl;
-          // throw std::runtime_error(err.str());
-          queue_lock.lock();
-          compute_queue.emplace(std::move(compute_query));
-          queue_lock.unlock();
-        } else {
-          query_emb_ptr = query_map[compute_query.query_id];
+          throw std::runtime_error(err.str());
         }
 
+        query_emb_ptr = query_map[compute_query.query_id];
+        std::shared_ptr<PQScratchEntry> pq_scratch_entry =
+          pq_query_scratch_map[query_emb_ptr->get_query_id()];
+        std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch =
+          pq_scratch_entry->pq_query_scratch;
+        std::once_flag &init_pq_query_scratch =
+          pq_scratch_entry->initialized;
+                    
         map_lock.unlock();
-        // it has been re added to queue
-        if (query_emb_ptr == nullptr)
-          continue;
+
         index_lock.lock();
         if (!initialized_thread_data) {
 	  // this is safe because every data structure invovled has internal locks
@@ -288,10 +302,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_START,
                              compute_query.client_node_id,
                              compute_query.get_msg_id(), 0ull);
-        
+
         std::shared_ptr<compute_result_t> compute_result =
-            parent->index->execute_compute_query(typed_ctxt, compute_query,
-                                                 query_emb_ptr);
+            parent->index->execute_compute_query(
+                typed_ctxt, compute_query, query_emb_ptr, pq_query_scratch,
+						 init_pq_query_scratch);
         TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_END,
                              compute_query.client_node_id,
                              compute_query.get_msg_id(), 0ull);
@@ -337,12 +352,12 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     void push_embedding_query(std::shared_ptr<EmbeddingQuery<data_type>> query) {
       std::scoped_lock<std::mutex> lock(query_map_mutex);
       // if (query_map.count(query->get_query_id()) == 0){
-	query_map[query->get_query_id()] = query;
-      // } else {
-        // throw std::runtime_error("query " +
-        // std::to_string(query->get_query_id()) + " already pushed to query_map
-        // for cluster " + std::to_string(parent->cluster_id));
-      // }
+      query_map[query->get_query_id()] = query;
+      std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch(
+          new diskann::PQScratch<data_type>(diskann::defaults::MAX_GRAPH_DEGREE,
+                                            query->get_aligned_dim()));
+      pq_query_scratch_map.emplace(
+				   query->get_query_id(), std::make_shared<PQScratchEntry>(pq_query_scratch));
     }
   };
 
