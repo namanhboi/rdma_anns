@@ -793,6 +793,12 @@ public:
       std::cout << err.str() << std::endl;
       throw std::runtime_error(err.str());
     }
+    auto now = std::chrono::system_clock::now();
+    auto duration_since_epoch = now.time_since_epoch();
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration_since_epoch);
+    auto timestamp = static_cast<uint64_t>(millis.count());
+
+    TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_DESERIALIZE_START, 3ull, timestamp, 0ull);
 
     GlobalSearchMessageBatchManager<data_type> manager(
 						       object.blob.bytes, object.blob.size, this->dim);
@@ -822,6 +828,8 @@ public:
       search_threads[result->get_receiver_thread_id()]->push_compute_result(
 									    std::move(result));
     }
+    TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_DESERIALIZE_END,
+                         3ull, timestamp, 0ull);
   }
   static void initialize() {
     if (!ocdpo_ptr) {
@@ -834,7 +842,6 @@ public:
                   const nlohmann::json &config) {
     this->my_id = typed_ctxt->get_service_client_ref().get_my_id();
     std::cout << "global search udl id is  " << my_id << std::endl;
-
     std::cout << "members "
               << typed_ctxt->get_service_client_ref().get_members()
     << std::endl;

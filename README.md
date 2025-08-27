@@ -1,5 +1,5 @@
 To build, 
-`cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=ON -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=ON -DDISK_FS_DISTRIBUTED=OFF -DISK_KV=OFF -DIN_MEM=OFF`
+`cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8`
 `cmake --build build -j`
 
 - TEST\_UDL1: run\_benchmark sends queries to udl1 pathname and receives back a GreedySearchQuery with cluster id = 0 and candidate queue is the results of the search. Used to test recall of udl 1

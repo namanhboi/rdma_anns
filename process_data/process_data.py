@@ -93,10 +93,9 @@ def add_query_id_node_id_dataframe(df):
 
 
 def print_summary_start_series(s):
-    print("Mean " , s.mean())
-    print("std " , s.std())
-    print("90p " , s.quantile(0.9))
-    print("99p " , s.quantile(0.99))
+    print(s.describe())
+    # print("90p " , s.quantile(0.9))
+    # print("99p " , s.quantile(0.99))
     
 if __name__ == "__main__":     
     parser = argparse.ArgumentParser()
@@ -210,6 +209,11 @@ if __name__ == "__main__":
     print("time for the search")
     data_df = get_durations(df, tag_name_to_value(log_tags_df, "LOG_GLOBAL_INDEX_SEARCH_SEARCH_START"), tag_name_to_value(log_tags_df, "LOG_GLOBAL_INDEX_SEARCH_SEARCH_END") , ['client_node_id', 'query_id'])
     print_summary_start_series(data_df["latency"])
+
+    print("global index deserialize time")
+    data_df = get_durations(df, tag_name_to_value(log_tags_df, "LOG_GLOBAL_INDEX_UDL_DESERIALIZE_START"), tag_name_to_value(log_tags_df, "LOG_GLOBAL_INDEX_UDL_DESERIALIZE_END") , ['client_node_id', 'query_id'])
+    print_summary_start_series(data_df["latency"])
+    
 
     
 

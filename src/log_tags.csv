@@ -43,7 +43,8 @@ LOG_GLOBAL_INDEX_SEARCH_READ_START,20130,query_id_and_node_id
 LOG_GLOBAL_INDEX_SEARCH_READ_END,20131,query_id_and_node_id
 LOG_GLOBAL_INDEX_SEARCH_COMPUTE_DIST_START,20140,query_id_and_node_id
 LOG_GLOBAL_INDEX_SEARCH_COMPUTE_DIST_END,20141,query_id_and_node_id
-
+LOG_GLOBAL_INDEX_UDL_DESERIALIZE_START,20150,query_id
+LOG_GLOBAL_INDEX_UDL_DESERIALIZE_END,20151,query_id
 # everything with prefix log_head_index has msg_id that is the query_id,
 # no need to do any fancy bit manipulation stuff
 
