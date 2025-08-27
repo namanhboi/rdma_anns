@@ -1,4 +1,53 @@
+prereq: 
+`git submodule update --init --recursive --remote`
+this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
+
+need to install gcc-10 and g++-10: 
+https://askubuntu.com/questions/1192955/how-to-install-g-10-on-ubuntu-18-04
+```
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt-get update
+sudo apt install gcc-10
+
+sudo apt install g++-10
+#Remove the previous alternatives
+sudo update-alternatives --remove-all gcc
+sudo update-alternatives --remove-all g++
+
+#Define the compiler
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 30
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 30
+
+sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 30
+sudo update-alternatives --set cc /usr/bin/gcc
+
+sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 30
+sudo update-alternatives --set c++ /usr/bin/g++
+
+#Confirm and update (You can use the default setting)
+sudo update-alternatives --config gcc
+sudo update-alternatives --config g++
+```
+
+
+parlaylib: 
+https://cmuparlay.github.io/parlaylib/installation.html
+catch2: 
+Follow: https://github.com/catchorg/Catch2/blob/devel/docs/cmake-integration.md#installing-catch2-from-git-repository
+
+Diskann: 
+follow https://github.com/microsoft/DiskANN/
+- when installing mkl blas, yes to everything
+gp-ann
+`sudo apt-get install libsparsehash-dev` 
+`git submodule update --init --recursive`
+parlayann:
+`git submodule init`
+`git submodule update`
 To build, 
+
+
+
 `cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8`
 `cmake --build build -j`
 
