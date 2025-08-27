@@ -1,7 +1,7 @@
-prereq: 
+# Pre-Req: 
 `git submodule update --init --recursive --remote`
 this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
-
+## gcc
 need to install gcc-10 and g++-10: 
 https://askubuntu.com/questions/1192955/how-to-install-g-10-on-ubuntu-18-04
 ```
@@ -30,21 +30,23 @@ sudo update-alternatives --config g++
 ```
 
 
-parlaylib: 
+## parlaylib: 
 https://cmuparlay.github.io/parlaylib/installation.html
-catch2: 
+
+
+## catch2: 
 Follow: https://github.com/catchorg/Catch2/blob/devel/docs/cmake-integration.md#installing-catch2-from-git-repository
 
-Diskann: 
+## Diskann: 
 follow https://github.com/microsoft/DiskANN/
 - when installing mkl blas, yes to everything
-gp-ann
+## gp-ann
 `sudo apt-get install libsparsehash-dev` 
 `git submodule update --init --recursive`
-parlayann:
+## parlayann:
 `git submodule init`
 `git submodule update`
-To build, 
+# Build
 
 
 
