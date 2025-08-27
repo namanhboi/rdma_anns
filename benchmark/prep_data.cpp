@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     throw std::invalid_argument("only support euclidian");
   if (data_type != "uint8" && data_type != "int8" && data_type != "float")
     throw std::invalid_argument("wrong data_type");
-  if (built_head_index == false) {
+  if (built_head_index != false) {
     if (data_type == "uint8") {
       build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
     } else if (data_type == "int8") {
@@ -81,10 +81,8 @@ int main(int argc, char **argv) {
   if (data_type == "uint8") {
     write_all_cluster_data<uint8_t>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   } else if (data_type == "int8") {
-    build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
     write_all_cluster_data<int8_t>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   } else if (data_type == "float") {
-    build_and_save_head_index<float>(index_path_prefix, head_index_path);
     write_all_cluster_data<float>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   }
   return 0;
