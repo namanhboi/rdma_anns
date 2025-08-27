@@ -183,3 +183,59 @@ add_custom_target(update_config ALL
   COMMENT "Setting up configuration files and symbolic links"
   VERBATIM
 )
+
+
+add_custom_target(update_config_rdma ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg_rdma ${CMAKE_BINARY_DIR}/cfg_rdma
+  
+  # Create node directories if they don't exist
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/cfg_rdma/n0
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/cfg_rdma/n1
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/cfg_rdma/n2
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/cfg_rdma/n3
+  
+  # Create cross-platform symbolic links for layout.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/layout.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n0/layout.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/layout.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n1/layout.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/layout.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n2/layout.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/layout.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n3/layout.json
+    
+  # Create symbolic links for dfgs.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/dfgs.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n0/dfgs.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/dfgs.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n1/dfgs.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/dfgs.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n2/dfgs.json
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/dfgs.json
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n3/dfgs.json
+    
+  # Create symbolic links for udl_dlls.cfg
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/udl_dlls.cfg
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n0/udl_dlls.cfg
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/udl_dlls.cfg
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n1/udl_dlls.cfg
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/udl_dlls.cfg
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n2/udl_dlls.cfg
+  COMMAND ${CMAKE_COMMAND} -E create_symlink 
+    ${CMAKE_BINARY_DIR}/cfg_rdma/udl_dlls.cfg
+    ${CMAKE_BINARY_DIR}/cfg_rdma/n3/udl_dlls.cfg
+    
+  COMMENT "Setting up configuration files and symbolic links"
+  VERBATIM
+)
