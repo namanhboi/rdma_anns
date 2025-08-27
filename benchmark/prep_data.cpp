@@ -18,7 +18,7 @@ namespace po = boost::program_options;
 
 int main(int argc, char **argv) {
   po::options_description desc("Program Input");
-  bool built_indices = false;
+  bool built_head_index = false;
   std::string index_path_prefix;
   std::string dist_fn;
   std::string data_type;
@@ -32,8 +32,7 @@ int main(int argc, char **argv) {
   std::string pq_vectors;
 
   desc.add_options()("help,h", "show help message")(
-      "index_path_prefix,P",
-      po::value<std::string>(&index_path_prefix),
+      "index_path_prefix,P", po::value<std::string>(&index_path_prefix),
       "Path to disk index file.")(
       "data_type,T", po::value<std::string>(&data_type),
       "Data type of vectors, could be float, uint8, int8")(
@@ -41,7 +40,7 @@ int main(int argc, char **argv) {
       "Number of partiptions to divide the whole graph into")(
       "clusters_folder,O", po::value<std::string>(&clusters_folder),
       "Path to write the clusters")(
-				    "dist_fn,F", po::value<std::string>(&dist_fn),
+      "dist_fn,F", po::value<std::string>(&dist_fn),
       "Distance function, could be Euclidian or ?. RN only support Euclidian")(
       "head_index_path", po::value<std::string>(&head_index_path),
       "Path to in mem index, if not built then build it and save it there")(
@@ -53,8 +52,9 @@ int main(int argc, char **argv) {
       "Path to in data file, like sift learn")(
       "pq_vectors", po::value<std::string>(&pq_vectors),
       "Path to pq compressed vectors bin file")(
-      "built_indices", po::bool_switch(&built_indices),
+      "built_head_index", po::bool_switch(&built_head_index),
 						"whether all the files for the clusters are built");
+  
 
   po::variables_map vm;
 
@@ -69,9 +69,16 @@ int main(int argc, char **argv) {
     throw std::invalid_argument("only support euclidian");
   if (data_type != "uint8" && data_type != "int8" && data_type != "float")
     throw std::invalid_argument("wrong data_type");
-
+  if (built_head_index == false) {
+    if (data_type == "uint8") {
+      build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
+    } else if (data_type == "int8") {
+      build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
+    } else if (data_type == "float") {
+      build_and_save_head_index<float>(index_path_prefix, head_index_path);
+    }
+  }
   if (data_type == "uint8") {
-    build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
     write_all_cluster_data<uint8_t>(data_file,index_path_prefix, num_clusters, clusters_folder, pq_vectors);
   } else if (data_type == "int8") {
     build_and_save_head_index<int8_t>(index_path_prefix, head_index_path);
