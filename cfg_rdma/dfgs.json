@@ -1,0 +1,45 @@
+[
+  {
+    "id": "53087e25-084e-43c4-bdf5-33fde6dda13a",
+    "desc": "Head index search for rdma anns project",
+    "graph": [
+      {
+        "pathname": "/anns/head_search",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["69eb06e2-017c-481b-8534-2e5dac301949"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [
+          {
+            "dim":128,
+            "num_search_threads":1,
+            "min_batch_size":1,
+            "max_batch_size":100,
+            "batch_time_us":1000,
+	    "index_path": "/home/nam/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index",
+	    "id_mapping_path" : "/home/nam/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index.indices",
+	    "cluster_assignment_bin_file" : "/home/nam/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin"
+          }],
+        "destinations": [{"/anns/global/search":"put"}]
+      },
+      {
+        "pathname": "/anns/global/search",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["837425c0-a204-435c-bf6f-00ae40c8039f"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [
+          {
+            "dim":128,
+            "num_search_threads":1,
+            "min_batch_size":1,
+            "max_batch_size":100,
+            "batch_time_us":1000,
+	    "pq_compressed_vectors": "/home/nam/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_compressed.bin", "pq_table_bin":"/home/nam/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_pivots.bin",
+	    "cluster_assignment_bin_file" : "/home/nam/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin",
+	    "index_path_prefix": "/home/nam/big-ann-benchmarks/data/bigann/clusters/cluster_"
+          }],
+        "destinations": [{}]
+      }      
+    ]
+  }
+
+]
