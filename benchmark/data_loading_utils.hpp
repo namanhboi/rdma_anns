@@ -551,32 +551,142 @@ void build_and_save_head_index(const std::string &index_path_prefix,
   save_head_index_node_indices(node_list, head_index_path);
 }
 
+// template <typename data_type>
+// void convert_diskann_graph_to_adjgraph(
+//     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
+//     AdjGraph &adj, int max_degree) {
+//   adj = std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
+//   parlay::parallel_for(
+//       0, _pFlashIndex->get_num_points(), [&](size_t node_index) {
+//         data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
+//         std::vector<data_type *> tmp_coord_buffer;
+//         tmp_coord_buffer.push_back(coord_ptr);
+//         std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+
+//         uint32_t *neighbors_ptr = new uint32_t[max_degree];
+//         tmp_nbr_buffer.emplace_back(0, neighbors_ptr);
+
+//         _pFlashIndex->read_nodes(std::vector<uint32_t>(1, node_index),
+//                                  tmp_coord_buffer, tmp_nbr_buffer);
+//         for (int i = 0; i < tmp_nbr_buffer[0].first; i++) {
+//           adj[node_index].push_back(*(tmp_nbr_buffer[0].second + i));
+//         }
+
+//         delete[] coord_ptr;
+//         delete[] neighbors_ptr;
+//       });
+// }
+
+
+// template <typename data_type>
+// void convert_diskann_graph_to_adjgraph(
+//     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
+//     AdjGraph &adj, int max_degree) {
+    
+//   adj = std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
+//   std::cout << "number of points is " << _pFlashIndex->get_num_points() << std::endl;
+  
+//   // Try to avoid read_nodes entirely
+//   for (uint64_t node_id = 0; node_id < _pFlashIndex->get_num_points(); node_id++) {
+    
+//     // Check if DiskANN has other methods like:
+//     // auto neighbors = _pFlashIndex->get_neighbors(node_id);
+//     // or
+//     // std::vector<uint32_t> neighbors;
+//     // _pFlashIndex->get_node_neighbors(node_id, neighbors);
+    
+//     // If those don't exist, we need to debug the read_nodes call
+//     std::vector<uint32_t> single_node = {static_cast<uint32_t>(node_id)};
+    
+//     // Minimal test - see if this crashes
+//     try {
+//       // Test with minimal allocations
+//       std::vector<data_type*> coord_buf = {nullptr};
+//       std::vector<std::pair<uint32_t, uint32_t*>> nbr_buf;
+      
+//       // Allocate single neighbor buffer
+//       uint32_t *neighbors = (uint32_t*)calloc(max_degree, sizeof(uint32_t));
+//       if (!neighbors) {
+//         std::cerr << "Failed to allocate memory" << std::endl;
+//         continue;
+//       }
+      
+//       nbr_buf.emplace_back(0, neighbors);
+      
+//       _pFlashIndex->read_nodes(single_node, coord_buf, nbr_buf);
+      
+//       // If we get here without crashing, copy the data
+//       adj[node_id].assign(neighbors, neighbors + nbr_buf[0].first);
+      
+//       free(neighbors);
+      
+//     } catch (const std::exception& e) {
+//       std::cerr << "Failed to read node " << node_id << ": " << e.what() << std::endl;
+//       // Continue with empty adjacency list
+//     }
+    
+//     if (node_id % 10000 == 0) {
+//       std::cout << "Processed " << node_id << " nodes" << std::endl;
+//     }
+//   }
+// }
+
 
 template <typename data_type>
 void convert_diskann_graph_to_adjgraph(
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
-    AdjGraph &adj, int max_degree) {
+				       AdjGraph &adj, int max_degree) {
+  
   adj =
-      std::move(std::vector<std::vector<int>>(_pFlashIndex->get_num_points()));
-  parlay::parallel_for(
-      0, _pFlashIndex->get_num_points(), [&](size_t node_index) {
-        data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
-        std::vector<data_type *> tmp_coord_buffer;
-        tmp_coord_buffer.push_back(coord_ptr);
-        std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+    std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
+  std::cout << "number of points is " << _pFlashIndex->get_num_points() << std::endl;
+  uint64_t max_batch_size = 100;
+  uint64_t num_read = 0;
+  uint64_t total = _pFlashIndex->get_num_points();
+  while (num_read < total) {
+    if (num_read % 100000 == 0)
+      std::cout << num_read << std::endl;
+    uint64_t left = total - num_read;
+    uint64_t batch_size = std::min(left, max_batch_size);
+    std::vector<data_type*> tmp_coord_buffer;
+    for (auto i = 0; i < batch_size; i++) {
+      tmp_coord_buffer.push_back(nullptr);
+    }
+    std::vector<std::pair<uint32_t, uint32_t*>> tmp_nbr_buffer;
+    uint32_t *neighbors_ptr = new uint32_t[max_degree * batch_size];
+    for (size_t i = 0; i < batch_size; i++) {
+      tmp_nbr_buffer.emplace_back(0, neighbors_ptr + i * max_degree);
+    }
+    std::vector<uint32_t> node_ids_to_read;
+    for (size_t i = 0; i < batch_size; i++) {
+      node_ids_to_read.push_back(num_read + i);
+    }
+    _pFlashIndex->read_nodes(node_ids_to_read, tmp_coord_buffer, tmp_nbr_buffer);
+    for (size_t i = 0; i < batch_size; i++) {
+      uint32_t node_id = num_read + i;
+      adj[node_id].assign(tmp_nbr_buffer[i].second, tmp_nbr_buffer[i].second + tmp_nbr_buffer[i].first);
+    }
+    num_read+= batch_size;
+    delete[] neighbors_ptr;
+  }
+  // for (size_t node_index = 0; i < _pFlashIndex->get_num_points(); node_index++) {
+  //   data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
+  //   std::vector<data_type *> tmp_coord_buffer;
+  //   tmp_coord_buffer.push_back(coord_ptr);
+  //   std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
 
-        uint32_t *neighbors_ptr = new uint32_t[max_degree];
-        tmp_nbr_buffer.emplace_back(0, neighbors_ptr);
+  //   uint32_t *neighbors_ptr = new uint32_t[max_degree];
+  //   tmp_nbr_buffer.emplace_back(0, neighbors_ptr);
 
-        _pFlashIndex->read_nodes(std::vector<uint32_t>(1, node_index),
-                                 tmp_coord_buffer, tmp_nbr_buffer);
-        for (int i = 0; i < tmp_nbr_buffer[0].first; i++) {
-          adj[node_index].push_back(*(tmp_nbr_buffer[0].second + i));
-        }
+  //   _pFlashIndex->read_nodes(std::vector<uint32_t>(1, node_index),
+  //                            tmp_coord_buffer, tmp_nbr_buffer);
+  //   for (int i = 0; i < tmp_nbr_buffer[0].first; i++) {
+  //     adj[node_index].push_back(*(tmp_nbr_buffer[0].second + i));
+  //   }
 
-        delete[] coord_ptr;
-        delete[] neighbors_ptr;
-      });
+  //   delete[] coord_ptr;
+  //   delete[] neighbors_ptr;
+  // }
 }
 
 
@@ -698,13 +808,13 @@ Clusters get_clusters_from_diskann_graph(const std::string &index_path_prefix,
   std::unique_ptr<diskann::PQFlashIndex<data_type>> _pFlashIndex(
 								 new diskann::PQFlashIndex<data_type>(reader, diskann::Metric::L2));
   
-  int res = _pFlashIndex->load(omp_get_num_procs(), index_path_prefix.c_str());
+  int res = _pFlashIndex->load(1, index_path_prefix.c_str());
+  std::cout << "done loading disk index" << std::endl;
   if (res != 0)
     throw std::runtime_error("error loading diskann data, error: " +
                              std::to_string(res));
-
-  convert_diskann_graph_to_adjgraph<data_type>(_pFlashIndex, adj, MAX_DEGREE);
-  
+  convert_diskann_graph_to_adjgraph<data_type>(_pFlashIndex, adj, _pFlashIndex->get_data_dim());
+  std::cout << "done converting diskann graph to adjgraph" << std::endl;
   return get_clusters_from_adjgraph(adj, num_clusters);
 }
 
