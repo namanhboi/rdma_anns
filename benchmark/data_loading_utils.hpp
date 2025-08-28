@@ -556,8 +556,7 @@ template <typename data_type>
 void convert_diskann_graph_to_adjgraph(
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
     AdjGraph &adj, int max_degree) {
-  adj =
-      std::move(std::vector<std::vector<int>>(_pFlashIndex->get_num_points()));
+  adj = std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
   parlay::parallel_for(
       0, _pFlashIndex->get_num_points(), [&](size_t node_index) {
         data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
