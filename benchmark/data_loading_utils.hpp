@@ -691,7 +691,7 @@ void convert_diskann_graph_to_adjgraph(
 
     delete[] coord_ptr;
     delete[] neighbors_ptr;
-  }
+  });
 }
 
 
