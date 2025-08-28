@@ -631,12 +631,10 @@ void build_and_save_head_index(const std::string &index_path_prefix,
 //   }
 // }
 
-
 template <typename data_type>
-void convert_diskann_graph_to_adjgraph(
+void convert_diskann_graph_to_adjgraph_batch(
     const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
-				       AdjGraph &adj, int max_degree) {
-  
+						  AdjGraph &adj, int max_degree) {
   adj =
     std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
   std::cout << "number of points is " << _pFlashIndex->get_num_points() << std::endl;
@@ -669,24 +667,31 @@ void convert_diskann_graph_to_adjgraph(
     num_read+= batch_size;
     delete[] neighbors_ptr;
   }
-  // for (size_t node_index = 0; i < _pFlashIndex->get_num_points(); node_index++) {
-  //   data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
-  //   std::vector<data_type *> tmp_coord_buffer;
-  //   tmp_coord_buffer.push_back(coord_ptr);
-  //   std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+}
 
-  //   uint32_t *neighbors_ptr = new uint32_t[max_degree];
-  //   tmp_nbr_buffer.emplace_back(0, neighbors_ptr);
+template <typename data_type>
+void convert_diskann_graph_to_adjgraph(
+    const std::unique_ptr<diskann::PQFlashIndex<data_type>> &_pFlashIndex,
+    AdjGraph &adj, int max_degree) {
+  adj = std::vector<std::vector<int>>(_pFlashIndex->get_num_points());
+  parlay::parallel_for(
+      0, _pFlashIndex->get_num_points(), [&](size_t node_index) {
+        data_type *coord_ptr = new data_type[_pFlashIndex->get_data_dim()];
+        std::vector<data_type *> tmp_coord_buffer;
+        tmp_coord_buffer.push_back(coord_ptr);
+        std::vector<std::pair<uint32_t, uint32_t *>> tmp_nbr_buffer;
+    uint32_t *neighbors_ptr = new uint32_t[max_degree];
+    tmp_nbr_buffer.emplace_back(0, neighbors_ptr);
 
-  //   _pFlashIndex->read_nodes(std::vector<uint32_t>(1, node_index),
-  //                            tmp_coord_buffer, tmp_nbr_buffer);
-  //   for (int i = 0; i < tmp_nbr_buffer[0].first; i++) {
-  //     adj[node_index].push_back(*(tmp_nbr_buffer[0].second + i));
-  //   }
+    _pFlashIndex->read_nodes(std::vector<uint32_t>(1, node_index),
+                             tmp_coord_buffer, tmp_nbr_buffer);
+    for (int i = 0; i < tmp_nbr_buffer[0].first; i++) {
+      adj[node_index].push_back(*(tmp_nbr_buffer[0].second + i));
+    }
 
-  //   delete[] coord_ptr;
-  //   delete[] neighbors_ptr;
-  // }
+    delete[] coord_ptr;
+    delete[] neighbors_ptr;
+  }
 }
 
 
