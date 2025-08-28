@@ -69,8 +69,7 @@ int main(int argc, char **argv) {
     throw std::invalid_argument("only support euclidian");
   if (data_type != "uint8" && data_type != "int8" && data_type != "float")
     throw std::invalid_argument("wrong data_type");
-  if (built_head_index == false) {
-    std::cout << "building head index" << std::endl;
+  if (built_head_index != false) {
     if (data_type == "uint8") {
       build_and_save_head_index<uint8_t>(index_path_prefix, head_index_path);
     } else if (data_type == "int8") {
