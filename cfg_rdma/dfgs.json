@@ -15,9 +15,9 @@
             "min_batch_size":1,
             "max_batch_size":100,
             "batch_time_us":1000,
-	    "index_path": "/home/nam/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index",
-	    "id_mapping_path" : "/home/nam/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index.indices",
-	    "cluster_assignment_bin_file" : "/home/nam/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin"
+	    "index_path": "~/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index",
+	    "id_mapping_path" : "~/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index.indices",
+	    "cluster_assignment_bin_file" : "~/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin"
           }],
         "destinations": [{"/anns/global/search":"put"}]
       },
@@ -33,9 +33,9 @@
             "min_batch_size":1,
             "max_batch_size":100,
             "batch_time_us":1000,
-	    "pq_compressed_vectors": "/home/nam/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_compressed.bin", "pq_table_bin":"/home/nam/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_pivots.bin",
-	    "cluster_assignment_bin_file" : "/home/nam/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin",
-	    "index_path_prefix": "/home/nam/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_"
+	    "pq_compressed_vectors": "~/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_compressed.bin", "pq_table_bin":"~/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_pq_pivots.bin",
+	    "cluster_assignment_bin_file" : "~/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_assignment_all.bin",
+	    "index_path_prefix": "~/workspace/big-ann-benchmarks/data/bigann/clusters/cluster_"
           }],
         "destinations": [{}]
       }      
