@@ -179,7 +179,26 @@ def print_summary_start_series(s):
     print("99p: " , s.quantile(0.99))
 
 
-def graph_compute_task_times(df, tag_fn):
+def misc_times(df, tag_fn):
+    """
+    time for a read, time to do 1 step of greedy search
+
+    """
+    print("time to read a node in compute thread")
+    compute_read_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_END") , ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(compute_read_df["latency"])
+
+    print("time to read a node in search thread")
+    search_read_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_END") , ['client_node_id', 'query_id', 'node_id'])
+    print_summary_start_series(search_read_df["latency"])
+
+    print("time to do one step in greedy search")
+    search_step_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_STEP_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_STEP_END") , ['client_node_id', 'query_id', 'node_id'])
+    # print(search_step_df)
+    print_summary_start_series(search_step_df["latency"])
+
+    
+def compute_task_times(df, tag_fn):
     print("round trip latency of compute query")    
     roundtrip_durations = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE"),  ['client_node_id', 'query_id', 'node_id'])
     print_summary_start_series(roundtrip_durations["latency"])
@@ -237,7 +256,7 @@ def graph_compute_task_times(df, tag_fn):
     compute_result_to_serialize_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_END"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_BATCHER"), ["client_node_id", "query_id", "node_id"])
     print_summary_start_series(compute_result_to_serialize_time["latency"])
     
-    return roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time,transfer_messages_time
+    # return roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time,transfer_messages_time, prep_batch_serialize_time, batch_serialization_time,
 
 
     # print("compute result duration from done calc to start of serializaion")
@@ -302,7 +321,8 @@ if __name__ == "__main__":
     # print(msg_id_to_batch_id_dict)
     conflicts = add_batch_id_to_all_compute(df, msg_id_to_batch_id_dict)
     pprint(df)
-    roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time, transfer_messages_time = graph_compute_task_times(df, tag_fn)
+    compute_task_times(df, tag_fn)
+    misc_times(df, tag_fn)
     
     # print("round trip latency of compute task")    
     # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE"),  ['client_node_id', 'query_id', 'node_id'])
@@ -347,9 +367,6 @@ if __name__ == "__main__":
     # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_END") , ['client_node_id', 'query_id', 'node_id'])
     # print_summary_start_series(data_df["latency"])
 
-    # print("time to read a node")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
 
     # print("time to compute a distance")
     # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_CALC_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_CALC_END") , ['client_node_id', 'query_id', 'node_id'])

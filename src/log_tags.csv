@@ -55,6 +55,8 @@ LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_BATCHER,20200,query_id_and_node_id
 LOG_GLOBAL_INDEX_COMPUTE_QUERY_PUSH_BATCHER,20201,query_id_and_node_id
 LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_START,20190,msg_id
 LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_END,20191,msg_id
+LOG_GLOBAL_INDEX_SEARCH_STEP_START,20210,query_id_and_node_id
+LOG_GLOBAL_INDEX_SEARCH_STEP_END,20211,query_id_and_node_id
 
 # everything with prefix log_head_index has msg_id that is the query_id,
 # no need to do any fancy bit manipulation stuff

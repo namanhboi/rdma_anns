@@ -512,7 +512,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             uint32_t left = total - num_sent;
             uint32_t batch_size = std::min(parent->max_batch_size, left);
             uint64_t batch_id = uint64_t_gen(gen);
-            std::cout << "batch size " << batch_size << std::endl;
+            // std::cout << "batch size " << batch_size << std::endl;
             
 	    TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_PREP_START,
                                  std::numeric_limits<uint64_t>::max(), batch_id,
@@ -854,8 +854,8 @@ public:
     auto timestamp = static_cast<uint64_t>(millis.count());
     auto [key_cluster_id, key_batch_id] =
       parse_cluster_and_batch_id(key_string);
-    std::cout << "key cluster id" << static_cast<int>(key_cluster_id) << " "
-    << key_batch_id << std::endl;
+    // std::cout << "key cluster id" << static_cast<int>(key_cluster_id) << " "
+    // << key_batch_id << std::endl;
 
     TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_START, std::numeric_limits<uint64_t>::max(), key_batch_id, 0ull);
 

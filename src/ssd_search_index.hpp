@@ -572,9 +572,14 @@ no caching suppport rn, since there is the head index?
 
         auto nbr = retset.closest_unexpanded();
         uint32_t node_id = nbr.id;
+        uint64_t query_and_node_msg_id = ((static_cast<uint64_t>(query_id) << 32) | node_id);
+
         std::vector<AlignedRead> read_reqs;
         std::pair<uint32_t, char *> fnhood;
         if (is_in_cluster(node_id)) {
+          TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_STEP_START,
+                               client_node_id, query_and_node_msg_id, 0ull);
+          
           fnhood.first = node_id;
           fnhood.second = sector_scratch + num_sectors_per_node *
                                                sector_scratch_idx *
@@ -667,11 +672,16 @@ no caching suppport rn, since there is the head index?
         }
         TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_COMPUTE_DIST_END,
                              client_node_id, compute_msg_id, 0ull);
+        TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_STEP_END, client_node_id,
+                             query_and_node_msg_id, 0ull);
+        
       }
 
       full_retset.sort_and_write(indices, distances, K);
       TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_SEARCH_END, client_node_id,
                            query_id, 0ull);
+
+          
     }
     ~SSDIndex() {
 #ifdef PQ_FS
