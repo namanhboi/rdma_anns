@@ -88,9 +88,10 @@ namespace cascade {
     uint8_t* pq_data;
     
 #endif
-    
+
 
     inline bool is_in_cluster(uint32_t node_id) const {
+      // std::cout << static_cast<int>(cluster_assignment[node_id]) << std::endl;
       return cluster_assignment[node_id] == this->cluster_id;
     }
 
@@ -285,13 +286,19 @@ no caching suppport rn, since there is the head index?
       if (!is_in_cluster(compute_query.node_id)) {
         std::stringstream err;
         err << "Compute query " << compute_query.query_id << " for node id " << compute_query.node_id << " is not in the cluster " << cluster_id << std::endl;
+        // throw std::runtime_error(err.str());
+        std::cerr << err.str() << std::endl;
+                
+      }
+      if (compute_query.cluster_receiver_id != this->cluster_id) {
+        std::stringstream err;
+        err << "Compute query " << compute_query.query_id << " for node id " << compute_query.node_id << " is not in the cluster " << cluster_id << std::endl;
         throw std::runtime_error(err.str());
       }
 
       TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_GET_SCRATCH_START,
                            compute_query.client_node_id,
                            compute_query.get_msg_id(), 0ull);
-
       diskann::ScratchStoreManager<diskann::SSDThreadData<data_type>> manager(
 									      this->compute_thread_data);
 

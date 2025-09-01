@@ -665,6 +665,7 @@ struct compute_query_t {
   uint32_t node_id;
   uint32_t query_id;
   uint32_t client_node_id;
+  uint64_t batch_id = 0;
   float min_distance;
   uint8_t cluster_sender_id;
   uint8_t cluster_receiver_id;
@@ -694,6 +695,9 @@ struct compute_query_t {
     this->client_node_id = *reinterpret_cast<const uint32_t *>(buffer + offset);
     offset += sizeof(this->client_node_id);
 
+    this->batch_id = *reinterpret_cast<const uint64_t *>(buffer + offset);
+    offset += sizeof(this->batch_id);
+
     this->min_distance = *reinterpret_cast<const float *>(buffer + offset);
     offset += sizeof(this->min_distance);
 
@@ -713,9 +717,11 @@ struct compute_query_t {
 
   size_t get_serialize_size() const {
     return sizeof(node_id) + sizeof(query_id) + sizeof(min_distance) +
-           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id) + sizeof(client_node_id);
+           sizeof(cluster_sender_id) + sizeof(cluster_receiver_id) + sizeof(receiver_thread_id) + sizeof(client_node_id) + sizeof(batch_id);
   }
-
+  void set_batch_id(uint64_t batch_id) {
+    this->batch_id = batch_id;
+  }
   /*
     used for logging purposes
   */
@@ -736,8 +742,11 @@ struct compute_query_t {
     std::memcpy(buffer + offset, &client_node_id, sizeof(client_node_id));
     offset += sizeof(client_node_id);
 
-    std::memcpy(buffer + offset, &min_distance, sizeof(query_id));
-    offset += sizeof(query_id);
+    std::memcpy(buffer + offset, &batch_id, sizeof(batch_id));
+    offset += sizeof(batch_id);
+
+    std::memcpy(buffer + offset, &min_distance, sizeof(min_distance));
+    offset += sizeof(min_distance);
 
     std::memcpy(buffer + offset, &cluster_sender_id, sizeof(cluster_sender_id));
     offset += sizeof(cluster_sender_id);
@@ -872,6 +881,7 @@ struct compute_result_t {
   uint32_t query_id;
   uint32_t node_id;
   uint32_t client_node_id;
+  uint64_t batch_id = 0;
   float expanded_dist;
   uint32_t receiver_thread_id;
   uint8_t cluster_sender_id;
@@ -888,18 +898,25 @@ struct compute_result_t {
                    float expanded_dist, uint32_t receiver_thread_id,
                    uint8_t cluster_sender_id, uint8_t cluster_receiver_id)
       : num_neighbors(num_neighbors), nbr_ids(nbr_ids),
-      nbr_distances(nbr_distances), query_id(query_id), node_id(node_id), client_node_id(client_node_id),
-        expanded_dist(expanded_dist), receiver_thread_id(receiver_thread_id),
+        nbr_distances(nbr_distances), query_id(query_id), node_id(node_id),
+        client_node_id(client_node_id), expanded_dist(expanded_dist),
+        receiver_thread_id(receiver_thread_id),
         cluster_sender_id(cluster_sender_id),
         cluster_receiver_id(cluster_receiver_id) {}
   
   size_t get_serialize_size() const {
     return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
-           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) + sizeof(client_node_id) + 
-           sizeof(expanded_dist) + sizeof(receiver_thread_id) +
-           sizeof(cluster_receiver_id) + sizeof(cluster_sender_id);
+           sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
+           sizeof(client_node_id) + sizeof(batch_id) + sizeof(expanded_dist) +
+           sizeof(receiver_thread_id) + sizeof(cluster_receiver_id) +
+           sizeof(cluster_sender_id);
   }
 
+
+  /**
+     msg id of result is ~((static_cast<uint64_t>(query_id) << 32) | node_id);
+     mgs id of query is (static_cast<uint64_t>(query_id) << 32) | node_id
+  */
   uint64_t get_msg_id() const {
     uint64_t msg_id = (static_cast<uint64_t>(query_id) << 32) | node_id;
     return msg_id;
@@ -927,6 +944,9 @@ struct compute_result_t {
     std::memcpy(buffer + offset, &client_node_id, sizeof(client_node_id));
     offset += sizeof(client_node_id);
 
+    std::memcpy(buffer + offset, &batch_id, sizeof(batch_id));
+    offset += sizeof(batch_id);
+
     std::memcpy(buffer + offset, &expanded_dist, sizeof(expanded_dist));
     offset += sizeof(expanded_dist);
 
@@ -941,6 +961,7 @@ struct compute_result_t {
                 sizeof(cluster_receiver_id));
     offset += sizeof(cluster_receiver_id);
   }
+  void set_batch_id(uint64_t batch_id) { this->batch_id = batch_id; }
 };
 
 // reason for this class to exist is because of shared ptr to buffer. Don't want
@@ -955,6 +976,7 @@ class ComputeResult {
   uint32_t query_id;
   uint32_t node_id;
   uint32_t client_node_id;
+  uint64_t batch_id = 0;
   float expanded_dist;
   uint32_t receiver_thread_id;
   
@@ -997,6 +1019,9 @@ public:
     this->client_node_id = *reinterpret_cast<const uint32_t *>(buffer.get() + offset);
     offset += sizeof(client_node_id);
 
+    this->batch_id = *reinterpret_cast<const uint64_t *>(buffer.get() + offset);
+    offset += sizeof(batch_id);
+
     this->expanded_dist = *reinterpret_cast<const float *>(buffer.get() + offset);
     offset += sizeof(float);
 
@@ -1013,7 +1038,7 @@ public:
   size_t get_serialize_size() const {
     return sizeof(num_neighbors) + sizeof(uint32_t) * num_neighbors +
            sizeof(float) * num_neighbors + sizeof(query_id) + sizeof(node_id) +
-           sizeof(client_node_id) + sizeof(expanded_dist) +
+           sizeof(client_node_id) + sizeof(batch_id) + sizeof(expanded_dist) +
            sizeof(receiver_thread_id) + sizeof(cluster_sender_id) +
            sizeof(cluster_receiver_id);
   }
@@ -1038,6 +1063,8 @@ public:
 
   uint32_t get_client_node_id() const { return client_node_id; }
 
+  uint64_t get_batch_id() const { return batch_id; }
+
   uint32_t get_receiver_thread_id() const { return receiver_thread_id; }
 
   float get_expanded_dist() const { return expanded_dist; }
@@ -1047,7 +1074,7 @@ public:
   uint8_t get_cluster_receiver_id() const { return cluster_receiver_id; }
 
   uint64_t get_msg_id() const {
-    uint64_t msg_id = (static_cast<uint64_t>(query_id) << 32) | node_id;
+    uint64_t msg_id = ((static_cast<uint64_t>(query_id) << 32) | node_id);
     return msg_id;
   }
 };
@@ -1558,4 +1585,5 @@ public:
 
 uint8_t get_cluster_id(const std::string &key);
 
-std::pair<uint32_t, uint64_t> parse_client_and_batch_id(const std::string&key);
+std::pair<uint32_t, uint64_t> parse_client_and_batch_id(const std::string &key);
+std::pair<uint8_t, uint64_t> parse_cluster_and_batch_id(const std::string&key);

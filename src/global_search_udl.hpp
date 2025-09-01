@@ -9,6 +9,7 @@
 #include <cascade/user_defined_logic_interface.hpp>
 #include <cascade/utils.hpp>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -139,9 +140,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_END,
 			     query->get_client_node_id(), query->get_query_id(), 0ull);
 	search_data->clear();
-	// std::cout << "done with query " << query_id << std::endl;
-	// std::cout << "=================================" << std::endl;
-
 	
 #elif defined(DISK_KV)
 	// std::cout << "disk kv search called " << std::endl;
@@ -178,11 +176,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                 // << ", this cluster is " << static_cast<int>(parent->cluster_id)
       // << std::endl;
       // std::cout << " receiver thread from result is "
-                // << compute_result->get_receiver_thread_id()
+      // << compute_result->get_receiver_thread_id()
       // << ", this thread id is " << my_thread_id << std::endl;
+      // assert(compute_result->get_batch_id() != 0);
+      // std::cout << compute_result->get_batch_id() << std::endl;
       TimestampLogger::log(LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE,
                            compute_result->get_client_node_id(),
-                           compute_result->get_msg_id(), 0ull);
+                           compute_result->get_msg_id(),0ull);
       search_data->receive_result(std::move(compute_result));
     }
 
@@ -266,8 +266,9 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         }
         if (!running)
           break;
-        
+
         compute_query_t compute_query = compute_queue.front();
+
         compute_queue.pop();
 	queue_lock.unlock();
 
@@ -280,7 +281,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               << " query embedding for compute query " << compute_query.query_id
           << " has not arrived" << std::endl;
           std::cout << err.str() << std::endl;
-          throw std::runtime_error(err.str());
+
+          // throw std::runtime_error(err.str());
+          queue_lock.lock();
+          compute_queue.emplace(std::move(compute_query));
+          queue_lock.unlock();
+          map_lock.unlock();
+          continue;
         }
 
         query_emb_ptr = query_map[compute_query.query_id];
@@ -299,20 +306,31 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           parent->index->setup_compute_thread_data();
 	  initialized_thread_data = true;
         }
-        TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_START,
-                             compute_query.client_node_id,
-                             compute_query.get_msg_id(), 0ull);
+        TimestampLogger::log(
+            LOG_GLOBAL_INDEX_COMPUTE_QUERY_START, compute_query.client_node_id,
+			     compute_query.get_msg_id(), 0ull);
 
         std::shared_ptr<compute_result_t> compute_result =
             parent->index->execute_compute_query(
                 typed_ctxt, compute_query, query_emb_ptr, pq_query_scratch,
 						 init_pq_query_scratch);
-        TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_END,
+        TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_END,
                              compute_query.client_node_id,
                              compute_query.get_msg_id(), 0ull);
         index_lock.unlock();
+        assert(compute_result->get_msg_id() == compute_query.get_msg_id());
         
+        uint64_t client_node_id = compute_query.client_node_id;
+        uint64_t msg_id = compute_result->get_msg_id(); 
+        uint64_t batch_id = 0ull;
+
+        TimestampLogger::log(
+            LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_TO_BATCHING_START,
+			     client_node_id, msg_id, batch_id);
         parent->batch_thread->push_compute_res(compute_result);
+        TimestampLogger::log(
+            LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_TO_BATCHING_END,
+			     client_node_id, msg_id, batch_id);
       }
     }
 
@@ -341,9 +359,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     }
     void push_compute_query(compute_query_t compute_query) {
       std::scoped_lock<std::mutex> lock(compute_queue_mutex);
+      // assert(compute_query.batch_id != 0);
       TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED,
                            compute_query.client_node_id,
-                           compute_query.get_msg_id(), 0ull);
+                           compute_query.get_msg_id(), compute_query.batch_id);
       // std::cout << "number of items in the queue " << compute_queue.size() << std::endl;
       compute_queue.emplace(std::move(compute_query));
       compute_queue_cv.notify_all();
@@ -351,13 +370,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     void push_embedding_query(std::shared_ptr<EmbeddingQuery<data_type>> query) {
       std::scoped_lock<std::mutex> lock(query_map_mutex);
-      // if (query_map.count(query->get_query_id()) == 0){
       query_map[query->get_query_id()] = query;
       std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch(
           new diskann::PQScratch<data_type>(diskann::defaults::MAX_GRAPH_DEGREE,
                                             query->get_aligned_dim()));
       pq_query_scratch_map.emplace(
-				   query->get_query_id(), std::make_shared<PQScratchEntry>(pq_query_scratch));
+          query->get_query_id(),
+				   std::make_shared<PQScratchEntry>(pq_query_scratch));
     }
   };
 
@@ -384,6 +403,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     
     GlobalSearchOCDPO<data_type> *parent;
     uint64_t thread_id;
+    size_t actual_thread_id;
     std::thread real_thread;
 
     template <typename K, typename V>
@@ -411,6 +431,14 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     bool running = false;
 
+    uint64_t get_current_time_ms() {
+      auto now = std::chrono::steady_clock::now();
+      auto duration = now.time_since_epoch();
+      auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+      return static_cast<uint64_t>(millis);
+    }
+    
+
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       std::unique_lock<std::mutex> lock(messages_mutex, std::defer_lock);
       std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
@@ -420,7 +448,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
       GlobalSearchMessageBatcher<data_type> message_batcher(parent->dim);
       ANNSearchResultBatcher result_batcher;
-      
+
+      std::random_device rd; // obtain a random number from hardware
+      std::mt19937 gen(rd()); // seed the generator  
+      std::uniform_int_distribution<uint64_t> uint64_t_gen(
+							   0, std::numeric_limits<uint64_t>::max());
       while (running) {
         lock.lock();
         while (is_empty(cluster_messages) && is_empty(search_results)) {
@@ -429,6 +461,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         if (!running) {
 	  break;
         }
+
+        uint64_t id = uint64_t_gen(gen);
+        TimestampLogger::log(LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_START,
+                             std::numeric_limits<uint64_t>::max(), id, 0ull);
+
 
         std::unordered_map<uint8_t, std::unique_ptr<std::vector<message>>>
         messages_to_send;
@@ -462,10 +499,10 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               std::make_unique<std::vector<ann_search_result_t>>();
           }
         }
+        TimestampLogger::log(LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_END,
+                             std::numeric_limits<uint64_t>::max(), id, 0ull);
         lock.unlock();
-
-        std::vector<std::pair<uint32_t, uint64_t>> serialized_compute_result;
-        serialized_compute_result.reserve(parent->max_batch_size);
+        
         
         for (auto &[cluster_id, messages] : messages_to_send) {
           uint64_t num_sent = 0;
@@ -474,27 +511,50 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           while (num_sent < total) {
             uint32_t left = total - num_sent;
             uint32_t batch_size = std::min(parent->max_batch_size, left);
-
+            uint64_t batch_id = uint64_t_gen(gen);
+            std::cout << "batch size " << batch_size << std::endl;
+            
+	    TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_PREP_START,
+                                 std::numeric_limits<uint64_t>::max(), batch_id,
+                                 static_cast<uint64_t>(batch_size));
             for (uint32_t i = num_sent; i < num_sent + batch_size; i++) {
               if (messages->at(i).msg_type == message_type::COMPUTE_RESULT) {
                 std::shared_ptr<compute_result_t> result =
-                  std::move(std::get<std::shared_ptr<compute_result_t>>(
-									messages->at(i).msg));
-                TimestampLogger::log(
-                    LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_START,
-				     result->client_node_id, result->get_msg_id(), 0ull);
-                serialized_compute_result.emplace_back(result->client_node_id,
-                                                       result->get_msg_id());
+                    std::get<std::shared_ptr<compute_result_t>>(
+								messages->at(i).msg);
+                result->set_batch_id(batch_id);
+		TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_BATCHER,
+                                result->client_node_id,
+                                result->get_msg_id(), batch_id);
+                
+                
                 message_batcher.push_compute_result(std::move(result));
+
               } else if (messages->at(i).msg_type ==
                          message_type::COMPUTE_QUERY) {
+                compute_query_t query =
+                  std::get<compute_query_t>(messages->at(i).msg);
+                query.set_batch_id(batch_id);
+		TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_PUSH_BATCHER,
+                                query.client_node_id, query.get_msg_id(),
+                                batch_id);
 
-                message_batcher.push_compute_query(
-						   std::move(std::get<compute_query_t>(messages->at(i).msg)));
+                message_batcher.push_compute_query(std::move(query));
               }
             }
-            // TimestampLogger::log();
+            TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_PREP_END,
+                                 std::numeric_limits<uint64_t>::max(), batch_id,
+                                 static_cast<uint64_t>(batch_size));
+            TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_SERIALIZE_START,
+                                 std::numeric_limits<uint64_t>::max(), batch_id,
+                                 static_cast<uint64_t>(batch_size));
+	    
             message_batcher.serialize();
+
+            TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_SERIALIZE_END,
+                                 std::numeric_limits<uint64_t>::max(), batch_id,
+                                 static_cast<uint64_t>(batch_size));
+
             ObjectWithStringKey obj;
             obj.blob = std::move(*message_batcher.get_blob());
             obj.previous_version = INVALID_VERSION;
@@ -502,17 +562,18 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
             // send data to the correct cluster, send using pathname because
             // that is how you trigger the udl handler
-            obj.key = UDL2_PATHNAME_CLUSTER + std::to_string(cluster_id);
-            for (const auto &[client_node_id, msg_id] :
-                 serialized_compute_result) {
-              TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_END,
-                                   client_node_id, msg_id, 0ull);
-            }
-            serialized_compute_result.clear();
+            obj.key = UDL2_PATHNAME_CLUSTER + std::to_string(cluster_id) + "_" + std::to_string(batch_id);
+
+            TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_SEND_START,
+                                 std::numeric_limits<uint64_t>::max(), batch_id,
+                                 0ull);
             typed_ctxt->get_service_client_ref()
                 .put_and_forget<UDL2_OBJ_POOL_TYPE>(
                     obj, UDL2_SUBGROUP_INDEX, static_cast<uint32_t>(cluster_id),
 						    true);
+            TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_SEND_END,
+                                 std::numeric_limits<uint64_t>::max(),
+                                 batch_id, 0ull);
             num_sent += batch_size;
             message_batcher.reset();
           }
@@ -592,6 +653,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
     void start(DefaultCascadeContextType *typed_ctxt) {
       running = true;
+      actual_thread_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
       this->real_thread =
         std::thread(&GlobalSearchOCDPO::BatchingThread::main_loop, this, typed_ctxt);
     }
@@ -726,6 +788,7 @@ public:
                       "sender:{} with key={}",
                       worker_id, sender, key_string);
 
+    // TODO: need to switch to std::call once when i have time
     // double check locking with atomic bool should be good according to
     // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern
     if (initialized_index == false) {
@@ -739,10 +802,7 @@ public:
         }
 	cluster_data_prefix += std::to_string(cluster_id);
 	cluster_search_prefix += std::to_string(cluster_id);
-	// std::cout << cluster_data_prefix << std::endl;
-        // std::cout << cluster_search_prefix << std::endl;
-        // std::cout << "cluster index is " << static_cast<int>(cluster_id) << " " << key_string
-        // << std::endl;
+
 	dist_fn.reset(
 		      (diskann::Distance<data_type> *)
               diskann::get_distance_function<data_type>(diskann::Metric::L2));
@@ -753,12 +813,6 @@ public:
 							       this->dim, this->cluster_id, cluster_assignment_bin_file,
 							       cluster_data_prefix);
 #elif defined(DISK_FS_DISKANN_WRAPPER)
-        // std::cout << "start creating SSDIndexFileSystem" << cluster_id << " "
-        // << key_string << std::endl;
-        // std::cout << "index path prefix " << this->index_path_prefix
-        // << std::endl;
-        // std::cout << "num search threads " << this->num_search_threads
-        // << std::endl;        
 	this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
 								      this->index_path_prefix, this->num_search_threads);
         // std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
@@ -793,16 +847,24 @@ public:
       std::cout << err.str() << std::endl;
       throw std::runtime_error(err.str());
     }
+    
     auto now = std::chrono::system_clock::now();
     auto duration_since_epoch = now.time_since_epoch();
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration_since_epoch);
     auto timestamp = static_cast<uint64_t>(millis.count());
+    auto [key_cluster_id, key_batch_id] =
+      parse_cluster_and_batch_id(key_string);
+    std::cout << "key cluster id" << static_cast<int>(key_cluster_id) << " "
+    << key_batch_id << std::endl;
 
-    TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_DESERIALIZE_START, 3ull, timestamp, 0ull);
+    TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_START, std::numeric_limits<uint64_t>::max(), key_batch_id, 0ull);
 
     GlobalSearchMessageBatchManager<data_type> manager(
 						       object.blob.bytes, object.blob.size, this->dim);
-    // std::cout << "num search threads started " << search_threads.size() << std::endl;
+    TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_END,
+                         std::numeric_limits<uint64_t>::max(), key_batch_id,
+                         0ull);
+
     for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
          manager.get_greedy_search_queries()) {
       validate_search_query(search_query);
@@ -828,8 +890,7 @@ public:
       search_threads[result->get_receiver_thread_id()]->push_compute_result(
 									    std::move(result));
     }
-    TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_DESERIALIZE_END,
-                         3ull, timestamp, 0ull);
+
   }
   static void initialize() {
     if (!ocdpo_ptr) {
@@ -865,7 +926,6 @@ public:
         this->pq_compressed_vectors =
           config["pq_compressed_vectors"].get<std::string>();
       }
-      
 
       if (config.contains("index_path_prefix")) {
         this->index_path_prefix =

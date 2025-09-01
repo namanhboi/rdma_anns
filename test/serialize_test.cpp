@@ -188,11 +188,14 @@ generate_random_compute_queries(uint32_t num_queries) {
 						     0.0, std::numeric_limits<float>::max());
   std::uniform_int_distribution<uint32_t> node_id_gen(
 						      0, std::numeric_limits<uint32_t>::max());
+
+  std::uniform_int_distribution<uint64_t> uint64_t_gen(
+						      0, std::numeric_limits<uint64_t>::max());
   for (uint32_t i = 0; i < num_queries; i++) {
     compute_query_t query(node_id_gen(gen), node_id_gen(gen), node_id_gen(gen),
                           distance_gen(gen), cluster_id_gen(gen),
                           cluster_id_gen(gen), node_id_gen(gen));
-    
+    query.set_batch_id(uint64_t_gen(gen));
     generated.push_back(query);
   }
   return generated;
@@ -215,6 +218,8 @@ TEST_CASE("Testing serialization of compute queries") {
 						     0.0, std::numeric_limits<float>::max());
   std::uniform_int_distribution<uint32_t> node_id_gen(
 						      0, std::numeric_limits<uint32_t>::max());
+  std::uniform_int_distribution<uint64_t> uint64_t_gen(
+						      0, std::numeric_limits<uint64_t>::max());
 
   ComputeQueryBatcher batcher(max_batch_size + 1);
   while (start_batch_index < num_queries) {
@@ -230,6 +235,7 @@ TEST_CASE("Testing serialization of compute queries") {
                             node_id_gen(gen), distance_gen(gen),
                             cluster_id_gen(gen), cluster_id_gen(gen),
                             node_id_gen(gen));
+      query.set_batch_id(uint64_t_gen(gen));
       generated.push_back(query);
       batcher.push(query);
     }
@@ -246,6 +252,7 @@ TEST_CASE("Testing serialization of compute queries") {
       REQUIRE(queries[i].node_id == generated[i].node_id);
       REQUIRE(queries[i].query_id == generated[i].query_id);
       REQUIRE(queries[i].client_node_id == generated[i].client_node_id);
+      REQUIRE(queries[i].batch_id == generated[i].batch_id);
       REQUIRE(queries[i].min_distance == generated[i].min_distance);
       REQUIRE(queries[i].cluster_receiver_id ==
               generated[i].cluster_receiver_id);
@@ -266,7 +273,9 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
   std::uniform_real_distribution<float> float_gen(
 						     0.0, std::numeric_limits<float>::max());
   std::uniform_int_distribution<uint32_t> uint32_t_gen(
-						      0, std::numeric_limits<uint32_t>::max());
+						       0, std::numeric_limits<uint32_t>::max());
+  std::uniform_int_distribution<uint64_t> uint64_t_gen(
+						       0, std::numeric_limits<uint64_t>::max());
   std::vector<std::shared_ptr<compute_result_t>> generated;
   for (uint32_t i = 0; i < num_results; i++) {
     std::vector<uint32_t> neighbors = generate_list_uint32_t(R);
@@ -285,10 +294,12 @@ generate_random_compute_results(uint32_t num_results, uint32_t R) {
     uint32_t receiver_thread_id = uint32_t_gen(gen);
     uint8_t cluster_sender_id = uint8_t_gen(gen);
     uint8_t cluster_receiver_id = uint8_t_gen(gen);
-    generated.emplace_back(std::make_shared<compute_result_t>(
+    auto result = std::make_shared<compute_result_t>(
         num_neighbors, nbr_ids, nbr_distances, query_id, node_id,
         client_node_id, expanded_dist, receiver_thread_id, cluster_sender_id,
-							      cluster_receiver_id));
+						     cluster_receiver_id);
+    result->set_batch_id(uint64_t_gen(gen));
+    generated.emplace_back(result);
   }
   return generated;
 }
@@ -347,6 +358,7 @@ TEST_CASE("Testing serialization of compute result") {
         REQUIRE(result->get_query_id() == generated[i]->query_id);
         REQUIRE(result->get_node_id() == generated[i]->node_id);
         REQUIRE(result->get_client_node_id() == generated[i]->client_node_id);
+        REQUIRE(result->get_batch_id() == generated[i]->batch_id);
         REQUIRE(result->get_expanded_dist() == generated[i]->expanded_dist);
         REQUIRE(result->get_receiver_thread_id() ==
                 generated[i]->receiver_thread_id);

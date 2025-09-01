@@ -818,7 +818,7 @@ Clusters get_clusters_from_diskann_graph(const std::string &index_path_prefix,
   if (res != 0)
     throw std::runtime_error("error loading diskann data, error: " +
                              std::to_string(res));
-  convert_diskann_graph_to_adjgraph<data_type>(_pFlashIndex, adj, _pFlashIndex->get_data_dim());
+  convert_diskann_graph_to_adjgraph_batch<data_type>(_pFlashIndex, adj, _pFlashIndex->get_data_dim());
   std::cout << "done converting diskann graph to adjgraph" << std::endl;
   return get_clusters_from_adjgraph(adj, num_clusters);
 }

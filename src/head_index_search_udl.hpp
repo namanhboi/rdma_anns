@@ -508,9 +508,9 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::cout << "number of points loaded is " << num_pts << std::endl;
     id_mapping =
       std::vector<uint32_t>(id_mapping_ptr, id_mapping_ptr + num_pts);
-    for (auto  x = 0; x < 1000; x++) {
-      std::cout << id_mapping[x] <<std::endl;
-    }
+    // for (auto  x = 0; x < 1000; x++) {
+      // std::cout << id_mapping[x] <<std::endl;
+    // }
     // id_mapping.resize(num_pts);
 
     cached_head_index = true;
@@ -545,8 +545,6 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         initialized_index,
         &HeadIndexSearchOCDPO<data_type>::retrieve_and_cache_head_index_fs,
 		   this, typed_ctxt);
-
-    
 
 
     TimestampLogger::log(LOG_HEAD_INDEX_DESERIALIZE_START, client_id, batch_id, this->my_id);

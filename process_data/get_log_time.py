@@ -62,16 +62,23 @@ def get_start_end_type_log_tags(log_tags_df):
                         
     return start_end_type_list
 
-def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'], duration_name='latency'):
+
+
+def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'],duration_name='latency'):
      filtered_df = log_df[(log_df['tag'] == start_tag) | (log_df['tag'] == end_tag)]
      grouped = filtered_df.groupby(group_by_columns)['timestamp']
      duration_results = []
      num_malformed = 0
      for group_values, timestamps in grouped:
           latency = timestamps.max() - timestamps.min()
+          # timestamps.sort_values()
+          # num_timestamps = len(timestamps)
+          # for i in range(0, num_timestamps - 1):
+              # latency = timestamps.max() - timstamps
           if (len(timestamps) != 2):
-              # print("len timestamp is " , len(timestamps))
-              # print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
+              print("len timestamp is " , len(timestamps))
+              print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
+              # len_timestamps_list.append(len(timestamps))
               num_malformed += 1
           if len(group_by_columns) > 1:
                result = {group_by_column: value for group_by_column, value in zip(group_by_columns, group_values)}
@@ -80,8 +87,11 @@ def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'
           else:
                duration_results.append({group_by_columns[0]: group_values, duration_name: latency})
      duration_df = pd.DataFrame(duration_results)
+     if (num_malformed != 0):
+         print("num_malformed", num_malformed)
      # print(f"{duration_name} duration size",len(duration_df))
      # print("num malformed", num_malformed)
+     # print(pd.Series(len_timestamps_list).describe())
      return duration_df
 
 
