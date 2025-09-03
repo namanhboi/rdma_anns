@@ -171,7 +171,7 @@ def add_batch_id_to_all_compute(df, msg_id_to_batch_id_dict):
     df.loc[update_mask, "batch_id"] = expected_values.loc[update_mask]
     return conflicts
 
-def print_summary_start_series(s):
+def print_summary_stat_series(s):
     print("count" , s.count())
     print("mean: ", s.mean())
     print("std: ", s.std())
@@ -179,6 +179,13 @@ def print_summary_start_series(s):
     print("99p: " , s.quantile(0.99))
 
 
+def _remove_batch_id_zero(df):
+    df["batch_id"] = df["batch_id"].apply(lambda row: row[0])
+
+    # batch_id = 0 we don't give a fuck about because its not batch sending between udls
+    df = df[df["batch_id"] != 0]
+    return df
+    
 def misc_times(df, tag_fn):
     """
     time for a read, time to do 1 step of greedy search
@@ -186,31 +193,48 @@ def misc_times(df, tag_fn):
     """
     print("time to read a node in compute thread")
     compute_read_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_END") , ['client_node_id', 'query_id', 'node_id'])
-    print_summary_start_series(compute_read_df["latency"])
+    print_summary_stat_series(compute_read_df["latency"])
 
     print("time to read a node in search thread")
     search_read_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_END") , ['client_node_id', 'query_id', 'node_id'])
-    print_summary_start_series(search_read_df["latency"])
+    print_summary_stat_series(search_read_df["latency"])
 
     print("time to do one step in greedy search")
     search_step_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_STEP_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_STEP_END") , ['client_node_id', 'query_id', 'node_id'])
     # print(search_step_df)
-    print_summary_start_series(search_step_df["latency"])
+    print_summary_stat_series(search_step_df["latency"])
+
+    print("time to finish 1 udl handler call")
+    global_udl_handler_time_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_UDL_HANDLER_START"), tag_fn( "LOG_GLOBAL_INDEX_UDL_HANDLER_END") , ['batch_id'])
+    global_udl_handler_time_df = _remove_batch_id_zero(global_udl_handler_time_df)
+    print_summary_stat_series(global_udl_handler_time_df["latency"])
+
+    print("number of bytes per udl handler call")
+    global_udl_handler_bytes_df = df[df["tag"] == tag_fn("LOG_GLOBAL_INDEX_UDL_HANDLER_START")]
+    global_udl_handler_bytes_df = global_udl_handler_bytes_df[global_udl_handler_bytes_df["batch_id"] != 0]
+    print_summary_stat_series(global_udl_handler_bytes_df["extra"])
 
     
+
+    print("time to push all messages to approproate threads")
+    push_message_time_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_END"), tag_fn( "LOG_GLOBAL_INDEX_UDL_HANDLER_END") , ['batch_id'])
+    push_message_time_df = _remove_batch_id_zero(push_message_time_df)
+    print_summary_stat_series(push_message_time_df["latency"])
+
+
 def compute_task_times(df, tag_fn):
     print("round trip latency of compute query")    
     roundtrip_durations = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE"),  ['client_node_id', 'query_id', 'node_id'])
-    print_summary_start_series(roundtrip_durations["latency"])
+    print_summary_stat_series(roundtrip_durations["latency"])
     
 
     print("compute query duration from send request to start of serialization of that batch on batching thread")
     query_send_to_serialize_durations = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_PUSH_BATCHER"),  ['client_node_id', "query_id", "node_id"])
-    print_summary_start_series(query_send_to_serialize_durations["latency"])
+    print_summary_stat_series(query_send_to_serialize_durations["latency"])
 
     print("batch serialization time between udls for global search")
     batch_serialization_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCH_SERIALIZE_START"), tag_fn("LOG_GLOBAL_INDEX_BATCH_SERIALIZE_END"),  ["batch_id"])
-    print_summary_start_series(batch_serialization_time["latency"])
+    print_summary_stat_series(batch_serialization_time["latency"])
 
     print("batch sending latency between udls for global search")
     batch_send_latency = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCH_SEND_START"), tag_fn("LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_START"),  ["batch_id"])
@@ -218,19 +242,19 @@ def compute_task_times(df, tag_fn):
 
     # batch_id = 0 we don't give a fuck about because its not batch sending between udls
     batch_send_latency = batch_send_latency[batch_send_latency["batch_id"] != 0] 
-    print_summary_start_series(batch_send_latency["latency"])
+    print_summary_stat_series(batch_send_latency["latency"])
 
     print("time to complete a put_and_forget")
     put_and_forget_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCH_SEND_START"), tag_fn("LOG_GLOBAL_INDEX_BATCH_SEND_END"), ["batch_id"])
-    print_summary_start_series(put_and_forget_time["latency"])
+    print_summary_stat_series(put_and_forget_time["latency"])
 
     print("time to transfer messages from cluster messages to to_send")
     transfer_messages_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_START"), tag_fn("LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_END"), ["msg_id"])
-    print_summary_start_series(transfer_messages_time["latency"])
+    print_summary_stat_series(transfer_messages_time["latency"])
 
     print("time to prep a batch for serialization for compute results and queries")
     prep_batch_serialize_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCH_PREP_START"), tag_fn("LOG_GLOBAL_INDEX_BATCH_PREP_END"), ["batch_id"])
-    print_summary_start_series(prep_batch_serialize_time["latency"])
+    print_summary_stat_series(prep_batch_serialize_time["latency"])
 
     print("time to deserialize a batch")
     batch_deserialize_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_START"), tag_fn("LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_END"), ["batch_id"])
@@ -238,23 +262,23 @@ def compute_task_times(df, tag_fn):
 
     # batch_id = 0 we don't give a fuck about because its not batch sending between udls
     batch_deserialize_time = batch_deserialize_time[batch_deserialize_time["batch_id"] != 0] 
-    print_summary_start_series(batch_deserialize_time["latency"])
+    print_summary_stat_series(batch_deserialize_time["latency"])
 
     print("time from compute query pushed to queue to it being popped off to start compute")
     query_pushed_to_start_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_START"), ["client_node_id", "query_id", "node_id"])
-    print_summary_start_series(query_pushed_to_start_time["latency"])
+    print_summary_stat_series(query_pushed_to_start_time["latency"])
 
     print("time to complete compute query")
     compute_query_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_START"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_END"), ["client_node_id", "query_id", "node_id"])
-    print_summary_start_series(compute_query_time["latency"])
+    print_summary_stat_series(compute_query_time["latency"])
 
     print("time to push a compute result")
     compute_result_push_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_TO_BATCHING_START"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_TO_BATCHING_END"), ["client_node_id", "query_id", "node_id"])
-    print_summary_start_series(compute_result_push_time["latency"])
+    print_summary_stat_series(compute_result_push_time["latency"])
 
     print("time from compute query complettion to result starting to be serialized in batching thread")
     compute_result_to_serialize_time = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_END"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_BATCHER"), ["client_node_id", "query_id", "node_id"])
-    print_summary_start_series(compute_result_to_serialize_time["latency"])
+    print_summary_stat_series(compute_result_to_serialize_time["latency"])
     
     # return roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time,transfer_messages_time, prep_batch_serialize_time, batch_serialization_time,
 
@@ -302,7 +326,7 @@ def compute_task_times(df, tag_fn):
     # #need to process batch data
     # # for each compute query, there is batch id for the extra column
     
-if __name__ == "__main__":     
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', type=str)
     args = parser.parse_args()

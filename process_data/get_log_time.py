@@ -76,8 +76,8 @@ def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'
           # for i in range(0, num_timestamps - 1):
               # latency = timestamps.max() - timstamps
           if (len(timestamps) != 2):
-              print("len timestamp is " , len(timestamps))
-              print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
+              # print("len timestamp is " , len(timestamps))
+              # print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
               # len_timestamps_list.append(len(timestamps))
               num_malformed += 1
           if len(group_by_columns) > 1:
