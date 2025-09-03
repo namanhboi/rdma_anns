@@ -66,8 +66,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
       std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex,
                                                      std::defer_lock);
-
-      uint32_t q_index = 0;
       while (running) {
         query_queue_lock.lock();
 
@@ -81,38 +79,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
-        // query_id_order_map[query_id] = q_index;
-        q_index++;
-        // std::cout << "=================================" << std::endl;
-        // std::cout << "starting query " << query_id << " which has order"
-        // << query_id_order_map[query_id] << std::endl;
-
-        // std::unique_lock<std::mutex> compute_res_lock(compute_res_queues_mtx);
-	// ComputeResult empty_res;
-        // compute_res_queues[query_id] =
-        //   std::make_shared<diskann::ConcurrentQueue<ComputeResult>>(empty_res);
-        // compute_res_lock.unlock();
-
         query_queue_lock.unlock();
-        
-        
-        // std::cout << query_id << " "  << query->get_dim() <<std::endl;
-        // for (uint32_t i = 0; i < query->get_dim(); i++) {
-	// std::cout << query->get_embedding_ptr()[i] << " " ;
-        // }
-        // std::cout << std::endl;
         
         uint32_t K = query->get_K();
         uint32_t L = query->get_L();
-	// std::cout << query->get_candidate_queue() << std::endl;
-        // std::cout << "query with id " << query->get_query_id() << " has K "
-        // << query->get_K() << " " << query->get_L() << " "
-        // << query->get_candidate_queue() << std::endl;
+
         std::shared_ptr<uint64_t[]> result_64(new uint64_t[K]);
         std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);
-
-
-
         index_lock.lock();
 #ifdef IN_MEM
 	// std::cout << "hello searching in mem" << std::endl;
@@ -271,7 +244,23 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
         compute_queue.pop();
 	queue_lock.unlock();
-
+#ifdef TEST_COMPUTE_PIPELINE
+	TimestampLogger::log(
+			     LOG_GLOBAL_INDEX_COMPUTE_QUERY_START, compute_query.client_node_id,
+			     compute_query.get_msg_id(), 0ull);
+        std::shared_ptr<compute_result_t> compute_result =
+          std::make_shared<compute_result_t>();
+        compute_result->client_node_id = compute_query.client_node_id;
+        compute_result->query_id = compute_query.query_id;
+        compute_result->node_id = compute_query.node_id;
+        
+	TimestampLogger::log(
+			     LOG_GLOBAL_INDEX_COMPUTE_QUERY_END, compute_query.client_node_id,
+			     compute_query.get_msg_id(), 0ull);
+        uint64_t client_node_id = compute_query.client_node_id;
+        uint64_t msg_id = compute_query.get_msg_id(); 
+        uint64_t batch_id = 0ull;
+#else 
 	map_lock.lock();
         if (query_map.count(compute_query.query_id) == 0) {
           // this should be an error because trigger put is an atomic multicast
@@ -323,7 +312,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         uint64_t client_node_id = compute_query.client_node_id;
         uint64_t msg_id = compute_result->get_msg_id(); 
         uint64_t batch_id = 0ull;
-
+#endif
         TimestampLogger::log(
 			     LOG_GLOBAL_INDEX_COMPUTE_RESULT_PUSH_TO_BATCHING_START,
 			     client_node_id, msg_id, batch_id);

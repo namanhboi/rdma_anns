@@ -64,6 +64,12 @@ if(DISK_KV)
     add_compile_definitions(DISK_KV)
 endif()
 
+
+if(TEST_COMPUTE_PIPELINE)
+    add_compile_definitions(TEST_COMPUTE_PIPELINE)
+endif()
+
+
 # Allow DATA_TYPE to be set from command line
 if(NOT DEFINED DATA_TYPE)
     set(DATA_TYPE "float")  # default

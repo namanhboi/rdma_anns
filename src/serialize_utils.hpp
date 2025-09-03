@@ -888,9 +888,9 @@ struct compute_result_t {
   uint8_t cluster_receiver_id;
 
   compute_result_t()
-      : cluster_sender_id(0), cluster_receiver_id(0), receiver_thread_id(0),
-      nbr_ids(nullptr), nbr_distances(nullptr), query_id(0), node_id(0), client_node_id(0),
-        expanded_dist(0) {}
+      : num_neighbors(0), nbr_ids(nullptr), nbr_distances(nullptr), query_id(0),
+        node_id(0), client_node_id(0), cluster_sender_id(0),
+        cluster_receiver_id(0), receiver_thread_id(0), expanded_dist(0) {}
 
   compute_result_t(uint32_t num_neighbors, std::shared_ptr<uint32_t[]> nbr_ids,
                    std::shared_ptr<float[]> nbr_distances, uint32_t query_id,

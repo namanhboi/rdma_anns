@@ -61,3 +61,4 @@ follow https://github.com/microsoft/DiskANN/
   - PQ_KV
   - PQ_FS
 - DISK\_KV: Should be the same idea as the above (currently only works for 1 cluster tho) but the vector embedding and neighbor ids are stored on cascade persistent kvstore instead of on file.
+- TEST\_COMPUTE\_PIPELINE: with this enabled, when the distance compute thread receives the compute query, it won't do any computation/read, just return with blank compute result

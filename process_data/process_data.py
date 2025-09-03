@@ -190,10 +190,6 @@ def global_search_udl_times(df, tag_fn):
     """
     return duration data frames for all data related to global index udl.
     """
-    print("time to read a node in compute thread")
-    compute_read_time_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_READ_END") , ['client_node_id', 'query_id', 'node_id'])
-    print_summary_stat_series(compute_read_time_df["latency"])
-
     print("time to read a node in search thread")
     search_read_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_END") , ['client_node_id', 'query_id', 'node_id'])
     print_summary_stat_series(search_read_df["latency"])
@@ -217,8 +213,7 @@ def global_search_udl_times(df, tag_fn):
     push_message_time_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_END"), tag_fn( "LOG_GLOBAL_INDEX_UDL_HANDLER_END") , ['batch_id'])
     push_message_time_df = _remove_batch_id_zero(push_message_time_df)
     print_summary_stat_series(push_message_time_df["latency"])
-    return compute_read_time_df, search_read_df, search_step_df, global_udl_handler_time_df, global_udl_handler_bytes_df, push_message_time_df
-
+    return search_read_df, search_step_df, global_udl_handler_time_df, global_udl_handler_bytes_df, push_message_time_df
 
 
 def compute_task_times(df, tag_fn):
