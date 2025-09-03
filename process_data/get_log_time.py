@@ -83,9 +83,10 @@ def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'
           if len(group_by_columns) > 1:
                result = {group_by_column: value for group_by_column, value in zip(group_by_columns, group_values)}
                result[duration_name] = latency
+               result["timestamp"] = timestamps.min()
                duration_results.append(result)
           else:
-               duration_results.append({group_by_columns[0]: group_values, duration_name: latency})
+               duration_results.append({group_by_columns[0]: group_values, duration_name: latency, "timestamp": timestamps.min()})
      duration_df = pd.DataFrame(duration_results)
      if (num_malformed != 0):
          print("num_malformed", num_malformed)
