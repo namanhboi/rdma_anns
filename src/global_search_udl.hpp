@@ -881,6 +881,9 @@ public:
       distance_compute_thread->push_embedding_query(std::move(emb_query));
     }
 
+#ifdef TEST_GLOBAL_HANDLER
+#else
+    // we are still doing deserialization here, just avoiding push
     for (compute_query_t &query : manager.get_compute_queries()) {
       validate_compute_query(query);
       distance_compute_thread->push_compute_query(std::move(query));
@@ -892,9 +895,6 @@ public:
       search_threads[result->get_receiver_thread_id()]->push_compute_result(
 									    std::move(result));
     }
-#ifdef TEST_GLOBAL_UDL_HANDLER
-    // want to see how much this affects the batch send latency
-    std::this_thread::sleep_for(std::chrono::microseconds(30));
 #endif
     TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_HANDLER_END,
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
