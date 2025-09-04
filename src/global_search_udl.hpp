@@ -253,7 +253,20 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         compute_result->client_node_id = compute_query.client_node_id;
         compute_result->query_id = compute_query.query_id;
         compute_result->node_id = compute_query.node_id;
-        
+        compute_result->cluster_sender_id = compute_query.cluster_receiver_id;
+        compute_result->cluster_receiver_id = compute_query.cluster_sender_id;
+        compute_result->num_neighbors = 32;
+        std::shared_ptr<uint32_t[]> tmp_nbr_ids(
+						new uint32_t[compute_result->num_neighbors]);
+        std::shared_ptr<float[]> tmp_nbr_distances(
+						new float[compute_result->num_neighbors]);
+        compute_result->nbr_ids =tmp_nbr_ids;
+        compute_result->nbr_distances = tmp_nbr_distances;
+        for (auto i = 0; i < compute_result->num_neighbors; i++) {
+          compute_result->nbr_ids[0] = 0;
+          compute_result->nbr_distances[0] = 0.0;
+        }
+        compute_result->expanded_dist = 0.0;
 	TimestampLogger::log(
 			     LOG_GLOBAL_INDEX_COMPUTE_QUERY_END, compute_query.client_node_id,
 			     compute_query.get_msg_id(), 0ull);
