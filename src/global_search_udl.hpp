@@ -262,7 +262,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 						   new float[compute_result->num_neighbors]());
         compute_result->nbr_ids =tmp_nbr_ids;
         compute_result->nbr_distances = tmp_nbr_distances;
-        compute_result->expanded_dist = 0.0;
+        compute_result->expanded_dist = std::numeric_limits<float>::max();
 	TimestampLogger::log(
 			     LOG_GLOBAL_INDEX_COMPUTE_QUERY_END, compute_query.client_node_id,
 			     compute_query.get_msg_id(), 0ull);
