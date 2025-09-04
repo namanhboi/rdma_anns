@@ -15,6 +15,7 @@
 #include <shared_mutex>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include "concurrent_queue.h"
 #include "neighbor.h"
@@ -500,8 +501,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         TimestampLogger::log(LOG_GLOBAL_INDEX_BATCHING_TRANSFER_MESSAGES_END,
                              std::numeric_limits<uint64_t>::max(), id, 0ull);
         lock.unlock();
-        
-        
         for (auto &[cluster_id, messages] : messages_to_send) {
           uint64_t num_sent = 0;
           uint64_t total = messages->size();
@@ -893,6 +892,10 @@ public:
       search_threads[result->get_receiver_thread_id()]->push_compute_result(
 									    std::move(result));
     }
+#ifdef TEST_GLOBAL_UDL_HANDLER
+    // want to see how much this affects the batch send latency
+    std::this_thread::sleep_for(std::chrono::microseconds(30));
+#endif
     TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_HANDLER_END,
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
                          object.blob.size);

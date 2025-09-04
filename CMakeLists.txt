@@ -69,6 +69,10 @@ if(TEST_COMPUTE_PIPELINE)
     add_compile_definitions(TEST_COMPUTE_PIPELINE)
 endif()
 
+if(TEST_GLOBAL_UDL_HANDLER)
+    add_compile_definitions(TEST_GLOBAL_UDL_HANDLER)
+endif()
+
 
 # Allow DATA_TYPE to be set from command line
 if(NOT DEFINED DATA_TYPE)
