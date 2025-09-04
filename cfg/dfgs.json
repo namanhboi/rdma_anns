@@ -7,7 +7,7 @@
         "pathname": "/anns/head_search",
         "shard_dispatcher_list": ["one"],
         "user_defined_logic_list": ["69eb06e2-017c-481b-8534-2e5dac301949"],
-        "user_defined_logic_stateful_list": ["singlethreaded"],
+        "user_defined_logic_stateful_list": ["stateful"],
         "user_defined_logic_config_list": [
           {
             "dim":128,
@@ -25,7 +25,7 @@
         "pathname": "/anns/global/search",
         "shard_dispatcher_list": ["one"],
         "user_defined_logic_list": ["837425c0-a204-435c-bf6f-00ae40c8039f"],
-        "user_defined_logic_stateful_list": ["singlethreaded"],
+        "user_defined_logic_stateful_list": ["stateful"],
         "user_defined_logic_config_list": [
           {
             "dim":128,
