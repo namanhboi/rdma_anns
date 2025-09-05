@@ -832,14 +832,18 @@ public:
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
                          0ull);
     if (manager.get_num_greedy_search_queries() != 0) {
-      for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
-         manager.get_greedy_search_queries()) {
-	validate_search_query(search_query);
+      // for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
+         // manager.get_greedy_search_queries()) {
+	// validate_search_query(search_query);
 	// std::cout << "query ok" << std::endl;
-	search_threads[next_search_thread]->push_search_query(std::move(search_query));
-	next_search_thread = (next_search_thread + 1) % num_search_threads;
+	// search_threads[next_search_thread]->push_search_query(std::move(search_query));
+	// next_search_thread = (next_search_thread + 1) % num_search_threads;
 	// std::cout << next_search_thread << std::endl;
-      }
+      // }
+      search_threads[next_search_thread]->push_search_queries(
+							      manager.get_greedy_search_queries());
+      next_search_thread = (next_search_thread + 1) % num_search_threads;
+    
     }
     if (manager.get_num_embedding_queries() != 0) {
       distance_compute_thread->push_embedding_queries(
