@@ -80,6 +80,7 @@ def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'
               # print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
               # len_timestamps_list.append(len(timestamps))
               num_malformed += 1
+              continue
           if len(group_by_columns) > 1:
                result = {group_by_column: value for group_by_column, value in zip(group_by_columns, group_values)}
                result[duration_name] = latency
