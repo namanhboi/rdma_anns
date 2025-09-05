@@ -24,6 +24,7 @@
 #include "udl_path_and_index.hpp"
 #include "in_mem_search_index.hpp"
 #include "ssd_search_index.hpp"
+#include "blockingconcurrentqueue.h"
 
 namespace derecho {
   namespace cascade {
@@ -48,9 +49,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::thread real_thread;
     bool running = false;
 
-    std::condition_variable_any query_queue_cv;
-    std::mutex query_queue_mutex;
-    std::queue<std::shared_ptr<GreedySearchQuery<data_type>>> query_queue;
+    // std::condition_variable_any query_queue_cv;
+    // std::mutex query_queue_mutex;
+    // std::queue<std::shared_ptr<GreedySearchQuery<data_type>>> query_queue;
+
+    moodycamel::BlockingConcurrentQueue<
+        std::shared_ptr<GreedySearchQuery<data_type>>>
+        concurrent_query_queue;
 
     // contains thread safe data structures for receiving compute results from
     // another thread
@@ -61,22 +66,15 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     // std::unordered_map<uint32_t, uint32_t> query_id_order_map;
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
-      // std::cout << "Search thread id is " << std::this_thread::get_id() << std::endl;
-      std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
       while (running) {
-        query_queue_lock.lock();
 
-        while (query_queue.empty()) {
-	  query_queue_cv.wait(query_queue_lock);
-        }
+        std::shared_ptr<GreedySearchQuery<data_type>> query;
+        concurrent_query_queue.wait_dequeue(query);
         
         if (!running) 
           break;
-	std::shared_ptr<GreedySearchQuery<data_type>> query = query_queue.front();
-        query_queue.pop();
 
         uint32_t query_id = query->get_query_id();
-        query_queue_lock.unlock();
         
         uint32_t K = query->get_K();
         uint32_t L = query->get_L();
@@ -154,10 +152,17 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       search_data->receive_result(std::move(compute_result));
     }
 
-    void push_search_query(std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
-      std::scoped_lock<std::mutex> lock(query_queue_mutex);
-      query_queue.emplace(std::move(search_query));
-      query_queue_cv.notify_all();
+    void push_search_query(
+			   std::shared_ptr<GreedySearchQuery<data_type>> search_query) {
+      concurrent_query_queue.enqueue(search_query);
+    }
+
+    void
+    push_search_queries(std::vector<std::shared_ptr<GreedySearchQuery<data_type>>>
+                          &search_queries) {
+      concurrent_query_queue.enqueue_bulk(
+          std::make_move_iterator(search_queries.begin()),
+					  search_queries.size());
     }
 
     void start(DefaultCascadeContextType *typed_ctxt) {
@@ -169,10 +174,8 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         real_thread.join();
     }
     void signal_stop() {
-      std::scoped_lock l(query_queue_mutex);
       running = false;
-      query_queue.push(nullptr);
-      query_queue_cv.notify_all();
+      concurrent_query_queue.enqueue(nullptr);
     }
   };
 
@@ -189,12 +192,13 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
   class DistanceComputeThread {
     uint64_t thread_id;
     std::thread real_thread;
-    
+
     // for a given compute query, if query embedding data hasn't arrived yet
     // then pop the query and reinsert it then move on the next query
-    std::queue<compute_query_t> compute_queue;
-    std::mutex compute_queue_mutex;
-    std::condition_variable_any compute_queue_cv;
+    // std::queue<compute_query_t> compute_queue;
+    // std::mutex compute_queue_mutex;
+    // std::condition_variable_any compute_queue_cv;
+    moodycamel::BlockingConcurrentQueue<compute_query_t> concurrent_compute_queue;
     bool running = false;
 
     std::unordered_map<uint32_t, std::shared_ptr<EmbeddingQuery<data_type>>>
@@ -218,7 +222,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       // since this is the in memory version, just get the data and do compute
       // in the disk version (hopefully that's possible) we do all requests
       // first then get which ever one arrives
-      std::unique_lock<std::mutex> queue_lock(compute_queue_mutex, std::defer_lock);
       std::unique_lock<std::mutex> map_lock(query_map_mutex, std::defer_lock);
 
       bool initialized_thread_data = false;
@@ -226,17 +229,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         // std::cout << "compute queue size " << compute_queue.size() << std::endl;
         // std::cout << "query map size " << query_map.size() << std::endl;
         std::shared_ptr<EmbeddingQuery<data_type>> query_emb_ptr;
-        queue_lock.lock();
-        while (compute_queue.empty()) {
-	  compute_queue_cv.wait(queue_lock);
-        }
+
+        compute_query_t compute_query;
+        concurrent_compute_queue.wait_dequeue(compute_query);
         if (!running)
           break;
-
-        compute_query_t compute_query = compute_queue.front();
-
-        compute_queue.pop();
-	queue_lock.unlock();
 #ifdef TEST_COMPUTE_PIPELINE
 	TimestampLogger::log(
 			     LOG_GLOBAL_INDEX_COMPUTE_QUERY_START, compute_query.client_node_id,
@@ -273,10 +270,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           << " has not arrived" << std::endl;
           std::cout << err.str() << std::endl;
 
-          // throw std::runtime_error(err.str());
-          queue_lock.lock();
-          compute_queue.emplace(std::move(compute_query));
-          queue_lock.unlock();
+          concurrent_compute_queue.enqueue(std::move(compute_query));
           map_lock.unlock();
           continue;
         }
@@ -340,32 +334,32 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     }
 
     void signal_stop() {
-      std::scoped_lock<std::mutex> l(compute_queue_mutex);
       running = false;
       compute_query_t empty_q;
-      compute_queue.push(empty_q);
-      compute_queue_cv.notify_all();
+      concurrent_compute_queue.enqueue(std::move(empty_q));
     }
-    void push_compute_query(compute_query_t compute_query) {
-      std::scoped_lock<std::mutex> lock(compute_queue_mutex);
-      // assert(compute_query.batch_id != 0);
-      TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED,
-                           compute_query.client_node_id,
-                           compute_query.get_msg_id(), compute_query.batch_id);
-      // std::cout << "number of items in the queue " << compute_queue.size() << std::endl;
-      compute_queue.emplace(std::move(compute_query));
-      compute_queue_cv.notify_all();
+    void push_compute_queries(std::vector<compute_query_t> &compute_queries) {
+      for (const auto& compute_query: compute_queries) {
+	TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED,
+                             compute_query.client_node_id,
+                             compute_query.get_msg_id(), compute_query.batch_id);
+      }
+      concurrent_compute_queue.enqueue_bulk(
+          std::make_move_iterator(compute_queries.begin()),
+					    compute_queries.size());
     }
 
-    void push_embedding_query(std::shared_ptr<EmbeddingQuery<data_type>> query) {
+    void push_embedding_queries(std::vector<std::shared_ptr<EmbeddingQuery<data_type>>> &embedding_queries) {
       std::scoped_lock<std::mutex> lock(query_map_mutex);
-      query_map[query->get_query_id()] = query;
-      std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch(
-								      new diskann::PQScratch<data_type>(diskann::defaults::MAX_GRAPH_DEGREE,
-													query->get_aligned_dim()));
-      pq_query_scratch_map.emplace(
-				   query->get_query_id(),
-				   std::make_shared<PQScratchEntry>(pq_query_scratch));
+      for (auto & query: embedding_queries) {
+	query_map[query->get_query_id()] = query;
+	std::shared_ptr<diskann::PQScratch<data_type>> pq_query_scratch(
+									new diskann::PQScratch<data_type>(diskann::defaults::MAX_GRAPH_DEGREE,
+													  query->get_aligned_dim()));
+	pq_query_scratch_map.emplace(
+				     query->get_query_id(),
+				     std::make_shared<PQScratchEntry>(pq_query_scratch));
+      }
     }
   };
 
@@ -426,7 +420,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
       return static_cast<uint64_t>(millis);
     }
-    
 
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       std::unique_lock<std::mutex> lock(messages_mutex, std::defer_lock);
@@ -831,14 +824,6 @@ public:
       throw std::runtime_error(err.str());
     }
     
-    // auto now = std::chrono::system_clock::now();
-    // auto duration_since_epoch = now.time_since_epoch();
-    // auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration_since_epoch);
-    // auto timestamp = static_cast<uint64_t>(millis.count());
-
-    // std::cout << "key cluster id" << static_cast<int>(key_cluster_id) << " "
-    // << key_batch_id << std::endl;
-
     TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_START, std::numeric_limits<uint64_t>::max(), key_batch_id, 0ull);
 
     GlobalSearchMessageBatchManager<data_type> manager(
@@ -857,17 +842,11 @@ public:
       }
     }
     if (manager.get_num_embedding_queries() != 0) {
-      for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
-         manager.get_embedding_queries()) {
-	validate_emb_query(emb_query);
-	distance_compute_thread->push_embedding_query(std::move(emb_query));
-      }
+      distance_compute_thread->push_embedding_queries(
+						      manager.get_embedding_queries());
     }
     if (manager.get_num_compute_queries() != 0) {
-      for (compute_query_t &query : manager.get_compute_queries()) {
-	validate_compute_query(query);
-	distance_compute_thread->push_compute_query(std::move(query));
-      }
+      distance_compute_thread->push_compute_queries(manager.get_compute_queries());
     }
     if (manager.get_num_compute_results() != 0) {
       for (std::shared_ptr<ComputeResult> &result : manager.get_compute_results()) {

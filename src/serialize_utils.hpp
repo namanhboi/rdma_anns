@@ -726,7 +726,7 @@ struct compute_query_t {
   /*
     used for logging purposes
    */
-  uint64_t get_msg_id() {
+  uint64_t get_msg_id()const {
     uint64_t msg_id =
       (static_cast<uint64_t>(this->query_id) << 32) | this->node_id;
     return msg_id;
