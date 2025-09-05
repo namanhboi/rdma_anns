@@ -25,7 +25,6 @@
 #include "in_mem_search_index.hpp"
 #include "ssd_search_index.hpp"
 
-
 namespace derecho {
   namespace cascade {
 
@@ -53,7 +52,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::mutex query_queue_mutex;
     std::queue<std::shared_ptr<GreedySearchQuery<data_type>>> query_queue;
 
-
     // contains thread safe data structures for receiving compute results from
     // another thread
     std::shared_ptr<ConcurrentSearchData> search_data;
@@ -65,8 +63,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       // std::cout << "Search thread id is " << std::this_thread::get_id() << std::endl;
       std::unique_lock<std::mutex> query_queue_lock(query_queue_mutex, std::defer_lock);
-      std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex,
-                                                     std::defer_lock);
       while (running) {
         query_queue_lock.lock();
 
@@ -87,7 +83,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
         std::shared_ptr<uint64_t[]> result_64(new uint64_t[K]);
         std::shared_ptr<uint32_t[]> result_32(new uint32_t[K]);
-        index_lock.lock();
 #ifdef IN_MEM
 	// std::cout << "hello searching in mem" << std::endl;
         parent->index->search_global_baseline(typed_ctxt, query, K, L,
@@ -119,7 +114,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 	// std::cout << "disk kv search called " << std::endl;
 	parent->index->search_pq_fs(typed_ctxt, query->get_embedding_ptr(), K, L, result_64.get(), nullptr, query->get_candidate_queue());
 #endif
-        index_lock.unlock();
         for (uint32_t i = 0; i < K; i++) {
 	  result_32.get()[i] = result_64.get()[i];
         }
@@ -227,8 +221,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       std::unique_lock<std::mutex> queue_lock(compute_queue_mutex, std::defer_lock);
       std::unique_lock<std::mutex> map_lock(query_map_mutex, std::defer_lock);
 
-      std::shared_lock<std::shared_mutex> index_lock(parent->index_mutex,
-                                                     std::defer_lock);
       bool initialized_thread_data = false;
       while (running) {
         // std::cout << "compute queue size " << compute_queue.size() << std::endl;
@@ -299,7 +291,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                     
         map_lock.unlock();
 
-        index_lock.lock();
         if (!initialized_thread_data) {
 	  // this is safe because every data structure invovled has internal locks
           parent->index->setup_compute_thread_data();
@@ -316,7 +307,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         TimestampLogger::log(LOG_GLOBAL_INDEX_COMPUTE_QUERY_END,
                              compute_query.client_node_id,
                              compute_query.get_msg_id(), 0ull);
-        index_lock.unlock();
         assert(compute_result->get_msg_id() == compute_query.get_msg_id());
         
         uint64_t client_node_id = compute_query.client_node_id;
@@ -674,9 +664,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
 
   static std::shared_ptr<OffCriticalDataPathObserver> ocdpo_ptr;
 
-  mutable std::shared_mutex index_mutex;
-  // search threads will use shared_lock, initialization will use unique lock
-  std::atomic<bool> initialized_index{false};
+  std::once_flag initialized_index;
 #ifdef IN_MEM
   std::unique_ptr<GlobalIndex<data_type>> index;
 #elif defined(DISK_FS_DISKANN_WRAPPER)
@@ -773,6 +761,48 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       throw std::runtime_error(err.str());
     }
   }
+
+  void initialize_index(const std::string& key_string) {
+    TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_START, this->my_id, 0, 0);
+    cluster_id = get_cluster_id(key_string);
+    cluster_data_prefix += std::to_string(cluster_id);
+    cluster_search_prefix += std::to_string(cluster_id);
+
+    dist_fn.reset(
+		  (diskann::Distance<data_type> *)
+              diskann::get_distance_function<data_type>(diskann::Metric::L2));
+    // std::cout << "started making global idnex" << std::endl;
+#ifdef IN_MEM
+    // std::cout << "createing in mem index" << std::endl;
+    this->index = std::make_unique<GlobalIndex<data_type>>(
+							   this->dim, this->cluster_id, cluster_assignment_bin_file,
+							   cluster_data_prefix);
+#elif defined(DISK_FS_DISKANN_WRAPPER)
+    this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
+								  this->index_path_prefix, this->num_search_threads);
+    // std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
+    // << key_string << std::endl;
+#elif defined(DISK_FS_DISTRIBUTED)
+
+    std::string cluster_files_path_prefix =
+      index_path_prefix + std::to_string(cluster_id);
+    uint32_t num_compute_threads = 1;
+    this->index = std::make_unique<SSDIndex<data_type>>(
+
+							cluster_files_path_prefix, cluster_id, cluster_data_prefix,
+							cluster_assignment_bin_file, pq_table_bin, num_search_threads, num_compute_threads,
+							[this](compute_query_t query) { this->batch_thread->push_compute_query(query); }, pq_compressed_vectors);
+    // std::cout << " done createing diskfs " << std::endl;
+#elif defined(DISK_KV)
+
+    // std::cout << "start creating SSDINDEXKV" << std::endl;
+    this->index = std::make_unique<SSDIndexKV<data_type>>(
+							  this->index_path_prefix, cluster_data_prefix,
+							  this->num_search_threads);
+    // std::cout << "done creating SSDINDEXKV" << std::endl;
+#endif
+    TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_END, this->my_id, 0, 0);
+  }
   
 public:
   void ocdpo_handler(const node_id_t sender,
@@ -791,58 +821,8 @@ public:
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
                          object.blob.size);
 
-    // TODO: need to switch to std::call once when i have time
-    // double check locking with atomic bool should be good according to
-    // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rconc-double-pattern
-    if (initialized_index == false) {
-      std::unique_lock lock(index_mutex);
-      if (initialized_index == false) {
-	TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_START, this->my_id, 0, 0);
-        cluster_id = get_cluster_id(key_string);
-        if (cluster_id != shard_id) {
-          std::cout << "cluster id different from shard id " << cluster_id
-          << " " << shard_id << std::endl;
-        }
-	cluster_data_prefix += std::to_string(cluster_id);
-	cluster_search_prefix += std::to_string(cluster_id);
+    std::call_once(initialized_index, &GlobalSearchOCDPO<data_type>::initialize_index, this, key_string);
 
-	dist_fn.reset(
-		      (diskann::Distance<data_type> *)
-              diskann::get_distance_function<data_type>(diskann::Metric::L2));
-	// std::cout << "started making global idnex" << std::endl;
-#ifdef IN_MEM
-	// std::cout << "createing in mem index" << std::endl;
-	this->index = std::make_unique<GlobalIndex<data_type>>(
-							       this->dim, this->cluster_id, cluster_assignment_bin_file,
-							       cluster_data_prefix);
-#elif defined(DISK_FS_DISKANN_WRAPPER)
-	this->index = std::make_unique<SSDIndexFileSystem<data_type>>(
-								      this->index_path_prefix, this->num_search_threads);
-        // std::cout << "done creating SSDIndexFileSystem" << cluster_id << " "
-        // << key_string << std::endl;
-#elif defined(DISK_FS_DISTRIBUTED)
-
-        std::string cluster_files_path_prefix =
-          index_path_prefix + std::to_string(cluster_id);
-        uint32_t num_compute_threads = 1;
-        this->index = std::make_unique<SSDIndex<data_type>>(
-
-							    cluster_files_path_prefix, cluster_id, cluster_data_prefix,
-							    cluster_assignment_bin_file, pq_table_bin, num_search_threads, num_compute_threads,
-							    [this](compute_query_t query) { this->batch_thread->push_compute_query(query); }, pq_compressed_vectors);
-	// std::cout << " done createing diskfs " << std::endl;
-#elif defined(DISK_KV)
-
-	// std::cout << "start creating SSDINDEXKV" << std::endl;
-        this->index = std::make_unique<SSDIndexKV<data_type>>(
-							      this->index_path_prefix, cluster_data_prefix,
-							      this->num_search_threads);
-        // std::cout << "done creating SSDINDEXKV" << std::endl;
-#endif
-        initialized_index = true;
-        TimestampLogger::log(LOG_GLOBAL_INDEX_LOADING_END, this->my_id, 0, 0);
-      }
-    }
     if (get_cluster_id(key_string) != cluster_id) {
       std::stringstream err;
       err << key_string << "doesn't belong to cluster "
