@@ -866,36 +866,37 @@ public:
     TimestampLogger::log(LOG_GLOBAL_INDEX_BATCH_DESERIALIZE_END,
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
                          0ull);
-
-    for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
+    if (manager.get_num_greedy_search_queries() != 0) {
+      for (std::shared_ptr<GreedySearchQuery<data_type>> &search_query :
          manager.get_greedy_search_queries()) {
-      validate_search_query(search_query);
-      // std::cout << "query ok" << std::endl;
-      search_threads[next_search_thread]->push_search_query(std::move(search_query));
-      next_search_thread = (next_search_thread + 1) % num_search_threads;
-      // std::cout << next_search_thread << std::endl;
+	validate_search_query(search_query);
+	// std::cout << "query ok" << std::endl;
+	search_threads[next_search_thread]->push_search_query(std::move(search_query));
+	next_search_thread = (next_search_thread + 1) % num_search_threads;
+	// std::cout << next_search_thread << std::endl;
+      }
     }
-    for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
+    if (manager.get_num_embedding_queries() != 0) {
+      for (std::shared_ptr<EmbeddingQuery<data_type>> &emb_query :
          manager.get_embedding_queries()) {
-      validate_emb_query(emb_query);
-      distance_compute_thread->push_embedding_query(std::move(emb_query));
+	validate_emb_query(emb_query);
+	distance_compute_thread->push_embedding_query(std::move(emb_query));
+      }
     }
-
-#ifdef TEST_GLOBAL_HANDLER
-#else
-    // we are still doing deserialization here, just avoiding push
-    for (compute_query_t &query : manager.get_compute_queries()) {
-      validate_compute_query(query);
-      distance_compute_thread->push_compute_query(std::move(query));
+    if (manager.get_num_compute_queries() != 0) {
+      for (compute_query_t &query : manager.get_compute_queries()) {
+	validate_compute_query(query);
+	distance_compute_thread->push_compute_query(std::move(query));
+      }
     }
-
-    for (std::shared_ptr<ComputeResult> &result : manager.get_compute_results()) {
-      validate_compute_result(result);
-      // std::cout << result->get_receiver_thread_id() << std::endl;
-      search_threads[result->get_receiver_thread_id()]->push_compute_result(
-									    std::move(result));
+    if (manager.get_num_compute_results() != 0) {
+      for (std::shared_ptr<ComputeResult> &result : manager.get_compute_results()) {
+	validate_compute_result(result);
+	// std::cout << result->get_receiver_thread_id() << std::endl;
+	search_threads[result->get_receiver_thread_id()]->push_compute_result(
+									      std::move(result));
+      }
     }
-#endif
     TimestampLogger::log(LOG_GLOBAL_INDEX_UDL_HANDLER_END,
                          std::numeric_limits<uint64_t>::max(), key_batch_id,
                          object.blob.size);
