@@ -13,7 +13,7 @@
             "dim":128,
             "num_search_threads":1,
             "min_batch_size":1,
-            "max_batch_size":5,
+            "max_batch_size":1,
             "batch_time_us":1000,
 	    "index_path": "/users/namanh/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index",
 	    "id_mapping_path" : "/users/namanh/workspace/big-ann-benchmarks/data/bigann/disk_index_bigann_10M_R32_L50_A1.2_head_index.indices",
