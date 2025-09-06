@@ -121,11 +121,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
                              query->get_client_node_id(), query->get_query_id(),
                              parent->my_id);
         std::unordered_map<uint8_t, std::vector<uint32_t>> candidate_queues =
-          determine_candidate_queues(std::move(search_results));
+          determine_candidate_queues(search_results);
         TimestampLogger::log(LOG_HEAD_INDEX_DETERMINE_CAND_Q_END,
                              query->get_client_node_id(), query->get_query_id(),
                              parent->my_id);
-        parent->batch_thread->push(std::move(candidate_queues),
+        parent->batch_thread->push(candidate_queues,
                                    query); // could prob std::move query here
       }
     }
@@ -259,11 +259,11 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
             for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
               if (queries_and_cand_q->at(i).second.size() == 0) {
                 batcher.push_embedding_query(
-					     std::move(queries_and_cand_q->at(i).first));
+					     queries_and_cand_q->at(i).first);
               } else {
                 greedy_query_t<data_type> search_query(
                     cluster_id, std::move(queries_and_cand_q->at(i).second),
-						       std::move(queries_and_cand_q->at(i).first));
+						       queries_and_cand_q->at(i).first);
                 batcher.push_search_query(std::move(search_query));
               }
             }
@@ -367,7 +367,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     push(std::unordered_map<uint8_t, std::vector<uint32_t>> candidate_queues,
          std::shared_ptr<EmbeddingQuery<data_type>> query) {
       std::unique_lock<std::mutex> lock(cluster_queue_mutex);
-
+      assert(query != nullptr);
 #ifdef TEST_UDL1
       if (cluster_queue.count(0) ==0 ) {
         cluster_queue[0] = std::make_unique<
