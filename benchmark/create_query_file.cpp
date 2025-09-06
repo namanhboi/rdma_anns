@@ -20,9 +20,11 @@ void write_query_file(const std::string &data_file,
   std::uniform_int_distribution<uint32_t> uint32_t_gen(
 						       0, npts_i32 - 1);
   std::set<uint32_t> random_indices;
-  
-  for (uint32_t i = 0; i < num_points; i++) {
-    random_indices.emplace(uint32_t_gen(gen));
+  while (random_indices.size() < num_points) {
+    uint32_t node_id = uint32_t_gen(gen);
+    if (random_indices.count(node_id) == 0) {
+      random_indices.emplace(node_id);
+    }
   }
   size_t emb_start_pos = sizeof(int) * 2;
   size_t emb_size = sizeof(data_type) * dim_i32;
@@ -39,8 +41,6 @@ void write_query_file(const std::string &data_file,
   }
 
 }
-
-
 
 
 int main(int argc, char **argv) {

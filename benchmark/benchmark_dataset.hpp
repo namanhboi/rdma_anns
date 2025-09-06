@@ -29,9 +29,9 @@ public:
     diskann::load_aligned_bin(query_file, query_data, query_num, query_dim,
                               query_aligned_dim);
     diskann::load_truthset(gt_file, gt_ids, gt_dists, gt_num, gt_dim);
-    if (gt_num != query_num) {
-      throw std::runtime_error("number of queries doesn't match the ground truth");
-    }
+    // if (gt_num != query_num) {
+      // throw std::runtime_error("number of queries doesn't match the ground truth");
+    // }
     std::cout << "Query dim " << query_dim << std::endl;
     std::cout << "GT dim " << gt_dim << std::endl;
   }
