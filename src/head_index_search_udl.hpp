@@ -189,6 +189,19 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     std::condition_variable_any cluster_queue_cv;
     std::mutex cluster_queue_mutex;
 
+    template <typename K, typename V>
+    bool
+    is_empty(const std::unordered_map<K, std::unique_ptr<std::vector<V>>> &map) {
+      bool empty = true;
+      for (auto &item : map) {
+        if (!item.second->empty()) {
+          empty = false;
+          break;
+        }
+      }
+      return empty;
+    }
+    
     void main_loop(DefaultCascadeContextType *typed_ctxt) {
       // uint32_t batch_index = 0;
       std::unique_lock<std::mutex> lock(cluster_queue_mutex, std::defer_lock);
@@ -197,15 +210,7 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
       while (running) {
         lock.lock();
-        bool empty = true;
-        for(auto& item : cluster_queue){
-          if(!(item.second->empty())){
-            empty = false;
-            break;
-          } 
-        }
-
-        if (empty){
+	while(is_empty(cluster_queue)) {
           cluster_queue_cv.wait_for(lock, batch_time);
         }
 
