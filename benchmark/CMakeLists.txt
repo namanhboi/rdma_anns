@@ -26,3 +26,10 @@ target_include_directories(prep_data PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/
 target_link_libraries(prep_data PRIVATE ParlayANN derecho::cascade Boost::program_options partition_lib diskann aio)
 # target_compile_definitions(setup PRIVATE TEST_UDL1)
 target_compile_options(prep_data PRIVATE -g -O0 -Wall)
+
+
+add_executable(create_query_file create_query_file.cpp)
+target_compile_features(create_query_file PRIVATE cxx_std_20)
+target_link_libraries(create_query_file PRIVATE Boost::program_options )
+# target_compile_definitions(setup PRIVATE TEST_UDL1)
+target_compile_options(create_query_file PRIVATE -g -O0 -Wall)
