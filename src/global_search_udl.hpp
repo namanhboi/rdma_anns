@@ -265,9 +265,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
           // this should be an error because trigger put is an atomic multicast
           std::stringstream err;
           err << "[compute distance] " << "cluster "
-          << static_cast<int>(parent->cluster_id)
-          << " query embedding for compute query " << compute_query.query_id
-          << " has not arrived" << std::endl;
+              << static_cast<int>(parent->cluster_id)
+              << " query embedding for compute query " << compute_query.query_id
+              << " has not arrived. Current queue has "
+              << concurrent_compute_queue.size_approx() << " elements"
+          << std::endl;
           std::cout << err.str() << std::endl;
 
           concurrent_compute_queue.enqueue(std::move(compute_query));
