@@ -208,6 +208,10 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       std::unordered_map<uint8_t, std::chrono::steady_clock::time_point>
       wait_time;
       auto batch_time = std::chrono::microseconds(parent->batch_time_us);
+      std::random_device rd; // obtain a random number from hardware
+      std::mt19937 gen(rd()); // seed the generator
+      std::uniform_int_distribution<uint64_t> uint64_t_gen(
+							   0, std::numeric_limits<uint64_t>::max());
       while (running) {
         lock.lock();
 	while(is_empty(cluster_queue)) {
@@ -268,32 +272,18 @@ class HeadIndexSearchOCDPO : public DefaultOffCriticalDataPathObserver {
               }
             }
             // std::cout << "batch size is " <<batch_size << std::endl;
+            uint64_t batch_id = uint64_t_gen(gen);
             batcher.serialize();
             ObjectWithStringKey obj;
             obj.blob = std::move(*batcher.get_blob());
             obj.previous_version = INVALID_VERSION;
             obj.previous_version_by_key = INVALID_VERSION;
             obj.key = UDL2_PATHNAME_CLUSTER +
-                      std::to_string(static_cast<int>(cluster_id));
-            // std::cout << "object key is " << obj.key << std::endl;
-
-            // std::cout << typed_ctxt->get_service_client_ref()
-                             // .find_object_pool_and_affinity_set_by_key(obj.key)
-                             // .second
-            // << std::endl;
-            // typed_ctxt->get_service_client_ref().put_and_forget(obj,
-            // static_cast<uint32_t>(UDL2_SUBGROUP_INDEX), cluster_id, true);
-
-            // auto [subgroup_type_index, subgroup_index, shard_index] =
-                // typed_ctxt->get_service_client_ref().key_to_shard_public(
-									 // obj.key);
-            // std::cout << "key is " << obj.key << "subgroup_index "
-                      // << UDL2_SUBGROUP_INDEX << "shard index "
-            // << static_cast<uint32_t>(cluster_id) << std::endl;
+                      std::to_string(static_cast<int>(cluster_id)) + "_" +
+                      std::to_string(batch_id);
 
             auto now = std::chrono::steady_clock::now();
 
-            // typed_ctxt->get_service_client_ref().put_and_forget(obj, true);
             typed_ctxt->get_service_client_ref()
                 .put_and_forget<UDL2_OBJ_POOL_TYPE>(
                     obj, UDL2_SUBGROUP_INDEX, static_cast<uint32_t>(cluster_id),
