@@ -1,4 +1,6 @@
 # Pre-Req: 
+Follow the guide here: https://docs.google.com/document/d/108KxSywDMZ3suJ3kaoqFck7SFpBnq902Huu_4PerFM0/edit?tab=t.0
+
 `git submodule update --init --recursive --remote`
 this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
 ## gcc

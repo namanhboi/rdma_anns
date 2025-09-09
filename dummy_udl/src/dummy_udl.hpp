@@ -40,17 +40,10 @@ namespace derecho {
               break;
             if (obj == nullptr)
               break;
-            if (obj->cluster_sender_id != parent->cluster_id) {
+            if (obj->cluster_receiver_id != parent->cluster_id) {
               throw std::invalid_argument(
-                  "object has cluster sender id " +
+					  "object has cluster receiver id " +
                   std::to_string(static_cast<int>(obj->cluster_sender_id)) +
-                  ", but this is cluster " +
-                  std::to_string(static_cast<int>(parent->cluster_id)));
-            }
-            if (obj->cluster_receiver_id == parent->cluster_id) {
-              throw std::invalid_argument(
-                  "object has cluster receiver id " +
-                  std::to_string(static_cast<int>(obj->cluster_receiver_id)) +
                   ", but this is cluster " +
                   std::to_string(static_cast<int>(parent->cluster_id)));
             }
@@ -382,6 +375,12 @@ namespace derecho {
                          const emit_func_t &emit,
                          DefaultCascadeContextType *typed_ctxt,
                          uint32_t worker_id) override {
+	if (key_string == "flush_logs") {
+          std::string log_file_name = "node" + std::to_string(my_id) + "_udls_timestamp.dat";
+          TimestampLogger::flush(log_file_name);
+          std::cout << "Flushed logs to " << log_file_name <<"."<< std::endl;
+          return;
+	}
         auto [key_cluster_id, key_batch_id] =
           parse_cluster_and_batch_id(key_string);
         std::call_once(initialized_cluster_id,
@@ -400,7 +399,6 @@ namespace derecho {
           throw std::invalid_argument("weird keystring value in udl: " +
                                       key_string);
         }
-
       }
       static void initialize() {
 	if (!ocdpo_ptr) {
@@ -412,7 +410,7 @@ namespace derecho {
       void set_config(DefaultCascadeContextType *typed_ctxt,
                       const nlohmann::json &config) {
 	this->my_id = typed_ctxt->get_service_client_ref().get_my_id();
-	std::cout << "global search udl id is  " << my_id << std::endl;
+	std::cout << "dummy udl id is  " << my_id << std::endl;
 	std::cout << "members "
 	<< typed_ctxt->get_service_client_ref().get_members()
 	<< std::endl;
