@@ -1,0 +1,42 @@
+set(UDL_COMMON_LIBS derecho derecho::cascade pthread)
+
+add_library(dummy_udl SHARED
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_udl.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_udl.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/udl_path_and_index.hpp
+)
+target_link_libraries(dummy_udl ${UDL_COMMON_LIBS})
+# Function to create configuration setup for a given config type
+function(setup_config_target target_name source_dir dest_dir)
+  add_custom_target(${target_name} ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/../${source_dir} ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}
+    
+    # Create node directories if they don't exist
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/n0
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/n1
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/n2
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/n3
+    
+    COMMENT "Setting up configuration files and symbolic links for ${dest_dir}"
+    VERBATIM
+  )
+  
+  # List of files to create symbolic links for
+  set(CONFIG_FILES layout.json dfgs.json udl_dlls.cfg)
+  
+  # Create symbolic links for each config file and each node
+  foreach(config_file ${CONFIG_FILES})
+    foreach(node_id RANGE 0 3)
+      add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E create_symlink 
+          ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/${config_file}
+          ${CMAKE_CURRENT_BINARY_DIR}/../${dest_dir}/n${node_id}/${config_file}
+      )
+    endforeach()
+  endforeach()
+endfunction()
+
+# Create both configuration targets
+setup_config_target(update_config_dummy cfg cfg_dummy)
+setup_config_target(update_config_rdma_dummy cfg_rdma cfg_rdma_dummy)

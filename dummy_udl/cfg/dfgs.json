@@ -1,0 +1,23 @@
+[
+  {
+    "id": "15dbf1f9-e43d-4496-bd36-f3e43b505bf3",
+    "desc": "udl that just sends stuff to other udls to test baseline batch sending latency",
+    "graph": [
+      {
+        "pathname": "/test",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["69eb06e2-017c-481b-8534-2e5dac301949"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [
+	  {
+            "num_send_threads":1,
+            "min_batch_size":1,
+            "max_batch_size":5,
+            "batch_time_us":1000
+          }],
+        "destinations": [{}]
+      }
+    ]
+  }
+]
+

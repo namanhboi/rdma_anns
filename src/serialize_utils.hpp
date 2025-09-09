@@ -1498,7 +1498,6 @@ public:
   }
 
   void serialize() {
-    // for (auto compute__
     size_t total_size = get_serialize_size();
 
     this->blob = std::make_shared<derecho::cascade::Blob>(

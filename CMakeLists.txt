@@ -84,4 +84,5 @@ add_subdirectory(extern/DiskANN)
 add_subdirectory(benchmark)
 add_subdirectory(src)
 add_subdirectory(test)
+add_subdirectory(dummy_udl/src)
 

@@ -388,7 +388,6 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
     
     GlobalSearchOCDPO<data_type> *parent;
     uint64_t thread_id;
-    size_t actual_thread_id;
     std::thread real_thread;
 
     template <typename K, typename V>
@@ -600,6 +599,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       }
       message msg = {message_type::COMPUTE_QUERY, std::move(query)};
       cluster_messages[query.cluster_receiver_id]->emplace_back(std::move(msg));
+      messages_cv.notify_all();
     }
 
     void push_compute_res(std::shared_ptr<compute_result_t> res) {
@@ -613,6 +613,7 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
       }
       message mes = {message_type::COMPUTE_RESULT, std::move(res)};
       cluster_messages[receiver_id]->emplace_back(std::move(mes));
+      messages_cv.notify_all();
     }
 
     void push_ann_result(uint32_t query_id, uint32_t client_id, uint32_t K,
@@ -631,11 +632,11 @@ class GlobalSearchOCDPO : public DefaultOffCriticalDataPathObserver {
         search_results[client_id]->reserve(parent->max_batch_size);
       }
       search_results[client_id]->emplace_back(std::move(search_res));
+      messages_cv.notify_all();
     }
 
     void start(DefaultCascadeContextType *typed_ctxt) {
       running = true;
-      actual_thread_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
       this->real_thread =
         std::thread(&GlobalSearchOCDPO::BatchingThread::main_loop, this, typed_ctxt);
     }
@@ -866,7 +867,7 @@ public:
       ocdpo_ptr = std::make_shared<GlobalSearchOCDPO<data_type>>();
     }
     
-  };
+  }
   static auto get() { return ocdpo_ptr; }
   void set_config(DefaultCascadeContextType *typed_ctxt,
                   const nlohmann::json &config) {
