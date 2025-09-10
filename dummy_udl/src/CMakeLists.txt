@@ -6,6 +6,21 @@ add_library(dummy_udl SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/udl_path_and_index.hpp
 )
+
+
+set(LOG_DUMMY_BATCH_SEND_START 10000)
+set(LOG_DUMMY_BATCH_SEND_END 10001)
+set(LOG_DUMMY_HANDLER_START 10010)
+set(LOG_DUMMY_HANDLER_END 10011)
+
+target_compile_definitions(dummy_udl PRIVATE
+  LOG_DUMMY_BATCH_SEND_START=${LOG_DUMMY_BATCH_SEND_START}
+  LOG_DUMMY_BATCH_SEND_END=${LOG_DUMMY_BATCH_SEND_END}
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_DUMMY_HANDLER_END=${LOG_DUMMY_HANDLER_END}
+)
+
+
 target_link_libraries(dummy_udl ${UDL_COMMON_LIBS})
 # Function to create configuration setup for a given config type
 function(setup_config_target target_name source_dir dest_dir)
@@ -48,5 +63,4 @@ add_executable(run_dummy_benchmark run_benchmark.cpp serialize_utils.hpp benchma
 target_compile_features(run_dummy_benchmark PRIVATE cxx_std_20)
 target_link_libraries(run_dummy_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
 target_compile_options(run_dummy_benchmark PRIVATE -g -O0 -Wall)
-
 

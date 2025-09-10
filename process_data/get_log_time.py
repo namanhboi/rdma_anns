@@ -6,11 +6,16 @@ plots should be distributions, print should be avg + std
 import pandas as pd
 from pprint import pprint
 LOG_TAG_PATH = "../src/log_tags.csv"
+DUMMY_LOG_TAG_PATH = "../dummy_udl/src/log_tags.csv"
 END_SUFFIX_LIST = ["_END", "_RECEIVE"] 
 START_SUFFIX_LIST = ["_START", "_SEND"]
 
 def get_log_tags_dataframe():
     log_tags_df = pd.read_csv(LOG_TAG_PATH, comment="#")
+    return log_tags_df
+
+def get_dummy_log_tags_dataframe():
+    log_tags_df = pd.read_csv(DUMMY_LOG_TAG_PATH, comment="#")
     return log_tags_df
 
 def is_tag_start(tag: str):

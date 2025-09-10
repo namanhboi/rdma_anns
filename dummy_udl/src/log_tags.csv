@@ -1,0 +1,5 @@
+tag_name,tag_value,msg_id_type
+LOG_DUMMY_BATCH_SEND_START,10000,batch_id
+LOG_DUMMY_BATCH_SEND_END,10001,batch_id
+LOG_DUMMY_HANDLER_START,10010,batch_id
+LOG_DUMMY_HANDLER_END,10011,batch_id

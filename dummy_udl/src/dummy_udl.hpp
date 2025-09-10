@@ -252,12 +252,18 @@ namespace derecho {
 		obj.blob = std::move(*blob);
 		obj.previous_version = INVALID_VERSION;
 		obj.previous_version_by_key = INVALID_VERSION;
-                obj.key = UDL_PATHNAME_CLUSTER +std::to_string(cluster_id) +
+                obj.key = UDL_PATHNAME_CLUSTER + std::to_string(cluster_id) +
                           "_" + std::to_string(batch_id) + "_obj";
+                TimestampLogger::log(LOG_DUMMY_BATCH_SEND_START,
+                                     std::numeric_limits<uint64_t>::max(),
+                                     batch_id, 0ull);
                 typed_ctxt->get_service_client_ref()
                     .put_and_forget<UDL_OBJ_POOL_TYPE>(
                         obj, UDL_SUBGROUP_INDEX,
 						       static_cast<uint32_t>(cluster_id), true);
+                TimestampLogger::log(LOG_DUMMY_BATCH_SEND_END,
+                                     std::numeric_limits<uint64_t>::max(),
+                                     batch_id, 0ull);                
                 num_sent += batch_size;
               }
             }
@@ -383,6 +389,9 @@ namespace derecho {
 	}
         auto [key_cluster_id, key_batch_id] =
           parse_cluster_and_batch_id(key_string);
+        TimestampLogger::log(LOG_DUMMY_HANDLER_START,
+                             std::numeric_limits<uint64_t>::max(), key_batch_id,
+                             object.blob.size);
         std::call_once(initialized_cluster_id,
                        &DummyOCDPO::initialize_cluster_id, this, key_cluster_id);
         if (key_string.find("obj") != std::string::npos) {
@@ -399,6 +408,9 @@ namespace derecho {
           throw std::invalid_argument("weird keystring value in udl: " +
                                       key_string);
         }
+        TimestampLogger::log(LOG_DUMMY_HANDLER_END,
+                             std::numeric_limits<uint64_t>::max(), key_batch_id,
+                             object.blob.size);
       }
       static void initialize() {
 	if (!ocdpo_ptr) {
