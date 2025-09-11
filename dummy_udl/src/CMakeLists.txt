@@ -85,4 +85,5 @@ target_compile_options(run_dummy_no_deserialize_benchmark PRIVATE -g -O0 -Wall)
 
 setup_config_target(update_config_dummy_no_deserialize cfg_no_deserialize cfg_no_deserialize)
 setup_config_target(update_config_rdma_dummy_no_deserialize cfg_no_deserialize_rdma cfg_no_deserialize_rdma)
+setup_config_target(update_config_dummy_no_deserialize_tcp cfg_no_deserialize_tcp cfg_no_deserialize_tcp)
 
