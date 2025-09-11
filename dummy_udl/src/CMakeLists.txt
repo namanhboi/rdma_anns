@@ -53,14 +53,36 @@ function(setup_config_target target_name source_dir dest_dir)
 endfunction()
 
 # Create both configuration targets
-setup_config_target(update_config_dummy cfg cfg_dummy)
-setup_config_target(update_config_rdma_dummy cfg_rdma cfg_rdma_dummy)
+setup_config_target(update_config_dummy cfg cfg)
+setup_config_target(update_config_rdma_dummy cfg_rdma cfg_rdma)
 
 
 
+add_library(dummy_no_deserialize_udl SHARED
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_no_deserialize.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_no_deserialize.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/udl_path_and_index.hpp
+)
+
+
+target_compile_definitions(dummy_no_deserialize_udl PRIVATE
+  LOG_DUMMY_BATCH_SEND_START=${LOG_DUMMY_BATCH_SEND_START}
+  LOG_DUMMY_BATCH_SEND_END=${LOG_DUMMY_BATCH_SEND_END}
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_DUMMY_HANDLER_END=${LOG_DUMMY_HANDLER_END}
+)
 
 add_executable(run_dummy_benchmark run_benchmark.cpp serialize_utils.hpp benchmark_client.hpp)
 target_compile_features(run_dummy_benchmark PRIVATE cxx_std_20)
 target_link_libraries(run_dummy_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
 target_compile_options(run_dummy_benchmark PRIVATE -g -O0 -Wall)
+
+add_executable(run_dummy_no_deserialize_benchmark run_benchmark_no_deserialize.cpp serialize_utils.hpp)
+target_compile_features(run_dummy_no_deserialize_benchmark PRIVATE cxx_std_20)
+target_link_libraries(run_dummy_no_deserialize_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
+target_compile_options(run_dummy_no_deserialize_benchmark PRIVATE -g -O0 -Wall)
+
+setup_config_target(update_config_dummy_no_deserialize cfg_no_deserialize cfg_no_deserialize)
+setup_config_target(update_config_rdma_dummy_no_deserialize cfg_no_deserialize_rdma cfg_no_deserialize_rdma)
 

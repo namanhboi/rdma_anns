@@ -214,13 +214,28 @@ def global_search_udl_times(df, tag_fn):
     print_summary_stat_series(push_message_time_df["latency"])
     return search_read_df, search_step_df, global_udl_handler_time_df, global_udl_handler_bytes_df, push_message_time_df
 
+def dummy_no_deserialize_udl_times(df, tag_fn):
+    batch_send_latency = get_durations(df, tag_fn("LOG_DUMMY_BATCH_SEND_START"), tag_fn("LOG_DUMMY_HANDLER_START"),  ['batch_id'])
+
+    put_and_forget_time = get_durations(df, tag_fn("LOG_DUMMY_BATCH_SEND_START"), tag_fn("LOG_DUMMY_BATCH_SEND_END"),  ['batch_id'])
+
+    udl_handler_time = get_durations(df, tag_fn("LOG_DUMMY_HANDLER_START"), tag_fn("LOG_DUMMY_HANDLER_END"),  ['batch_id'])
+
+    global_udl_handler_bytes_df = df[df["tag"] == tag_fn("LOG_DUMMY_HANDLER_START")]
+    global_udl_handler_bytes_df = global_udl_handler_bytes_df[global_udl_handler_bytes_df["batch_id"] != 0]
+
+    return batch_send_latency, put_and_forget_time, udl_handler_time, udl_handler_bytes_df
+
 def dummy_udl_times(df, tag_fn):
     batch_send_latency = get_durations(df, tag_fn("LOG_DUMMY_BATCH_SEND_START"), tag_fn("LOG_DUMMY_HANDLER_START"),  ['batch_id'])
 
     put_and_forget_time = get_durations(df, tag_fn("LOG_DUMMY_BATCH_SEND_START"), tag_fn("LOG_DUMMY_BATCH_SEND_END"),  ['batch_id'])
 
     udl_handler_time = get_durations(df, tag_fn("LOG_DUMMY_HANDLER_START"), tag_fn("LOG_DUMMY_HANDLER_END"),  ['batch_id'])
-    return batch_send_latency, put_and_forget_time, udl_handler_time
+
+    global_udl_handler_bytes_df = df[df["tag"] == tag_fn("LOG_DUMMY_HANDLER_START")]
+    global_udl_handler_bytes_df = global_udl_handler_bytes_df[global_udl_handler_bytes_df["batch_id"] != 0]
+    return batch_send_latency, put_and_forget_time, udl_handler_time, global_udl_handler_bytes_df
 
 def compute_task_times(df, tag_fn):
     print("round trip latency of compute query")    

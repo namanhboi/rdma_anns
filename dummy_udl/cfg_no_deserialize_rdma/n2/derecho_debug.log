@@ -1,0 +1,481 @@
+[20:25:16.670976] [derecho_debug] [Thread 468559] [debug] Program start time (microseconds): 1756434316670963
+[20:25:16.670994] [derecho_debug] [Thread 468559] [trace] starting service...
+[20:25:16.673606] [derecho_debug] [Thread 468559] [info] Derecho library running version 2.4.1 + 4 commits
+[20:25:16.673729] [derecho_debug] [Thread 468559] [debug] Starting with configuration options:
+	CASCADE/cpu_cores = 0-3
+	CASCADE/num_stateful_workers_for_multicast_ocdp = 2
+	CASCADE/num_stateful_workers_for_p2p_ocdp = 2
+	CASCADE/num_stateless_workers_for_multicast_ocdp = 2
+	CASCADE/num_stateless_workers_for_p2p_ocdp = 2
+	CASCADE/timestamp_tag_enabler = 10000,10001,10002,10003,10004,10005,10006,10007,10008,10009,20001,20002,20010,20011,20020,20021,20030,20031,20040,20041,20042,20050,20051,20060,20061,20070,20071,20080,20081,20090,20091,20100,20101,20110,20111,20120,20121,20130,20131,20140,20141,20072,20073,20150,20151
+	DERECHO/contact_ip = 10.10.1.1
+	DERECHO/contact_port = 23580
+	DERECHO/disable_partitioning_safety = false
+	DERECHO/enable_backup_restart_leaders = false
+	DERECHO/external_port = 32647
+	DERECHO/gms_port = 23582
+	DERECHO/heartbeat_ms = 100
+	DERECHO/local_id = 2
+	DERECHO/local_ip = 10.10.1.3
+	DERECHO/max_node_id = 1024
+	DERECHO/max_p2p_reply_payload_size = 20480
+	DERECHO/max_p2p_request_payload_size = 1048576
+	DERECHO/p2p_loop_busy_wait_before_sleep_ms = 250
+	DERECHO/p2p_window_size = 4
+	DERECHO/rdmc_port = 31677
+	DERECHO/restart_leader_ports = 23580
+	DERECHO/restart_leaders = 127.0.0.1
+	DERECHO/restart_timeout_ms = 2000
+	DERECHO/sst_poll_cq_timeout_ms = 100
+	DERECHO/sst_port = 37685
+	DERECHO/state_transfer_port = 28368
+	LAYOUT/json_layout_file = layout.json
+	LOGGER/default_log_level = trace
+	LOGGER/default_log_name = derecho_debug
+	LOGGER/log_file_depth = 3
+	LOGGER/log_to_terminal = true
+	LOGGER/persistence_log_level = trace
+	LOGGER/rpc_log_level = trace
+	LOGGER/sst_log_level = trace
+	LOGGER/viewmanager_log_level = trace
+	PERS/file_path = .plog
+	PERS/max_data_size = 549755813888
+	PERS/max_log_entry = 1048576
+	PERS/private_key_file = private_key.pem
+	PERS/ramdisk_path = /dev/shm/volatile_t
+	PERS/reset = false
+	RDMA/domain = mlx5_3
+	RDMA/provider = verbs
+	RDMA/rx_depth = 4096
+	RDMA/tx_depth = 4096
+	SUBGROUP/DEFAULT/block_size = 1048576
+	SUBGROUP/DEFAULT/max_payload_size = 1048576
+	SUBGROUP/DEFAULT/max_reply_payload_size = 10240
+	SUBGROUP/DEFAULT/max_smc_payload_size = 10240
+	SUBGROUP/DEFAULT/rdmc_send_algorithm = binomial_send
+	SUBGROUP/DEFAULT/window_size = 16
+	SUBGROUP/LARGE/block_size = 10240
+	SUBGROUP/LARGE/max_payload_size = 102400
+	SUBGROUP/LARGE/max_reply_payload_size = 102400
+	SUBGROUP/LARGE/max_smc_payload_size = 10240
+	SUBGROUP/LARGE/rdmc_send_algorithm = binomial_send
+	SUBGROUP/LARGE/window_size = 3
+	SUBGROUP/PCS/block_size = 1048576
+	SUBGROUP/PCS/max_nodes = 4
+	SUBGROUP/PCS/max_payload_size = 8192
+	SUBGROUP/PCS/max_reply_payload_size = 8192
+	SUBGROUP/PCS/max_smc_payload_size = 10240
+	SUBGROUP/PCS/min_nodes = 1
+	SUBGROUP/PCS/num_shards = 1
+	SUBGROUP/PCS/rdmc_send_algorithm = binomial_send
+	SUBGROUP/PCS/window_size = 50
+	SUBGROUP/SMALL/block_size = 0
+	SUBGROUP/SMALL/max_payload_size = 100
+	SUBGROUP/SMALL/max_reply_payload_size = 100
+	SUBGROUP/SMALL/max_smc_payload_size = 100
+	SUBGROUP/SMALL/rdmc_send_algorithm = binomial_send
+	SUBGROUP/SMALL/window_size = 50
+	SUBGROUP/VCS/block_size = 1048576
+	SUBGROUP/VCS/max_nodes = 4
+	SUBGROUP/VCS/max_payload_size = 1048576
+	SUBGROUP/VCS/max_reply_payload_size = 8192
+	SUBGROUP/VCS/max_smc_payload_size = 10240
+	SUBGROUP/VCS/min_nodes = 1
+	SUBGROUP/VCS/num_shards = 1
+	SUBGROUP/VCS/rdmc_send_algorithm = binomial_send
+	SUBGROUP/VCS/window_size = 8
+
+[20:25:16.673825] [viewmanager] [Thread 468559] [info] Node 2 starting up, sending a join request to 10.10.1.1
+[20:25:16.674091] [viewmanager] [Thread 468559] [debug] Socket connected to leader, exchanging version codes.
+[20:25:16.674593] [viewmanager] [Thread 468559] [trace] Read size_of_view = 571 from leader over joiner socket
+[20:25:16.674595] [viewmanager] [Thread 468559] [trace] Receiving initial view over joiner socket
+[20:25:16.674727] [derecho_debug] [Thread 468559] [debug] Read size_of_vector = 0 from 10.10.1.1
+[20:25:16.674744] [viewmanager] [Thread 468559] [debug] Received initial view 0 from leader: View 0: MyRank=2. Members=<[0,1,2,]>, Failed={  F  F  F  }, num_failed=0, Departed: <[]>, Joined: <[1,2,]>
+SubViews: Shard (0, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 1): Members=<[1,]>, is_sender={T }.  Shard (1, 2): Members=<[2,]>, is_sender={T }.  Shard (2, 0): Members=<[1,]>, is_sender={T }.  Shard (3, 0): Members=<[1,]>, is_sender={T }.  
+[20:25:16.675024] [viewmanager] [Thread 468559] [debug] Established a state-transfer TCP connection to node 0
+[20:25:16.675231] [viewmanager] [Thread 468559] [debug] Established a state-transfer TCP connection to node 1
+[20:25:16.675257] [derecho_debug] [Thread 468559] [debug] Constructing a Replicated Object for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup 1, shard 2
+[20:25:16.676653] [derecho_debug] [Thread 468559] [debug] Entering VolatileCascadeStore.
+[20:25:16.676656] [derecho_debug] [Thread 468559] [debug] Leaving VolatileCascadeStore.
+[20:25:16.676667] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,6510554771,false)
+[20:25:16.676669] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,15195594093507957003,false)
+[20:25:16.676670] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,6348823032179,false)
+[20:25:16.676676] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,6720712969,false)
+[20:25:16.676677] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,204461,false)
+[20:25:16.676679] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,192566740426401,false)
+[20:25:16.676682] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,174387509973433241,false)
+[20:25:16.676684] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,13053876510283696863,false)
+[20:25:16.676685] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,190213062906347,false)
+[20:25:16.676686] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,549401895051186391,false)
+[20:25:16.676687] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,15892555279946135329,false)
+[20:25:16.676690] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,5853698743957,false)
+[20:25:16.676692] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,11251287850910487425,false)
+[20:25:16.676707] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,196366959973840913,false)
+[20:25:16.676711] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,14286556049496089377,false)
+[20:25:16.676712] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,1078630659658075227,false)
+[20:25:16.676715] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,222751,false)
+[20:25:16.676716] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,10333154126517021998,false)
+[20:25:16.676717] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,16172404891557179692,false)
+[20:25:16.676719] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,188162057642406152,false)
+[20:25:16.676720] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,52397230173974342,false)
+[20:25:16.676721] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,9522590118100805048,false)
+[20:25:16.676724] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,13562640025198349636,false)
+[20:25:16.676725] [derecho_rpc] [Thread 468559] [trace] Emplace invoke_opcode:(1,1,188162057642424442,false)
+[20:25:16.676767] [derecho_debug] [Thread 468559] [debug] Done receiving all Replicated Objects from subgroup leaders (there were none to receive)
+[20:25:16.676772] [viewmanager] [Thread 468559] [debug] Leader sent PREPARE
+[20:25:16.676785] [viewmanager] [Thread 468559] [debug] Starting global initialization of RDMC and SST, including internal TCP connection setup
+[20:25:16.677903] [derecho_debug] [Thread 468559] [trace] lf_initialize hints: fi_info:
+    caps: [ FI_MSG, FI_RMA, FI_READ, FI_WRITE, FI_REMOTE_READ, FI_REMOTE_WRITE ]
+    mode: [ FI_CONTEXT, FI_MSG_PREFIX, FI_ASYNC_IOV, FI_RX_CQ_DATA, FI_LOCAL_MR, FI_NOTIFY_FLAGS_ONLY, FI_RESTRICTED_COMP, FI_CONTEXT2, FI_BUFFERED_RECV ]
+    addr_format: FI_FORMAT_UNSPEC
+    src_addrlen: 0
+    dest_addrlen: 0
+    src_addr: (null)
+    dest_addr: (null)
+    handle: (nil)
+    fi_tx_attr:
+        caps: [  ]
+        mode: [  ]
+        op_flags: [  ]
+        msg_order: [  ]
+        comp_order: [ FI_ORDER_NONE ]
+        inject_size: 0
+        size: 4096
+        iov_limit: 0
+        rma_iov_limit: 0
+    fi_rx_attr:
+        caps: [  ]
+        mode: [  ]
+        op_flags: [  ]
+        msg_order: [  ]
+        comp_order: [ FI_ORDER_NONE ]
+        total_buffered_recv: 0
+        size: 4096
+        iov_limit: 0
+    fi_ep_attr:
+        type: FI_EP_MSG
+        protocol: FI_PROTO_UNSPEC
+        protocol_version: 0
+        max_msg_size: 0
+        msg_prefix_size: 0
+        max_order_raw_size: 0
+        max_order_war_size: 0
+        max_order_waw_size: 0
+        mem_tag_format: 0x0000000000000000
+        tx_ctx_cnt: 0
+        rx_ctx_cnt: 0
+        auth_key_size: 0
+    fi_domain_attr:
+        domain: 0x0
+        name: mlx5_3
+        threading: FI_THREAD_UNSPEC
+        control_progress: FI_PROGRESS_UNSPEC
+        data_progress: FI_PROGRESS_UNSPEC
+        resource_mgmt: FI_RM_UNSPEC
+        av_type: FI_AV_UNSPEC
+        mr_mode: [ FI_MR_LOCAL, FI_MR_VIRT_ADDR, FI_MR_ALLOCATED, FI_MR_PROV_KEY ]
+        mr_key_size: 0
+        cq_data_size: 0
+        cq_cnt: 0
+        ep_cnt: 0
+        tx_ctx_cnt: 0
+        rx_ctx_cnt: 0
+        max_ep_tx_ctx: 0
+        max_ep_rx_ctx: 0
+        max_ep_stx_ctx: 0
+        max_ep_srx_ctx: 0
+        cntr_cnt: 0
+        mr_iov_limit: 0
+    caps: [  ]
+    mode: [  ]
+        auth_key_size: 0
+        max_err_data: 0
+        mr_cnt: 0
+    fi_fabric_attr:
+        name: (null)
+        prov_name: verbs
+        prov_version: 0.0
+        api_version: 0.0
+    nic_fid: (nil)
+
+[20:25:17.186538] [derecho_sst] [Thread 468559] [trace] going to use virtual address?16
+[20:25:17.342489] [derecho_sst] [Thread 468563] [trace] Polling thread starting.
+[20:25:17.342523] [viewmanager] [Thread 468559] [trace] Initial view is: View 0: MyRank=2. Members=<[0,1,2,]>, Failed={  F  F  F  }, num_failed=0, Departed: <[]>, Joined: <[1,2,]>
+SubViews: Shard (0, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 1): Members=<[1,]>, is_sender={T }.  Shard (1, 2): Members=<[2,]>, is_sender={T }.  Shard (2, 0): Members=<[1,]>, is_sender={T }.  Shard (3, 0): Members=<[1,]>, is_sender={T }.  
+[20:25:17.342643] [viewmanager] [Thread 468559] [debug] Initializing SST and RDMC for the first time.
+[20:25:17.343528] [derecho_sst] [Thread 468559] [trace] resources constructor: this=0x56008d5ea3b0
+[20:25:17.343604] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7fc2305be3b8:660392
+[20:25:17.343627] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7fc23065f760:660392
+[20:25:17.343643] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1523761, local read key:1526845
+[20:25:17.343647] [derecho_sst] [Thread 468559] [trace] preparing connection to remote node(id=1)...
+
+[20:25:17.343649] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info.
+[20:25:17.343667] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info succeeds.
+[20:25:17.343669] [derecho_sst] [Thread 468559] [trace] connect to remote node.
+[20:25:17.343669] [derecho_sst] [Thread 468559] [trace] connecting as a client.
+
+[20:25:17.343669] [derecho_sst] [Thread 468559] [trace] initiating a connection.
+
+[20:25:17.343673] [derecho_sst] [Thread 468559] [trace] calling fi_getinfo()
+[20:25:17.343809] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x56008d5e4800
+[20:25:17.343832] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x56008d5e6550
+[20:25:17.346414] [derecho_sst] [Thread 468559] [trace] calling fi_connect()
+[20:25:17.346424] [derecho_sst] [Thread 468559] [trace] fi_connect() succeeded, calling fi_eq_sread()
+[20:25:17.351935] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x56008d5e4800,this->ep->fid=0x56008d5e4800
+[20:25:17.352060] [derecho_sst] [Thread 468559] [trace] resources constructor: this=0x56008d5ebcb0
+[20:25:17.352096] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7fc23051d010:660392
+[20:25:17.352117] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7fc23065f760:660392
+[20:25:17.352119] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1529929, local read key:1532757
+[20:25:17.352120] [derecho_sst] [Thread 468559] [trace] preparing connection to remote node(id=0)...
+
+[20:25:17.352121] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info.
+[20:25:17.352129] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info succeeds.
+[20:25:17.352129] [derecho_sst] [Thread 468559] [trace] connect to remote node.
+[20:25:17.352130] [derecho_sst] [Thread 468559] [trace] connecting as a client.
+
+[20:25:17.352130] [derecho_sst] [Thread 468559] [trace] initiating a connection.
+
+[20:25:17.352131] [derecho_sst] [Thread 468559] [trace] calling fi_getinfo()
+[20:25:17.352250] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x56008d5e5290
+[20:25:17.352275] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x56008d5e57e0
+[20:25:17.354215] [derecho_sst] [Thread 468559] [trace] calling fi_connect()
+[20:25:17.354222] [derecho_sst] [Thread 468559] [trace] fi_connect() succeeded, calling fi_eq_sread()
+[20:25:17.358279] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x56008d5e5290,this->ep->fid=0x56008d5e5290
+[20:25:17.485717] [viewmanager] [Thread 468559] [debug] Done setting up initial SST and RDMC
+[20:25:17.489325] [derecho_sst] [Thread 468559] [trace] resources constructor: this=0x56008d2badd0
+[20:25:17.489470] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7fc1ed133010:4440833
+[20:25:17.489541] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7fc1eccf6010:4440833
+[20:25:17.489544] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1573876, local read key:1572592
+[20:25:17.489545] [derecho_sst] [Thread 468559] [trace] preparing connection to remote node(id=0)...
+
+[20:25:17.489546] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info.
+[20:25:17.500423] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info succeeds.
+[20:25:17.500428] [derecho_sst] [Thread 468559] [trace] connect to remote node.
+[20:25:17.500429] [derecho_sst] [Thread 468559] [trace] connecting as a server.
+[20:25:17.500429] [derecho_sst] [Thread 468559] [trace] waiting for connection.
+[20:25:17.502498] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x56008d5dea40
+[20:25:17.502566] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x56008d5ded20
+[20:25:17.504877] [derecho_sst] [Thread 468559] [trace] calling fi_accept()
+[20:25:17.506101] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x56008d5dea40,this->ep->fid=0x56008d5dea40
+[20:25:17.510833] [derecho_sst] [Thread 468559] [trace] resources constructor: this=0x56008d2b8670
+[20:25:17.510944] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7fc1ec677010:4440833
+[20:25:17.511034] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7fc1ec23a010:4440833
+[20:25:17.511037] [derecho_sst] [Thread 468559] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1542779, local read key:1555372
+[20:25:17.511038] [derecho_sst] [Thread 468559] [trace] preparing connection to remote node(id=1)...
+
+[20:25:17.511039] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info.
+[20:25:17.511051] [derecho_sst] [Thread 468559] [trace] Exchanging connection management info succeeds.
+[20:25:17.511051] [derecho_sst] [Thread 468559] [trace] connect to remote node.
+[20:25:17.511052] [derecho_sst] [Thread 468559] [trace] connecting as a server.
+[20:25:17.511052] [derecho_sst] [Thread 468559] [trace] waiting for connection.
+[20:25:17.513603] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x56008d5dc5e0
+[20:25:17.513653] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x56008d5dc8c0
+[20:25:17.515988] [derecho_sst] [Thread 468559] [trace] calling fi_accept()
+[20:25:17.517325] [derecho_sst] [Thread 468559] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x56008d5dc5e0,this->ep->fid=0x56008d5dc5e0
+[20:25:17.517357] [derecho_rpc] [Thread 468559] [debug] Created new connections among the new view members
+[20:25:17.517366] [viewmanager] [Thread 468559] [debug] Starting predicate evaluation
+[20:25:17.517437] [derecho_rpc] [Thread 468561] [debug] P2P listening thread started
+[20:25:17.517524] [derecho_debug] [Thread 468559] [info] Derecho Group successfully started
+[20:25:17.517521] [persistent] [Thread 468570] [debug] PersistenceManager thread started
+[20:25:17.517534] [derecho_debug] [Thread 468559] [trace] joined group.
+[20:25:17.517546] [derecho_debug] [Thread 468559] [trace] initializing ServiceClient singleton as cascade member, group pointer=0x56008d2b92d0
+[20:25:17.517553] [derecho_debug] [Thread 468559] [trace] /users/namanh/workspace/cascade/include/cascade/detail/user_defined_logic_manager_impl.hpp:173 DLLFileManager constructor is called.
+[20:25:17.535670] [derecho_debug] [Thread 468559] [trace] Successfully load dll udl:../../src/libhead_index_search_udl.so
+[20:25:17.538116] [derecho_debug] [Thread 468559] [trace] Successfully load dll udl:../../src/libglobal_search_udl.so
+[20:25:17.539682] [derecho_debug] [Thread 468578] [trace] Cascade context workhorse[0] started
+[20:25:17.539727] [derecho_debug] [Thread 468579] [trace] Cascade context workhorse[1] started
+[20:25:17.539761] [derecho_debug] [Thread 468581] [trace] Cascade context workhorse[1] started
+[20:25:17.539773] [derecho_debug] [Thread 468580] [trace] Cascade context workhorse[0] started
+[20:25:17.540787] [derecho_debug] [Thread 468582] [trace] Cascade context workhorse[0] started
+[20:25:17.541799] [derecho_debug] [Thread 468583] [trace] Cascade context workhorse[1] started
+[20:25:17.542745] [derecho_debug] [Thread 468584] [trace] Cascade context workhorse[0] started
+[20:25:17.543782] [derecho_debug] [Thread 468585] [trace] Cascade context workhorse[1] started
+[20:25:17.543858] [derecho_debug] [Thread 468559] [trace] created daemon thread.
+[20:25:17.543868] [derecho_debug] [Thread 468559] [trace] started service, waiting till it ends.
+[20:25:17.543890] [derecho_debug] [Thread 468586] [trace] Cascade context workhorse[4294967295] started
+[20:25:17.543893] [derecho_debug] [Thread 468587] [trace] Cascade context workhorse[4294967295] started
+[20:25:32.631915] [viewmanager] [Thread 468564] [debug] Suspected[] changed
+[20:25:32.631946] [viewmanager] [Thread 468564] [debug] Marking 0 failed
+[20:25:32.631950] [viewmanager] [Thread 468564] [debug] GMS telling SST to freeze row 0
+[20:25:32.631956] [viewmanager] [Thread 468564] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:33.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:33.493009] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:33.593111] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:33.593115] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:33.693000] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:33.693004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:33.793103] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:33.793107] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:33.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:33.893004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:33.993106] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:33.993111] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:34.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:34.093004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:34.193122] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:34.193132] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:34.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:34.293004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:34.393119] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:34.393124] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:34.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:34.493004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:34.593148] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:34.593156] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:34.693000] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:34.693004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:34.793116] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:34.793120] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:34.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:34.893005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:34.993107] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:34.993112] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:35.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:35.093005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:35.193141] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:35.193146] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:35.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:35.293004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:35.393102] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:35.393108] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:35.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:35.493005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:35.593103] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:35.593107] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:35.693001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:35.693005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:35.793119] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:35.793123] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:35.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:35.893005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:35.993109] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:35.993115] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:36.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:36.093005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:36.193141] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:36.193152] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:36.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:36.293004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:36.393135] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:36.393148] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:36.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:36.493004] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:36.593096] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:36.593101] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:36.693001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:36.693005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:36.793102] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:36.793107] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:36.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:36.893006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:36.993119] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:36.993123] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:37.093008] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:37.093013] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:37.193109] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:37.193119] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:37.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:37.293006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:37.393109] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:37.393113] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:37.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:37.493006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:37.593121] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:37.593131] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:37.693011] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:37.693016] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:37.793135] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:37.793140] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:37.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:37.893006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:37.993121] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:37.993127] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:38.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:38.093005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:38.193101] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:38.193106] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:38.293015] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:38.293020] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:38.393127] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:38.393132] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:38.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:38.493006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:38.593136] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:38.593140] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:38.693001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:38.693005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:38.793120] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:38.793126] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:38.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:38.893006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:38.993104] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:38.993109] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:39.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:39.093005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:39.193099] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:39.193102] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:39.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:39.293005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:39.393145] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:39.393166] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:39.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:39.493005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:39.593103] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:39.593108] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:39.693001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:39.693005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:39.793119] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:39.793129] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:39.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:39.893005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:39.993103] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:39.993108] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:40.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:40.093006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:40.193119] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:40.193136] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:40.293001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:40.293006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:40.393107] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:40.393113] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:40.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:40.493006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:40.593106] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:40.593111] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:40.693002] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:40.693006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:40.793125] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:40.793135] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:40.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:40.893006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:40.993127] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:40.993130] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:41.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:41.093005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:41.193115] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:41.193120] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:41.293011] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:41.293016] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:41.393120] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:41.393140] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:41.493001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:41.493005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:41.593107] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:41.593115] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:41.693001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:41.693019] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:41.793118] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:41.793123] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:41.893001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:41.893005] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:41.993126] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:41.993136] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:42.060647] [derecho_debug] [Thread 468559] [trace] shutdown service gracefully
+[20:25:42.093001] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:42.093006] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:42.193104] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:42.193111] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code -14
+[20:25:42.293016] [derecho_rpc] [Thread 468567] [debug] p2p_connection_manager detected failure/timeout on node 0
+[20:25:42.293020] [viewmanager] [Thread 468567] [debug] Node ID 0 failure reported; marking suspected[0]
+[20:25:42.393123] [derecho_sst] [Thread 468567] [warning] lf.cpp: remote has failed, post_remote_send() does nothing.
+[20:25:42.393128] [derecho_sst] [Thread 468567] [error] post_remote_write(4) failed with return code

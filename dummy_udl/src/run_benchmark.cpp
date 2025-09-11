@@ -98,7 +98,6 @@ int main(int argc, char **argv) {
   }
   po::notify(vm);
 
-
   if (min_batch_size > max_batch_size)
     throw std::invalid_argument(
 				"min batch size can't be bigger than max_batch size");

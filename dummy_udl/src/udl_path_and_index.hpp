@@ -6,4 +6,3 @@
 
 #define RESULTS_OBJ_POOL_SUBGROUP_INDEX 0
 #define RESULTS_OBJ_POOL_PREFIX "/test/results"
-

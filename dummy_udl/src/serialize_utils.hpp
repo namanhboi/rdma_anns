@@ -322,3 +322,66 @@ struct ack_t {
 						    total_size);
   }
 };
+
+
+/**
+   Used to test the dummy udl where there is no serialization of send objects. There is also no acks, the udl flushes the logs automatically. The send object will then be send round robin style to each other udls. 
+*/
+struct send_query_t {
+  uint64_t client_node_id;
+  uint64_t num_bytes;
+  uint64_t num_msg;
+  uint8_t cluster_sender_id; // id of the udl that this send query is supposed to go to
+  uint8_t num_clusters;
+
+  size_t get_serialize_size() {
+    return sizeof(num_bytes) + sizeof(num_msg) + sizeof(num_clusters) +
+           sizeof(cluster_sender_id) + sizeof(client_node_id);
+  }
+
+  void write_serialize(uint8_t *buffer) const {
+    size_t offset = 0;
+    std::memcpy(buffer + offset, &client_node_id, sizeof(client_node_id));
+    offset += sizeof(client_node_id);    
+
+    std::memcpy(buffer + offset, &num_bytes, sizeof(num_bytes));
+    offset += sizeof(num_bytes);
+
+    std::memcpy(buffer + offset, &num_msg, sizeof(num_msg));
+    offset += sizeof(num_msg);
+
+    std::memcpy(buffer + offset, &cluster_sender_id, sizeof(cluster_sender_id));
+    offset += sizeof(cluster_sender_id);
+
+    std::memcpy(buffer + offset, &num_clusters, sizeof(num_clusters));
+    offset += sizeof(num_clusters);
+  }
+  static std::shared_ptr<send_query_t> deserialize(const uint8_t *buffer) {
+    size_t offset = 0;
+    auto client_send_query = std::make_shared<send_query_t>();
+    client_send_query->client_node_id = *reinterpret_cast<const uint64_t *>(buffer + offset);
+    offset += sizeof(client_send_query->client_node_id);
+
+    client_send_query->num_bytes = *reinterpret_cast<const uint64_t *>(buffer + offset);
+    offset += sizeof(client_send_query->num_bytes);
+
+    client_send_query->num_msg = *reinterpret_cast<const uint64_t *>(buffer + offset);
+    offset += sizeof(client_send_query->num_msg);
+
+    client_send_query->cluster_sender_id = *reinterpret_cast<const uint8_t *>(buffer + offset);
+    offset += sizeof(client_send_query->cluster_sender_id);
+
+    client_send_query->num_clusters = *reinterpret_cast<const uint8_t *>(buffer + offset);
+    offset += sizeof(client_send_query->num_clusters);
+    return client_send_query;
+  }
+  std::shared_ptr<derecho::cascade::Blob> get_blob() {
+    size_t total_size = get_serialize_size();
+    return std::make_shared<derecho::cascade::Blob>(
+        [this](uint8_t *buffer, size_t size) {
+          this->write_serialize(buffer);
+          return size;
+        },
+						    total_size);
+  }
+};

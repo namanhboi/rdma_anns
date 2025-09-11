@@ -1,0 +1,32 @@
+[20:25:31.816180] [derecho_debug] [Thread 468591] [debug] Program start time (microseconds): 1756434331816172
+[20:25:31.816198] [derecho_debug] [Thread 468591] [trace] initializing ServiceClient singleton as external client
+[20:25:32.122082] [derecho_sst] [Thread 468591] [trace] going to use virtual address?16
+[20:25:32.334914] [derecho_debug] [Thread 468591] [debug] External Client startup: contacting Derecho group leader to request a view
+[20:25:32.334968] [derecho_sst] [Thread 468594] [trace] Polling thread starting.
+[20:25:32.340261] [derecho_debug] [Thread 468591] [info] p2p connection to 0 is not established yet, establishing right now.
+[20:25:32.344987] [derecho_sst] [Thread 468591] [trace] resources constructor: this=0x563580a1ed90
+[20:25:32.345148] [derecho_sst] [Thread 468591] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7f5b6c781010:4440833
+[20:25:32.345220] [derecho_sst] [Thread 468591] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7f5b6c344010:4440833
+[20:25:32.345224] [derecho_sst] [Thread 468591] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1545863, local read key:1566937
+[20:25:32.345227] [derecho_sst] [Thread 468591] [trace] preparing connection to remote node(id=0)...
+
+[20:25:32.345230] [derecho_sst] [Thread 468591] [trace] Exchanging connection management info.
+[20:25:32.345242] [derecho_sst] [Thread 468591] [trace] Exchanging connection management info succeeds.
+[20:25:32.345242] [derecho_sst] [Thread 468591] [trace] connect to remote node.
+[20:25:32.345243] [derecho_sst] [Thread 468591] [trace] connecting as a server.
+[20:25:32.345243] [derecho_sst] [Thread 468591] [trace] waiting for connection.
+[20:25:32.348172] [derecho_sst] [Thread 468591] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x563580a214b0
+[20:25:32.348206] [derecho_sst] [Thread 468591] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x563580a21790
+[20:25:32.351024] [derecho_sst] [Thread 468591] [trace] calling fi_accept()
+[20:25:32.352992] [derecho_sst] [Thread 468591] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x563580a214b0,this->ep->fid=0x563580a214b0
+[20:25:32.353090] [derecho_rpc] [Thread 468591] [trace] Ready to send an RPC call message with invocation ID 94787791369680
+[20:25:32.353124] [derecho_rpc] [Thread 468591] [trace] Sending P2P request to node 0, about to call post_remote_write. getOffsetBuf() is 82048, getOffsetSeqNum() is 1130648
+[20:25:32.438880] [derecho_rpc] [Thread 468591] [trace] Got a call to fulfill_map for PendingResults<St5tupleIJlmEE>
+[20:25:32.438919] [derecho_rpc] [Thread 468591] [trace] Setting a value for reply_promises_are_ready
+[20:25:32.439014] [derecho_rpc] [Thread 468591] [trace] Ready to send an RPC call message with invocation ID 94787791378928
+[20:25:32.439030] [derecho_rpc] [Thread 468591] [trace] Sending P2P request to node 0, about to call post_remote_write. getOffsetBuf() is 1130656, getOffsetSeqNum() is 2179256
+[20:25:32.439037] [derecho_rpc] [Thread 468591] [trace] Got a call to fulfill_map for PendingResults<St5tupleIJlmEE>
+[20:25:32.439042] [derecho_rpc] [Thread 468591] [trace] Setting a value for reply_promises_are_ready
+[20:25:32.439448] [derecho_debug] [Thread 468591] [info] informing node 0 that this client is leaving.
+[20:25:32.542597] [derecho_sst] [Thread 468591] [trace] resources destructor:this=0x563580a1ed90
+[20:25:32.547029] [derecho_sst] [Thread 468594] [trace] Polling thread ending.
