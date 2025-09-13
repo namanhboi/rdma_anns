@@ -1,3 +1,4 @@
+#include <chrono>
 #include <random>
 #include <cascade/cascade_interface.hpp>
 #include <cascade/service_types.hpp>
@@ -189,6 +190,7 @@ namespace derecho {
                 num_sent += batch_size;
               }
             }
+	    std::this_thread::sleep_for(std::chrono::microseconds(parent->sleep_interval_us));
           }
         }
       public:
@@ -265,6 +267,8 @@ namespace derecho {
       std::atomic<int> send_objects_received = 0;
       std::atomic<int> send_objects_milestone = 0;
       std::atomic<int> send_objects_milestone_space = 20'000;
+
+      uint64_t sleep_interval_us = 0;
     public:
       void ocdpo_handler(const node_id_t sender,
                          const std::string &object_pool_pathname,
@@ -343,6 +347,11 @@ namespace derecho {
 	  if (config.contains("batch_time_us")) {
             this->batch_time_us = config["batch_time_us"].get<uint32_t>();
           }
+
+	  if (config.contains("sleep_interval_us")) {
+            this->sleep_interval_us =
+              config["sleep_interval_us"].get<uint64_t>();
+          }          
           if (config.contains("send_objects_milestone_space")) {
             this->send_objects_milestone_space = config["send_objects_milestone_space"].get<uint64_t>();
           }
