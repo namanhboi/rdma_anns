@@ -15,7 +15,7 @@
             "max_batch_size":5,
             "batch_time_us":1000,
 	    "send_objects_milestone_space":200,
-	    "sleep_interval_us":100000,
+	    "sleep_interval_us":100000
           }],
         "destinations": [{}]
       }
