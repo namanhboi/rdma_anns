@@ -75,7 +75,7 @@ namespace derecho {
         : thread_id(thread_id), parent(parent) {}
 
         void push_send_query(std::shared_ptr<send_query_t> send_query) {
-          concurrent_send_query_queue.enqueue(send_query);
+          concurrent_send_query_queue.enqueue(std::move(send_query));
         }
         void start(DefaultCascadeContextType *typed_ctxt) {
           running = true;
@@ -302,8 +302,10 @@ namespace derecho {
             << std::endl;
           }
         } else if (key_string.find("query") != std::string::npos) {
-          send_threads[current_send_thread]->push_send_query(
-							     send_query_t::deserialize(object.blob.bytes));
+          std::shared_ptr<send_query_t> send_query =
+            send_query_t::deserialize(object.blob.bytes);
+          send_objects_milestone_space = send_query->num_msg * (send_query->num_clusters - 1);
+          send_threads[current_send_thread]->push_send_query(std::move(send_query));
           current_send_thread = (current_send_thread + 1) % num_send_threads;
         } else {
           throw std::invalid_argument("weird keystring value in udl: " +
@@ -347,14 +349,10 @@ namespace derecho {
 	  if (config.contains("batch_time_us")) {
             this->batch_time_us = config["batch_time_us"].get<uint32_t>();
           }
-
 	  if (config.contains("sleep_interval_us")) {
             this->sleep_interval_us =
               config["sleep_interval_us"].get<uint64_t>();
           }          
-          if (config.contains("send_objects_milestone_space")) {
-            this->send_objects_milestone_space = config["send_objects_milestone_space"].get<uint64_t>();
-          }
 
 	} catch (const std::exception &e) {
 	  std::cout << "error while parsing config" << std::endl;
