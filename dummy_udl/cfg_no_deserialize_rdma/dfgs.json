@@ -13,8 +13,7 @@
             "num_send_threads":1,
             "min_batch_size":1,
             "max_batch_size":5,
-            "batch_time_us":1000,
-	    "sleep_interval_us":100000
+            "batch_time_us":1000
           }],
         "destinations": [{}]
       }
