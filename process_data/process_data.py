@@ -296,6 +296,11 @@ def compute_task_times(df, tag_fn):
 
     return roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time, transfer_messages_time, prep_batch_serialize_time, batch_deserialize_time, query_pushed_to_start_time, compute_query_time, compute_result_push_time, compute_result_to_serialize_time
     
+
+
+def dummy_no_op_times(df, tag_fn):
+    client_send_time = get_durations(df, tag_fn("LOG_CLIENT_SEND_START"), tag_fn("LOG_DUMMY_HANDLER_START"), ["batch_id"])
+    return client_send_time
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -319,82 +324,3 @@ if __name__ == "__main__":
     roundtrip_durations, query_send_to_serialize_durations, batch_serialization_time, batch_send_latency, put_and_forget_time, transfer_messages_time, prep_batch_serialize_time, batch_deserialize_time, query_pushed_to_start_time, compute_query_time, compute_result_push_time, compute_result_to_serialize_time = compute_task_times(df, tag_fn)
     global_search_udl_times(df, tag_fn)
     
-    # print("round trip latency of compute task")    
-    # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE"),  ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time from sending to compute task to it  being pushed to remote cluster compute task queue")
-    # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_SEND"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED"),  ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print(" time from it being pushed to it being computed")
-    # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_QUERY_QUEUE_PUSHED"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_START") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time from the computation done to the requesting thread actually receiving the results")
-    # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_END"), tag_fn("LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("compute results serialization time")
-    # data_df = get_durations(df, tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_START"), tag_fn("LOG_GLOBAL_INDEX_COMPUTE_RESULT_SERIALIZATION_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # # need to calculate how late each result arrives compared to when the query finishes
-    # print("time from query search ending to the results arriving")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_END"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_COMPUTE_RECEIVE") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time to finish a global search")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_END") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time to finish a compute task")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("Below, we will examine the time for each individual components when executing a compute task")
-
-    # print("time to setup the scratch")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_GET_SCRATCH_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_GET_SCRATCH_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time to prepare the query")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_PREP_QUERY_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-
-    # print("time to compute a distance")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_CALC_START"), tag_fn( "LOG_GLOBAL_INDEX_COMPUTE_CALC_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    
-    # print("Below, we will examine the time for each individual components when doing a global search")
-
-    # print("Time to get scratch")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_GET_SCRATCH_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_GET_SCRATCH_START") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("Time to prep the query")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_PREP_QUERY_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_PREP_QUERY_END") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("Time to initialize the candidate queue") # we can optimize this 
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_INIT_DISTANCES_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_INIT_DISTANCES_END") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-
-    # print("time to read a node")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_READ_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("time to compute distance for a node")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_COMPUTE_DIST_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_COMPUTE_DIST_END") , ['client_node_id', 'query_id', 'node_id'])
-    # print_summary_start_series(data_df["latency"])
-    
-    # print("time for the search")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_SEARCH_SEARCH_START"), tag_fn( "LOG_GLOBAL_INDEX_SEARCH_SEARCH_END") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])
-
-    # print("global index deserialize time")
-    # data_df = get_durations(df, tag_fn( "LOG_GLOBAL_INDEX_UDL_DESERIALIZE_START"), tag_fn("LOG_GLOBAL_INDEX_UDL_DESERIALIZE_END") , ['client_node_id', 'query_id'])
-    # print_summary_start_series(data_df["latency"])

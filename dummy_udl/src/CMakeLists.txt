@@ -12,6 +12,7 @@ set(LOG_DUMMY_BATCH_SEND_START 10000)
 set(LOG_DUMMY_BATCH_SEND_END 10001)
 set(LOG_DUMMY_HANDLER_START 10010)
 set(LOG_DUMMY_HANDLER_END 10011)
+set(LOG_CLIENT_SEND_START 20000)
 
 target_compile_definitions(dummy_udl PRIVATE
   LOG_DUMMY_BATCH_SEND_START=${LOG_DUMMY_BATCH_SEND_START}
@@ -19,7 +20,6 @@ target_compile_definitions(dummy_udl PRIVATE
   LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
   LOG_DUMMY_HANDLER_END=${LOG_DUMMY_HANDLER_END}
 )
-
 
 target_link_libraries(dummy_udl ${UDL_COMMON_LIBS})
 # Function to create configuration setup for a given config type
@@ -66,12 +66,27 @@ add_library(dummy_no_deserialize_udl SHARED
 )
 
 
+
+
 target_compile_definitions(dummy_no_deserialize_udl PRIVATE
   LOG_DUMMY_BATCH_SEND_START=${LOG_DUMMY_BATCH_SEND_START}
   LOG_DUMMY_BATCH_SEND_END=${LOG_DUMMY_BATCH_SEND_END}
   LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
   LOG_DUMMY_HANDLER_END=${LOG_DUMMY_HANDLER_END}
 )
+
+
+
+
+add_library(dummy_no_op_udl SHARED
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_no_op.cpp
+)
+
+target_compile_definitions(dummy_no_op_udl PRIVATE
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_CLIENT_SEND_START=${LOG_CLIENT_SEND_START}
+)
+
 
 add_executable(run_dummy_benchmark run_benchmark.cpp serialize_utils.hpp benchmark_client.hpp)
 target_compile_features(run_dummy_benchmark PRIVATE cxx_std_20)
@@ -83,7 +98,22 @@ target_compile_features(run_dummy_no_deserialize_benchmark PRIVATE cxx_std_20)
 target_link_libraries(run_dummy_no_deserialize_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
 target_compile_options(run_dummy_no_deserialize_benchmark PRIVATE -g -O0 -Wall)
 
+
+add_executable(run_dummy_no_op_benchmark run_benchmark_no_op.cpp)
+target_compile_features(run_dummy_no_op_benchmark PRIVATE cxx_std_20)
+target_link_libraries(run_dummy_no_op_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
+target_compile_options(run_dummy_no_op_benchmark PRIVATE -g -O0 -Wall)
+target_compile_definitions(run_dummy_no_op_benchmark PRIVATE
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_CLIENT_SEND_START=${LOG_CLIENT_SEND_START}
+)
+
+
 setup_config_target(update_config_dummy_no_deserialize cfg_no_deserialize cfg_no_deserialize)
 setup_config_target(update_config_rdma_dummy_no_deserialize cfg_no_deserialize_rdma cfg_no_deserialize_rdma)
 setup_config_target(update_config_dummy_no_deserialize_tcp cfg_no_deserialize_tcp cfg_no_deserialize_tcp)
+
+setup_config_target(update_config_dummy_no_op cfg_no_op cfg_no_op)
+setup_config_target(update_config_dummy_no_op_rdma cfg_no_op_rdma cfg_no_op_rdma)
+
 
