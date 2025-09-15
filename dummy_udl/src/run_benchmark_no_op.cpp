@@ -4,13 +4,14 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <cascade/service_client_api.hpp>
+#include <chrono>
 #include <random>
 
 namespace po = boost::program_options;
 namespace derecho {
 namespace cascade {
 
-void benchmark(uint64_t num_bytes, uint64_t num_msg) {
+  void benchmark(uint64_t num_bytes, uint64_t num_msg, int mili_sleep) {
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   std::random_device rd;
   std::mt19937 gen(rd()); // seed the generator
@@ -35,9 +36,10 @@ void benchmark(uint64_t num_bytes, uint64_t num_msg) {
               std::to_string(batch_id);
     TimestampLogger::log(LOG_CLIENT_SEND_START, client_id, batch_id,
                          obj.blob.size);
-    
+
     capi.trigger_put<UDL_OBJ_POOL_TYPE>(
 					obj, UDL_SUBGROUP_INDEX, static_cast<uint32_t>(cluster_sender_id));
+    std::this_thread::sleep_for(std::chrono::milliseconds(mili_sleep));
   }
 
   std::cout << "Done sending messages" << std::endl;
@@ -64,11 +66,14 @@ void benchmark(uint64_t num_bytes, uint64_t num_msg) {
 int main(int argc, char **argv) {
   po::options_description desc("Options here mate");
   uint64_t num_bytes, num_msg;
+  int mili_sleep;
 
   desc.add_options()("help,h", "show help message")(
       "num_msg", po::value<uint64_t>(&num_msg)->required(),
       "num send_requests")("num_bytes",
                            po::value<uint64_t>(&num_bytes)->required(),
+                           "max bytes in send request")("mili_sleep",
+							po::value<int>(&mili_sleep)->default_value(1),
                            "max bytes in send request");
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -77,6 +82,6 @@ int main(int argc, char **argv) {
     return 0;
   }
   po::notify(vm);
-  derecho::cascade::benchmark(num_bytes, num_msg);
+  derecho::cascade::benchmark(num_bytes, num_msg, mili_sleep);
   return 0;
 }
