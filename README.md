@@ -1,4 +1,27 @@
 # Pre-Req: 
+
+## For no sudo , update bashrc
+add this to the end
+```
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(direnv hook bash)"
+export LD_LIBRARY_PATH="$HOME/.local/lib:$LD_LIBRARY_PATH"
+export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH"
+export INTEL_OMP_LIB=$(find ~/.local/intel-mkl -name "libiomp5.so" | head -1)
+export OMP_PATH=$(dirname "$INTEL_OMP_LIB")
+export MKL_LIB_PATH=$(find $HOME/.local/intel-mkl -name "libmkl_core.so" | head -1 | xargs dirname)
+export MKL_INCLUDE_PATH=$(find $HOME/.local/intel-mkl -name "mkl.h" | head -1 | xargs dirname)
+export CMAKE_PREFIX_PATH=$HOME/.local:$CMAKE_PREFIX_PATH
+```
+
+## Install direnv first to make life easier
+for non sudo: 
+``` 
+export $bin_path=$HOME/.local/bin
+curl -sfL https://direnv.net/install.sh | bash
+```
+
+
 Follow the guide here: https://docs.google.com/document/d/108KxSywDMZ3suJ3kaoqFck7SFpBnq902Huu_4PerFM0/edit?tab=t.0
 - create you own [name]_env.sh file and run the files here step by step: https://github.com/aliciayuting/CloudlabSetup/tree/main/installation
 
@@ -44,17 +67,162 @@ Follow: https://github.com/catchorg/Catch2/blob/devel/docs/cmake-integration.md#
 ## Diskann: 
 follow https://github.com/microsoft/DiskANN/
 - when installing mkl blas, yes to everything
+
+### Non sudo 
+have to install all the prereq manually, hardest is 
+clang-format
+
+
+```
+pip install --user clang-format
+which clang-format
+```
+
+
+libaio-dev
+```
+wget https://pagure.io/libaio/archive/libaio-0.3.113/libaio-libaio-0.3.113.tar.gz
+tar -xzf libaio-libaio-0.3.113.tar.gz
+cd libaio-libaio-0.3.113
+make prefix=$HOME/.local install
+```
+
+
+gperf
+```
+# Download gperftools (which provides tcmalloc)
+wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.15/gperftools-2.15.tar.gz
+tar -xzf gperftools-2.15.tar.gz
+cd gperftools-2.15
+
+# Configure and build
+./configure --prefix=$HOME/.local
+make -j$(nproc)
+make install
+```
+
+boost
+https://www.boost.org/doc/user-guide/getting-started.html
+```
+cd /tmp
+git clone https://github.com/boostorg/boost.git -b boost-1.85.0 boost_1_85_0 --depth 1
+cd boost_1_85_0
+git submodule update --depth 1 --init --recursive
+
+
+mkdir __build
+cd __build
+cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local
+cmake --build .
+cmake --build . --target install
+
+```
+
+
+
+libmkl-full-dev
+```
+
+wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/47c7d946-fca1-441a-b0df-b094e3f045ea/intel-onemkl-2025.2.0.629_offline.sh
+
+sh ./intel-onemkl-2025.2.0.629_offline.sh -a --silent --cli --eula accept --install-dir $HOME/.local/intel-mkl
+# Navigate to the MKL lib directory
+cd ~/.local/intel-mkl/mkl/2025.2/lib
+
+# Create the symlink that DiskANN expects
+ln -sf libmkl_core.so libmkl_def.so
+
+# Find MKL library path
+MKL_LIB_PATH=$(find $HOME/.local/intel-mkl -name "libmkl_core.so" | head -1 | xargs dirname)
+
+# Find MKL include path
+MKL_INCLUDE_PATH=$(find $HOME/.local/intel-mkl -name "mkl.h" | head -1 | xargs dirname)
+
+# Find Intel OpenMP path
+INTEL_OMP_LIB=$(find ~/.local/intel-mkl -name "libiomp5.so" | head -1)
+OMP_PATH=$(dirname "$INTEL_OMP_LIB")
+
+# Verify paths
+echo "MKL_LIB_PATH: $MKL_LIB_PATH"
+echo "MKL_INCLUDE_PATH: $MKL_INCLUDE_PATH"
+echo "OMP_PATH: $OMP_PATH"
+```
+
+build diskann
+```
+
+# Navigate to DiskANN build directory
+mkdir ~/workspace/rdma_anns/extern/DiskANN/build
+cd ~/workspace/rdma_anns/extern/DiskANN/build
+
+# Clear any previous CMake cache
+rm -rf *
+
+# Configure with all required paths
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMKL_PATH="$MKL_LIB_PATH" \
+  -DMKL_INCLUDE_PATH="$MKL_INCLUDE_PATH" \
+  -DOMP_PATH="$OMP_PATH" \
+  -Wno-dev
+  
+make -j 
+```
+
+
 ## gp-ann
-`sudo apt-get install libsparsehash-dev` 
 `git submodule update --init --recursive`
+sudo
+`sudo apt-get install libsparsehash-dev` 
+
+non sudo variety
+```
+cd /tmp
+
+# Download sparsehash source
+wget https://github.com/sparsehash/sparsehash/archive/sparsehash-2.0.4.tar.gz
+tar -xzf sparsehash-2.0.4.tar.gz
+cd sparsehash-sparsehash-2.0.4
+
+# Configure and build
+./configure --prefix=$HOME/.local
+make -j$(nproc)
+make install
+```
+
+
+
+
+tbb
+```
+cd /tmp
+git clone https://github.com/oneapi-src/oneTBB.git
+cd oneTBB
+cmake -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build -j
+cmake --install build
+```
+
 ## parlayann:
 `git submodule init`
 `git submodule update`
+
+
+
+
 # Build
 
+no sudo 
+```
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF   -DMKL_PATH="$MKL_LIB_PATH" -DMKL_INCLUDE_PATH="$MKL_INCLUDE_PATH" -DOMP_PATH="$OMP_PATH"
+```
 
 
-`cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8`
+
+
+
+
+`cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF`
 `cmake --build build -j`
 
 - TEST\_UDL1: run\_benchmark sends queries to udl1 pathname and receives back a GreedySearchQuery with cluster id = 0 and candidate queue is the results of the search. Used to test recall of udl 1
