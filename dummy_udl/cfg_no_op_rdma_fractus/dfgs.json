@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ea6def8f-86cd-4878-a878-8dec554df92a",
+    "desc": "udl that just sends stuff to other udls to test baseline to test sending latency with no serialization. Handler is basically a no op",
+    "graph": [
+      {
+        "pathname": "/test",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["48e60f7c-8500-11eb-8755-0242ac110002"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [{}],
+        "destinations": [{}]
+      }
+    ]
+  }
+]
+

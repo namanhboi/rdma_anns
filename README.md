@@ -219,9 +219,6 @@ cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_C
 
 
 
-
-
-
 `cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF`
 `cmake --build build -j`
 
@@ -234,3 +231,29 @@ cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_C
   - PQ_FS
 - DISK\_KV: Should be the same idea as the above (currently only works for 1 cluster tho) but the vector embedding and neighbor ids are stored on cascade persistent kvstore instead of on file.
 - TEST\_COMPUTE\_PIPELINE: with this enabled, when the distance compute thread receives the compute query, it won't do any computation/read, just return with blank compute result
+
+
+# RDMA
+
+## fractus
+compute 20
+```
+8: roce0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP group default qlen 1000
+    link/ether 7c:fe:90:32:76:f7 brd ff:ff:ff:ff:ff:ff
+    altname enp69s0f1np1
+    inet 192.168.9.20/24 brd 192.168.9.255 scope global roce0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::7efe:90ff:fe32:76f7/64 scope link
+       valid_lft forever preferred_lft forever
+```
+
+compute 16
+```
+10: roce0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP group default qlen 1000
+    link/ether 7c:fe:90:32:77:9b brd ff:ff:ff:ff:ff:ff
+    altname enp69s0f1np1
+    inet 192.168.9.16/24 brd 192.168.9.255 scope global roce0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::7efe:90ff:fe32:779b/64 scope link
+       valid_lft forever preferred_lft forever
+```

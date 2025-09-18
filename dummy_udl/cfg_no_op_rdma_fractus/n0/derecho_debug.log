@@ -1,0 +1,492 @@
+[20:24:50.601575] [derecho_debug] [Thread 522825] [debug] Program start time (microseconds): 1756434290601562
+[20:24:50.601591] [derecho_debug] [Thread 522825] [trace] starting service...
+[20:24:50.604128] [derecho_debug] [Thread 522825] [info] Derecho library running version 2.4.1 + 4 commits
+[20:24:50.604240] [derecho_debug] [Thread 522825] [debug] Starting with configuration options:
+	CASCADE/cpu_cores = 0-3
+	CASCADE/num_stateful_workers_for_multicast_ocdp = 2
+	CASCADE/num_stateful_workers_for_p2p_ocdp = 2
+	CASCADE/num_stateless_workers_for_multicast_ocdp = 2
+	CASCADE/num_stateless_workers_for_p2p_ocdp = 2
+	CASCADE/timestamp_tag_enabler = 10000,10001,10002,10003,10004,10005,10006,10007,10008,10009,20001,20002,20010,20011,20020,20021,20030,20031,20040,20041,20042,20050,20051,20060,20061,20070,20071,20080,20081,20090,20091,20100,20101,20110,20111,20120,20121,20130,20131,20140,20141,20072,20073,20150,20151
+	DERECHO/contact_ip = 10.10.1.1
+	DERECHO/contact_port = 23580
+	DERECHO/disable_partitioning_safety = false
+	DERECHO/enable_backup_restart_leaders = false
+	DERECHO/external_port = 32645
+	DERECHO/gms_port = 23580
+	DERECHO/heartbeat_ms = 100
+	DERECHO/local_id = 0
+	DERECHO/local_ip = 10.10.1.1
+	DERECHO/max_node_id = 1024
+	DERECHO/max_p2p_reply_payload_size = 20480
+	DERECHO/max_p2p_request_payload_size = 1048576
+	DERECHO/p2p_loop_busy_wait_before_sleep_ms = 250
+	DERECHO/p2p_window_size = 4
+	DERECHO/rdmc_port = 31675
+	DERECHO/restart_leader_ports = 23580
+	DERECHO/restart_leaders = 127.0.0.1
+	DERECHO/restart_timeout_ms = 2000
+	DERECHO/sst_poll_cq_timeout_ms = 100
+	DERECHO/sst_port = 37683
+	DERECHO/state_transfer_port = 28366
+	LAYOUT/json_layout_file = layout.json
+	LOGGER/default_log_level = trace
+	LOGGER/default_log_name = derecho_debug
+	LOGGER/log_file_depth = 3
+	LOGGER/log_to_terminal = true
+	LOGGER/persistence_log_level = trace
+	LOGGER/rpc_log_level = trace
+	LOGGER/sst_log_level = trace
+	LOGGER/viewmanager_log_level = trace
+	PERS/file_path = .plog
+	PERS/max_data_size = 549755813888
+	PERS/max_log_entry = 1048576
+	PERS/private_key_file = private_key.pem
+	PERS/ramdisk_path = /dev/shm/volatile_t
+	PERS/reset = false
+	RDMA/domain = mlx5_3
+	RDMA/provider = verbs
+	RDMA/rx_depth = 4096
+	RDMA/tx_depth = 4096
+	SUBGROUP/DEFAULT/block_size = 1048576
+	SUBGROUP/DEFAULT/max_payload_size = 1048576
+	SUBGROUP/DEFAULT/max_reply_payload_size = 10240
+	SUBGROUP/DEFAULT/max_smc_payload_size = 10240
+	SUBGROUP/DEFAULT/rdmc_send_algorithm = binomial_send
+	SUBGROUP/DEFAULT/window_size = 16
+	SUBGROUP/LARGE/block_size = 10240
+	SUBGROUP/LARGE/max_payload_size = 102400
+	SUBGROUP/LARGE/max_reply_payload_size = 102400
+	SUBGROUP/LARGE/max_smc_payload_size = 10240
+	SUBGROUP/LARGE/rdmc_send_algorithm = binomial_send
+	SUBGROUP/LARGE/window_size = 3
+	SUBGROUP/PCS/block_size = 1048576
+	SUBGROUP/PCS/max_nodes = 4
+	SUBGROUP/PCS/max_payload_size = 8192
+	SUBGROUP/PCS/max_reply_payload_size = 8192
+	SUBGROUP/PCS/max_smc_payload_size = 10240
+	SUBGROUP/PCS/min_nodes = 1
+	SUBGROUP/PCS/num_shards = 1
+	SUBGROUP/PCS/rdmc_send_algorithm = binomial_send
+	SUBGROUP/PCS/window_size = 50
+	SUBGROUP/SMALL/block_size = 0
+	SUBGROUP/SMALL/max_payload_size = 100
+	SUBGROUP/SMALL/max_reply_payload_size = 100
+	SUBGROUP/SMALL/max_smc_payload_size = 100
+	SUBGROUP/SMALL/rdmc_send_algorithm = binomial_send
+	SUBGROUP/SMALL/window_size = 50
+	SUBGROUP/VCS/block_size = 1048576
+	SUBGROUP/VCS/max_nodes = 4
+	SUBGROUP/VCS/max_payload_size = 1048576
+	SUBGROUP/VCS/max_reply_payload_size = 8192
+	SUBGROUP/VCS/max_smc_payload_size = 10240
+	SUBGROUP/VCS/min_nodes = 1
+	SUBGROUP/VCS/num_shards = 1
+	SUBGROUP/VCS/rdmc_send_algorithm = binomial_send
+	SUBGROUP/VCS/window_size = 8
+
+[20:24:50.604355] [viewmanager] [Thread 522825] [info] Startup leader waiting for an initial adequate view
+[20:24:53.165112] [derecho_debug] [Thread 522825] [trace] Ready to calculate size
+[20:24:53.165162] [derecho_debug] [Thread 522825] [trace] Parsing all_active_reserved_node_id_set: {0, 1}
+[20:24:53.165164] [derecho_debug] [Thread 522825] [trace] After counting all_active_reserved_node_id_set, nodes_needed is 2
+[20:24:53.165181] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_18ObjectPoolMetadataIJNS0_20VolatileCascadeStoreIS7_NS0_19ObjectWithStringKeyEXadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEENS1_IS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEELN10persistent11StorageTypeE0EEENS0_21TriggerCascadeNoStoreIS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEEEEEXadL_ZNSH_2IKEEEXadL_ZNSH_2IVEEELSD_0EEE, subgroup_num 0, shard_num 0
+[20:24:53.165182] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {0}
+[20:24:53.165183] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {0}
+[20:24:53.165185] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 0
+[20:24:53.165196] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {0}
+[20:24:53.165196] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {0}
+[20:24:53.165197] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 1
+[20:24:53.165197] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:24:53.165198] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:24:53.165198] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 2
+[20:24:53.165198] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {}
+[20:24:53.165199] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {}
+[20:24:53.165200] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEELN10persistent11StorageTypeE0EEE, subgroup_num 0, shard_num 0
+[20:24:53.165200] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:24:53.165200] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:24:53.165202] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade21TriggerCascadeNoStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 0
+[20:24:53.165202] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:24:53.165203] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:24:53.165328] [viewmanager] [Thread 522825] [debug] Node 1 connected from IP address 10.10.1.2 and GMS port 23581
+[20:25:16.674647] [derecho_debug] [Thread 522825] [trace] Ready to calculate size
+[20:25:16.674654] [derecho_debug] [Thread 522825] [trace] Parsing all_active_reserved_node_id_set: {0, 1, 2}
+[20:25:16.674654] [derecho_debug] [Thread 522825] [trace] After counting all_active_reserved_node_id_set, nodes_needed is 3
+[20:25:16.674673] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_18ObjectPoolMetadataIJNS0_20VolatileCascadeStoreIS7_NS0_19ObjectWithStringKeyEXadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEENS1_IS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEELN10persistent11StorageTypeE0EEENS0_21TriggerCascadeNoStoreIS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEEEEEXadL_ZNSH_2IKEEEXadL_ZNSH_2IVEEELSD_0EEE, subgroup_num 0, shard_num 0
+[20:25:16.674674] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {0}
+[20:25:16.674675] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {0}
+[20:25:16.674677] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 0
+[20:25:16.674677] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {0}
+[20:25:16.674677] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {0}
+[20:25:16.674678] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 1
+[20:25:16.674678] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:25:16.674679] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:25:16.674679] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 2
+[20:25:16.674679] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {2}
+[20:25:16.674680] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {2}
+[20:25:16.674681] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEELN10persistent11StorageTypeE0EEE, subgroup_num 0, shard_num 0
+[20:25:16.674681] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:25:16.674682] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:25:16.674683] [derecho_debug] [Thread 522825] [trace] Calculate node size for type N7derecho7cascade21TriggerCascadeNoStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup_num 0, shard_num 0
+[20:25:16.674684] [derecho_debug] [Thread 522825] [trace] The active_reserved_node_id_set for current shard is: {1}
+[20:25:16.674684] [derecho_debug] [Thread 522825] [trace] The inherent_node_id_set for current shard is: {1}
+[20:25:16.674686] [derecho_debug] [Thread 522825] [trace] Ready to really assign nodes
+[20:25:16.674686] [derecho_debug] [Thread 522825] [trace] Initial curr_view.next_unassigned_rank is 0
+[20:25:16.674689] [derecho_debug] [Thread 522825] [trace] After rearranging inherent node_ids, curr_view.next_unassigned_rank is 3
+[20:25:16.674692] [derecho_debug] [Thread 522825] [trace] Without prev_view, assign node to type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_18ObjectPoolMetadataIJNS0_20VolatileCascadeStoreIS7_NS0_19ObjectWithStringKeyEXadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEENS1_IS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEELN10persistent11StorageTypeE0EEENS0_21TriggerCascadeNoStoreIS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEEEEEXadL_ZNSH_2IKEEEXadL_ZNSH_2IVEEELSD_0EEE
+[20:25:16.674695] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 0, is assigned 1 nodes
+[20:25:16.674709] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [0]
+[20:25:16.674710] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [0]
+[20:25:16.674722] [derecho_debug] [Thread 522825] [trace] Without prev_view, assign node to type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE
+[20:25:16.674723] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 0, is assigned 1 nodes
+[20:25:16.674724] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [0]
+[20:25:16.674724] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [0]
+[20:25:16.674725] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 1, is assigned 1 nodes
+[20:25:16.674726] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [1]
+[20:25:16.674726] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [1]
+[20:25:16.674728] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 2, is assigned 1 nodes
+[20:25:16.674728] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [2]
+[20:25:16.674729] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [2]
+[20:25:16.674730] [derecho_debug] [Thread 522825] [trace] Without prev_view, assign node to type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEELN10persistent11StorageTypeE0EEE
+[20:25:16.674731] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 0, is assigned 1 nodes
+[20:25:16.674731] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [1]
+[20:25:16.674732] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [1]
+[20:25:16.674733] [derecho_debug] [Thread 522825] [trace] Without prev_view, assign node to type N7derecho7cascade21TriggerCascadeNoStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE
+[20:25:16.674733] [derecho_debug] [Thread 522825] [trace] Subgroup 0, shard 0, is assigned 1 nodes
+[20:25:16.674734] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 active reserved nodes: [1]
+[20:25:16.674734] [derecho_debug] [Thread 522825] [trace] Assigning shard 1 nodes in total, with curr_view.next_unassigned_rank 3: [1]
+[20:25:16.674743] [viewmanager] [Thread 522825] [debug] Node 2 connected from IP address 10.10.1.3 and GMS port 23582
+[20:25:16.674838] [viewmanager] [Thread 522825] [trace] Decided on initial view: View 0: MyRank=0. Members=<[0,1,2,]>, Failed={  F  F  F  }, num_failed=0, Departed: <[]>, Joined: <[1,2,]>
+SubViews: Shard (0, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 1): Members=<[1,]>, is_sender={T }.  Shard (1, 2): Members=<[2,]>, is_sender={T }.  Shard (2, 0): Members=<[1,]>, is_sender={T }.  Shard (3, 0): Members=<[1,]>, is_sender={T }.  
+[20:25:16.674840] [viewmanager] [Thread 522825] [debug] Sending prepare and commit messages to node 1
+[20:25:16.674859] [viewmanager] [Thread 522825] [debug] Sending prepare and commit messages to node 2
+[20:25:16.675288] [viewmanager] [Thread 522825] [debug] Established a state-transfer TCP connection to node 1
+[20:25:16.675294] [viewmanager] [Thread 522825] [debug] Established a state-transfer TCP connection to node 2
+[20:25:16.675305] [derecho_debug] [Thread 522825] [debug] Constructing a Replicated Object for type N7derecho7cascade22PersistentCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_18ObjectPoolMetadataIJNS0_20VolatileCascadeStoreIS7_NS0_19ObjectWithStringKeyEXadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEENS1_IS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEELN10persistent11StorageTypeE0EEENS0_21TriggerCascadeNoStoreIS7_SA_XadL_ZNSA_2IKB5cxx11EEEXadL_ZNSA_2IVEEEEEEEEXadL_ZNSH_2IKEEEXadL_ZNSH_2IVEEELSD_0EEE, subgroup 0, shard 0
+[20:25:16.677111] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 constructor: before load()
+[20:25:16.677117] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:load state...begin
+[20:25:16.677139] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:checkOrCreateDir passed.
+[20:25:16.677207] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:checkOrCreateDataFile passed.
+[20:25:16.677266] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:data/meta file mapped to memory
+[20:25:16.677327] [persistent] [Thread 522825] [info] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:new header initialized.
+[20:25:16.677330] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0:load state...done
+[20:25:16.677330] [persistent] [Thread 522825] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 constructor: after load()
+[20:25:16.677343] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,6510554771,false)
+[20:25:16.677345] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,15195594093507957003,false)
+[20:25:16.677346] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,6348823032179,false)
+[20:25:16.677348] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,6720712969,false)
+[20:25:16.677349] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,204461,false)
+[20:25:16.677357] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,192566740426401,false)
+[20:25:16.677358] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,174387509973433241,false)
+[20:25:16.677360] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,13053876510283696863,false)
+[20:25:16.677361] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,190213062906347,false)
+[20:25:16.677363] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,549401895051186391,false)
+[20:25:16.677369] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,15892555279946135329,false)
+[20:25:16.677372] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,5853698743957,false)
+[20:25:16.677374] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,11251287850910487425,false)
+[20:25:16.677375] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,196366959973840913,false)
+[20:25:16.677377] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,14286556049496089377,false)
+[20:25:16.677378] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,1078630659658075227,false)
+[20:25:16.677380] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,222751,false)
+[20:25:16.677381] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,10333154126517021998,false)
+[20:25:16.677382] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,16172404891557179692,false)
+[20:25:16.677384] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,188162057642406152,false)
+[20:25:16.677385] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,52397230173974342,false)
+[20:25:16.677386] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,9522590118100805048,false)
+[20:25:16.677388] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,13562640025198349636,false)
+[20:25:16.677389] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(0,0,188162057642424442,false)
+[20:25:16.677427] [derecho_debug] [Thread 522825] [debug] Constructing a Replicated Object for type N7derecho7cascade20VolatileCascadeStoreINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEENS0_19ObjectWithStringKeyEXadL_ZNS8_2IKB5cxx11EEEXadL_ZNS8_2IVEEEEE, subgroup 1, shard 0
+[20:25:16.677440] [derecho_debug] [Thread 522825] [debug] Entering VolatileCascadeStore.
+[20:25:16.677441] [derecho_debug] [Thread 522825] [debug] Leaving VolatileCascadeStore.
+[20:25:16.677445] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,6510554771,false)
+[20:25:16.677447] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,15195594093507957003,false)
+[20:25:16.677448] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,6348823032179,false)
+[20:25:16.677449] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,6720712969,false)
+[20:25:16.677453] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,204461,false)
+[20:25:16.677455] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,192566740426401,false)
+[20:25:16.677456] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,174387509973433241,false)
+[20:25:16.677458] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,13053876510283696863,false)
+[20:25:16.677460] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,190213062906347,false)
+[20:25:16.677462] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,549401895051186391,false)
+[20:25:16.677463] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,15892555279946135329,false)
+[20:25:16.677464] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,5853698743957,false)
+[20:25:16.677465] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,11251287850910487425,false)
+[20:25:16.677466] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,196366959973840913,false)
+[20:25:16.677468] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,14286556049496089377,false)
+[20:25:16.677469] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,1078630659658075227,false)
+[20:25:16.677470] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,222751,false)
+[20:25:16.677471] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,10333154126517021998,false)
+[20:25:16.677472] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,16172404891557179692,false)
+[20:25:16.677474] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,188162057642406152,false)
+[20:25:16.677477] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,52397230173974342,false)
+[20:25:16.677478] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,9522590118100805048,false)
+[20:25:16.677479] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,13562640025198349636,false)
+[20:25:16.677497] [derecho_rpc] [Thread 522825] [trace] Emplace invoke_opcode:(1,1,188162057642424442,false)
+[20:25:16.677562] [derecho_debug] [Thread 522825] [debug] Done receiving all Replicated Objects from subgroup leaders (there were none to receive)
+[20:25:16.677569] [viewmanager] [Thread 522825] [debug] Starting global initialization of RDMC and SST, including internal TCP connection setup
+[20:25:16.677878] [derecho_debug] [Thread 522825] [trace] lf_initialize hints: fi_info:
+    caps: [ FI_MSG, FI_RMA, FI_READ, FI_WRITE, FI_REMOTE_READ, FI_REMOTE_WRITE ]
+    mode: [ FI_CONTEXT, FI_MSG_PREFIX, FI_ASYNC_IOV, FI_RX_CQ_DATA, FI_LOCAL_MR, FI_NOTIFY_FLAGS_ONLY, FI_RESTRICTED_COMP, FI_CONTEXT2, FI_BUFFERED_RECV ]
+    addr_format: FI_FORMAT_UNSPEC
+    src_addrlen: 0
+    dest_addrlen: 0
+    src_addr: (null)
+    dest_addr: (null)
+    handle: (nil)
+    fi_tx_attr:
+        caps: [  ]
+        mode: [  ]
+        op_flags: [  ]
+        msg_order: [  ]
+        comp_order: [ FI_ORDER_NONE ]
+        inject_size: 0
+        size: 4096
+        iov_limit: 0
+        rma_iov_limit: 0
+    fi_rx_attr:
+        caps: [  ]
+        mode: [  ]
+        op_flags: [  ]
+        msg_order: [  ]
+        comp_order: [ FI_ORDER_NONE ]
+        total_buffered_recv: 0
+        size: 4096
+        iov_limit: 0
+    fi_ep_attr:
+        type: FI_EP_MSG
+        protocol: FI_PROTO_UNSPEC
+        protocol_version: 0
+        max_msg_size: 0
+        msg_prefix_size: 0
+        max_order_raw_size: 0
+        max_order_war_size: 0
+        max_order_waw_size: 0
+        mem_tag_format: 0x0000000000000000
+        tx_ctx_cnt: 0
+        rx_ctx_cnt: 0
+        auth_key_size: 0
+    fi_domain_attr:
+        domain: 0x0
+        name: mlx5_3
+        threading: FI_THREAD_UNSPEC
+        control_progress: FI_PROGRESS_UNSPEC
+        data_progress: FI_PROGRESS_UNSPEC
+        resource_mgmt: FI_RM_UNSPEC
+        av_type: FI_AV_UNSPEC
+        mr_mode: [ FI_MR_LOCAL, FI_MR_VIRT_ADDR, FI_MR_ALLOCATED, FI_MR_PROV_KEY ]
+        mr_key_size: 0
+        cq_data_size: 0
+        cq_cnt: 0
+        ep_cnt: 0
+        tx_ctx_cnt: 0
+        rx_ctx_cnt: 0
+        max_ep_tx_ctx: 0
+        max_ep_rx_ctx: 0
+        max_ep_stx_ctx: 0
+        max_ep_srx_ctx: 0
+        cntr_cnt: 0
+        mr_iov_limit: 0
+    caps: [  ]
+    mode: [  ]
+        auth_key_size: 0
+        max_err_data: 0
+        mr_cnt: 0
+    fi_fabric_attr:
+        name: (null)
+        prov_name: verbs
+        prov_version: 0.0
+        api_version: 0.0
+    nic_fid: (nil)
+
+[20:25:17.186493] [derecho_sst] [Thread 522825] [trace] going to use virtual address?16
+[20:25:17.345280] [viewmanager] [Thread 522825] [trace] Initial view is: View 0: MyRank=0. Members=<[0,1,2,]>, Failed={  F  F  F  }, num_failed=0, Departed: <[]>, Joined: <[1,2,]>
+SubViews: Shard (0, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 0): Members=<[0,]>, is_sender={T }.  Shard (1, 1): Members=<[1,]>, is_sender={T }.  Shard (1, 2): Members=<[2,]>, is_sender={T }.  Shard (2, 0): Members=<[1,]>, is_sender={T }.  Shard (3, 0): Members=<[1,]>, is_sender={T }.  
+[20:25:17.345283] [derecho_sst] [Thread 522833] [trace] Polling thread starting.
+[20:25:17.345399] [viewmanager] [Thread 522825] [debug] Initializing SST and RDMC for the first time.
+[20:25:17.346345] [derecho_sst] [Thread 522825] [trace] resources constructor: this=0x558df027acf0
+[20:25:17.346444] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7ff5a97ee760:660392
+[20:25:17.346486] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7ff5a96ac010:660392
+[20:25:17.346488] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1554344, local read key:1551774
+[20:25:17.346491] [derecho_sst] [Thread 522825] [trace] preparing connection to remote node(id=2)...
+
+[20:25:17.346491] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info.
+[20:25:17.352444] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info succeeds.
+[20:25:17.352451] [derecho_sst] [Thread 522825] [trace] connect to remote node.
+[20:25:17.352452] [derecho_sst] [Thread 522825] [trace] connecting as a server.
+[20:25:17.352453] [derecho_sst] [Thread 522825] [trace] waiting for connection.
+[20:25:17.354673] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x558df0333870
+[20:25:17.354719] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x558df0056ca0
+[20:25:17.357131] [derecho_sst] [Thread 522825] [trace] calling fi_accept()
+[20:25:17.358638] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x558df0333870,this->ep->fid=0x558df0333870
+[20:25:17.358672] [derecho_sst] [Thread 522825] [trace] resources constructor: this=0x558df0000670
+[20:25:17.358704] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7ff5a974d3b8:660392
+[20:25:17.358728] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7ff5a96ac010:660392
+[20:25:17.358729] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1549204, local read key:1546119
+[20:25:17.358729] [derecho_sst] [Thread 522825] [trace] preparing connection to remote node(id=1)...
+
+[20:25:17.358730] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info.
+[20:25:17.358738] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info succeeds.
+[20:25:17.358738] [derecho_sst] [Thread 522825] [trace] connect to remote node.
+[20:25:17.358738] [derecho_sst] [Thread 522825] [trace] connecting as a server.
+[20:25:17.358739] [derecho_sst] [Thread 522825] [trace] waiting for connection.
+[20:25:17.361004] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x558df0330af0
+[20:25:17.361031] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x558df0330d70
+[20:25:17.362886] [derecho_sst] [Thread 522825] [trace] calling fi_accept()
+[20:25:17.364132] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x558df0330af0,this->ep->fid=0x558df0330af0
+[20:25:17.486008] [viewmanager] [Thread 522825] [debug] Done setting up initial SST and RDMC
+[20:25:17.489606] [derecho_sst] [Thread 522825] [trace] resources constructor: this=0x558df0002dd0
+[20:25:17.489755] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7ef55d334010:4440833
+[20:25:17.489849] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7ef55cef7010:4440833
+[20:25:17.489851] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1573105, local read key:1571563
+[20:25:17.489852] [derecho_sst] [Thread 522825] [trace] preparing connection to remote node(id=1)...
+
+[20:25:17.489853] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info.
+[20:25:17.489957] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info succeeds.
+[20:25:17.489959] [derecho_sst] [Thread 522825] [trace] connect to remote node.
+[20:25:17.489959] [derecho_sst] [Thread 522825] [trace] connecting as a client.
+
+[20:25:17.489959] [derecho_sst] [Thread 522825] [trace] initiating a connection.
+
+[20:25:17.489964] [derecho_sst] [Thread 522825] [trace] calling fi_getinfo()
+[20:25:17.490144] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x558df0329200
+[20:25:17.490172] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x558df03297b0
+[20:25:17.492253] [derecho_sst] [Thread 522825] [trace] calling fi_connect()
+[20:25:17.492279] [derecho_sst] [Thread 522825] [trace] fi_connect() succeeded, calling fi_eq_sread()
+[20:25:17.496529] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x558df0329200,this->ep->fid=0x558df0329200
+[20:25:17.500340] [derecho_sst] [Thread 522825] [trace] resources constructor: this=0x558df03287e0
+[20:25:17.500452] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7ef55c878010:4440833
+[20:25:17.500540] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7ef55c43b010:4440833
+[20:25:17.500542] [derecho_sst] [Thread 522825] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1546634, local read key:1531728
+[20:25:17.500543] [derecho_sst] [Thread 522825] [trace] preparing connection to remote node(id=2)...
+
+[20:25:17.500544] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info.
+[20:25:17.500554] [derecho_sst] [Thread 522825] [trace] Exchanging connection management info succeeds.
+[20:25:17.500554] [derecho_sst] [Thread 522825] [trace] connect to remote node.
+[20:25:17.500555] [derecho_sst] [Thread 522825] [trace] connecting as a client.
+
+[20:25:17.500555] [derecho_sst] [Thread 522825] [trace] initiating a connection.
+
+[20:25:17.500556] [derecho_sst] [Thread 522825] [trace] calling fi_getinfo()
+[20:25:17.500668] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x558df031dc00
+[20:25:17.500693] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x558df03263e0
+[20:25:17.502449] [derecho_sst] [Thread 522825] [trace] calling fi_connect()
+[20:25:17.502457] [derecho_sst] [Thread 522825] [trace] fi_connect() succeeded, calling fi_eq_sread()
+[20:25:17.506169] [derecho_sst] [Thread 522825] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x558df031dc00,this->ep->fid=0x558df031dc00
+[20:25:17.506391] [derecho_rpc] [Thread 522825] [debug] Created new connections among the new view members
+[20:25:17.506396] [viewmanager] [Thread 522825] [debug] Starting predicate evaluation
+[20:25:17.506440] [derecho_rpc] [Thread 522827] [debug] P2P listening thread started
+[20:25:17.506477] [persistent] [Thread 522840] [debug] PersistenceManager thread started
+[20:25:17.506521] [derecho_debug] [Thread 522825] [info] Derecho Group successfully started
+[20:25:17.506541] [derecho_debug] [Thread 522825] [trace] joined group.
+[20:25:17.506543] [derecho_debug] [Thread 522825] [trace] initializing ServiceClient singleton as cascade member, group pointer=0x558df00012d0
+[20:25:17.506556] [derecho_debug] [Thread 522825] [trace] /users/namanh/workspace/cascade/include/cascade/detail/user_defined_logic_manager_impl.hpp:173 DLLFileManager constructor is called.
+[20:25:17.518956] [derecho_debug] [Thread 522825] [trace] Successfully load dll udl:../../src/libhead_index_search_udl.so
+[20:25:17.520686] [derecho_debug] [Thread 522825] [trace] Successfully load dll udl:../../src/libglobal_search_udl.so
+[20:25:17.522162] [derecho_debug] [Thread 522849] [trace] Cascade context workhorse[1] started
+[20:25:17.522178] [derecho_debug] [Thread 522848] [trace] Cascade context workhorse[0] started
+[20:25:17.522191] [derecho_debug] [Thread 522850] [trace] Cascade context workhorse[0] started
+[20:25:17.522219] [derecho_debug] [Thread 522851] [trace] Cascade context workhorse[1] started
+[20:25:17.523103] [derecho_debug] [Thread 522852] [trace] Cascade context workhorse[0] started
+[20:25:17.524002] [derecho_debug] [Thread 522853] [trace] Cascade context workhorse[1] started
+[20:25:17.524837] [derecho_debug] [Thread 522854] [trace] Cascade context workhorse[0] started
+[20:25:17.526081] [derecho_debug] [Thread 522855] [trace] Cascade context workhorse[1] started
+[20:25:17.526145] [derecho_debug] [Thread 522856] [trace] Cascade context workhorse[4294967295] started
+[20:25:17.526159] [derecho_debug] [Thread 522825] [trace] created daemon thread.
+[20:25:17.526185] [derecho_debug] [Thread 522825] [trace] started service, waiting till it ends.
+[20:25:17.526188] [derecho_debug] [Thread 522857] [trace] Cascade context workhorse[4294967295] started
+[20:25:32.335363] [viewmanager] [Thread 522838] [debug] GMS listener got a new connection from 10.10.1.3
+[20:25:32.335490] [viewmanager] [Thread 522834] [info] Received an external join request from client 3 at address 10.10.1.3.
+[20:25:32.335535] [viewmanager] [Thread 522834] [trace] Sending node at 10.10.1.3 the new view. View size is 571 bytes
+[20:25:32.335540] [viewmanager] [Thread 522834] [trace] send_view starting to send view
+[20:25:32.340623] [viewmanager] [Thread 522838] [debug] GMS listener got a new connection from 10.10.1.3
+[20:25:32.340684] [viewmanager] [Thread 522834] [info] Received an external join request from client 3 at address 10.10.1.3.
+[20:25:32.344824] [derecho_sst] [Thread 522834] [trace] resources constructor: this=0x7ef548000fd0
+[20:25:32.345018] [derecho_sst] [Thread 522834] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote write: 0x7ef5441c3010:4440833
+[20:25:32.345117] [derecho_sst] [Thread 522834] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources registered memory for remote read: 0x7ef5383bd010:4440833
+[20:25:32.345120] [derecho_sst] [Thread 522834] [trace] /users/namanh/workspace/derecho/src/sst/lf.cpp:_resources local write key:1570278, local read key:1568993
+[20:25:32.345124] [derecho_sst] [Thread 522834] [trace] preparing connection to remote node(id=3)...
+
+[20:25:32.345124] [derecho_sst] [Thread 522834] [trace] Exchanging connection management info.
+[20:25:32.345477] [derecho_sst] [Thread 522834] [trace] Exchanging connection management info succeeds.
+[20:25:32.345479] [derecho_sst] [Thread 522834] [trace] connect to remote node.
+[20:25:32.345479] [derecho_sst] [Thread 522834] [trace] connecting as a client.
+
+[20:25:32.345480] [derecho_sst] [Thread 522834] [trace] initiating a connection.
+
+[20:25:32.345497] [derecho_sst] [Thread 522834] [trace] calling fi_getinfo()
+[20:25:32.345677] [derecho_sst] [Thread 522834] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint init_endpoint:ep->fid=0x7ef548002720
+[20:25:32.345710] [derecho_sst] [Thread 522834] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:init_endpoint event_queue opened=0x7ef548002cd0
+[20:25:32.348140] [derecho_sst] [Thread 522834] [trace] calling fi_connect()
+[20:25:32.348166] [derecho_sst] [Thread 522834] [trace] fi_connect() succeeded, calling fi_eq_sread()
+[20:25:32.352938] [derecho_sst] [Thread 522834] [debug] /users/namanh/workspace/derecho/src/sst/lf.cpp:connect_endpoint entry.fid=0x7ef548002720,this->ep->fid=0x7ef548002720
+[20:25:32.439430] [derecho_rpc] [Thread 522827] [trace] P2P thread detected a message from 3
+[20:25:32.439435] [derecho_rpc] [Thread 522827] [trace] Handling a P2P message: function_id = 222751, is_reply = false, received_from = 3, payload_size = 85, invocation_id = 94787791369680
+[20:25:32.439461] [derecho_rpc] [Thread 522827] [trace] P2PConnection updating incoming_seq_num for type P2P request to 1
+[20:25:32.439584] [derecho_rpc] [Thread 522842] [trace] Received an RPC call with invocation ID 0x563580a235d0 from node 3
+[20:25:32.439622] [derecho_debug] [Thread 522842] [debug] Entering put with parameter:"value.get_key_ref()=/anns/head_search".
+[20:25:32.439649] [derecho_debug] [Thread 522842] [trace] Subgroup 0: get_sendbuffer_ptr increased future_message_indices to 1
+[20:25:32.439662] [derecho_rpc] [Thread 522842] [trace] Ready to send an RPC call message with invocation ID 139591201852656
+[20:25:32.439681] [derecho_debug] [Thread 522834] [trace] receiver_trig calling sst_receive_handler_lambda. next_seq = 0, num_received = 0, sender rank = 0. Reading from SST row 0, slot 0
+[20:25:32.439687] [derecho_debug] [Thread 522834] [trace] Updating seq_num for subgroup 0 to 0
+[20:25:32.439695] [derecho_debug] [Thread 522834] [trace] Subgroup 0, can deliver a locally stable SST message: min_stable_num=0 and least_undelivered_seq_num=0
+[20:25:32.439701] [derecho_rpc] [Thread 522834] [trace] Received an RPC call with invocation ID 0x7ef51c000cf0 from node 0
+[20:25:32.439704] [derecho_debug] [Thread 522834] [debug] Entering ordered_put with parameter:"key=/anns/head_search".
+[20:25:32.439713] [derecho_debug] [Thread 522834] [debug] Leaving ordered_put with "version=0x0,timestamp=1756434332439635us".
+[20:25:32.439718] [derecho_rpc] [Thread 522834] [trace] Ready to send an RPC reply for invocation ID 0x7ef51c000cf0 to node 0
+[20:25:32.439720] [derecho_rpc] [Thread 522834] [trace] RPCManager got a self-receive for message 0
+[20:25:32.439722] [derecho_rpc] [Thread 522834] [trace] Got a call to fulfill_map for PendingResults<St5tupleIJlmEE>
+[20:25:32.439723] [derecho_rpc] [Thread 522834] [trace] Setting a value for reply_promises_are_ready
+[20:25:32.439735] [derecho_rpc] [Thread 522834] [trace] Received an RPC response from node 0 with invocation ID 0x7ef51c000cf0
+[20:25:32.439735] [derecho_rpc] [Thread 522834] [trace] Received an RPC response for invocation ID 0x7ef51c000cf0 from node 0
+[20:25:32.439737] [derecho_rpc] [Thread 522834] [trace] PendingResults<St5tupleIJlmEE>::set_value about to wait on reply_promises_are_ready
+[20:25:32.439739] [derecho_rpc] [Thread 522834] [trace] Calling delete_self_ptr on 0x7ef51c000cf0
+[20:25:32.439739] [derecho_rpc] [Thread 522834] [trace] delete_self_ptr() deleting the shared_ptr at 0x7ef51c000cf0
+[20:25:32.439743] [derecho_debug] [Thread 522842] [debug] Leaving put with "version=0x0,timestamp=1756434332439635us".
+[20:25:32.439745] [persistent] [Thread 522834] [debug] PersistenceManager: Making version 0 in subgroup 0
+[20:25:32.439749] [persistent] [Thread 522834] [trace] PersistentRegistry: makeVersion(0, hlc(1756434332439635,0))
+[20:25:32.439750] [persistent] [Thread 522834] [trace] In Persistent<T>: make version (ver=0, hlc=1756434332439635us.0)
+[20:25:32.439751] [persistent] [Thread 522834] [trace] append to log with ver(0),hlc(1756434332439635,0)
+[20:25:32.439752] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append event (1756434332439635,0)
+[20:25:32.439754] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append:validate check1 Finished.
+[20:25:32.439756] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append:validate check2 Finished.
+[20:25:32.439789] [derecho_rpc] [Thread 522827] [trace] P2P thread detected a message from 3
+[20:25:32.439789] [derecho_rpc] [Thread 522842] [trace] Ready to send an RPC reply for invocation ID 0x563580a235d0 to node 3
+[20:25:32.439790] [derecho_rpc] [Thread 522827] [trace] Handling a P2P message: function_id = 222751, is_reply = false, received_from = 3, payload_size = 80, invocation_id = 94787791378928
+[20:25:32.439791] [derecho_rpc] [Thread 522827] [trace] P2PConnection updating incoming_seq_num for type P2P request to 2
+[20:25:32.439792] [derecho_rpc] [Thread 522842] [trace] Sending a P2P reply to node 3 for invocation ID 94787791369680 of function 222751
+[20:25:32.439800] [derecho_rpc] [Thread 522842] [trace] Sending P2P reply to node 3, about to call post_remote_write. getOffsetBuf() is 0, getOffsetSeqNum() is 20504
+[20:25:32.439811] [derecho_rpc] [Thread 522842] [trace] Received an RPC call with invocation ID 0x563580a259f0 from node 3
+[20:25:32.439815] [derecho_debug] [Thread 522842] [debug] Entering put with parameter:"value.get_key_ref()=/anns/global".
+[20:25:32.439841] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append:data (84 bytes) is copied to log.
+[20:25:32.439843] [viewmanager] [Thread 522838] [debug] GMS listener got a new connection from 10.10.1.3
+[20:25:32.439888] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append:log entry and meta data are updated.
+[20:25:32.439889] [persistent] [Thread 522834] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 append a log ver:0 hlc:(1756434332439635,0)
+[20:25:32.439892] [derecho_debug] [Thread 522834] [debug] MulticastGroup: Posting persistence request for subgroup 0, version 0
+[20:25:32.439905] [derecho_debug] [Thread 522842] [trace] Subgroup 0: get_sendbuffer_ptr increased future_message_indices to 2
+[20:25:32.439909] [derecho_rpc] [Thread 522842] [trace] Ready to send an RPC call message with invocation ID 139591201852864
+[20:25:32.439954] [persistent] [Thread 522840] [debug] PersistenceManager: handling persist request for subgroup 0 version 0
+[20:25:32.439962] [persistent] [Thread 522840] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 flush data,log,and meta.
+[20:25:32.439966] [persistent] [Thread 522840] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0: Distance from persisted log tail to current log tail is 64 bytes, 1 indexes
+[20:25:32.439967] [persistent] [Thread 522840] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0: Flushing log entries up through version 0
+[20:25:32.439973] [persistent] [Thread 522840] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0: flush data length = 84, flush log length = 64
+[20:25:32.440015] [viewmanager] [Thread 522834] [info] Received an external join request from client 3 at address 10.10.1.3.
+[20:25:32.440083] [derecho_rpc] [Thread 522834] [debug] External client with id 3 gracefully exiting, doing cleanup
+[20:25:32.440089] [derecho_sst] [Thread 522834] [trace] resources destructor:this=0x7ef548000fd0
+[20:25:32.440620] [persistent] [Thread 522840] [trace] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 flush data,log,and meta...done.
+[20:25:32.440625] [persistent] [Thread 522840] [debug] 16022327056f06b5c3504d24f77c453f5ea6af94ccc1c89c36d516b047f56b47-0-0-0-a8b70df18c447a3b3ef3e4acf9d2d2b1252d3f2ab5f408d1061c53bab432b0d6-0 persist(0), actually persisted version 0
+[20:25:32.440629] [persistent] [Thread 522840] [trace] PersistenceManager: Asked Replicated to persist latest version, version actually persisted = 0
+[20:25:32.440630] [derecho_rpc] [Thread 522840] [trace] RPCManager: Got a local persistence callback for version 0
+[20:25:32.440632] [derecho_rpc] [Thread 522840] [trace] RPCManager: Setting local persistence on version 0
+[20:25:32.440645] [persistent] [Thread 522840] [debug] PersistenceManager: updating subgroup 0 persisted_num to 0 (and signed_num to 0 if applicable) 
+[20:25:32.442588] [derecho_rpc] [Thread 522834] [trace] RPCManager: Got a global persistence callback for version 0
+[20:25:32.442595] [derecho_debug] [Thread 522834] [trace] receiver_trig calling sst_receive_handler_lambda. next_seq = 1, num_received = 1, sender rank = 0. Reading from SST row 0, slot 10280
+[20:25:32.442596] [derecho_debug] [Thread 522834] [trace] Updating seq_num for subgroup 0 to 1
+[20:25:32.442618] [derecho_debug] [Thread 522834] [trace] Subgroup 0, can deliver a locally stable SST message: min_stable_num=1 and least_undelivered_seq_num=1
+[20:25:32.442620] [derecho_rpc] [Thread 522834] [trace] Received an RPC call with invocation ID 0x7ef51c000dc0 from node 0
+[20:25:32.442624] [derecho_debug] [Thread 522834] [debug] Entering ordered_put with parameter:"key=/anns/global".
+[20:25:32.442629] [derecho_debug] [Thread 522834] [debug] Leaving ordered_put with "version=0x1,timestamp=1756434332439904us".
+[20:25:32.442631] [derecho_rpc] [Thread 522834] [trace] Ready to send an RPC reply for invocation ID 0x7ef51c000dc0 to node 0
+[20:25:32.442632] [derecho_rpc] [Thread 522834] [trace] RPCManager got a self-receive for message 1
+[20:25:32.442632] [derecho_rpc] [Thread 522834] [trace] Got a call to fulfill_map for PendingResults<St5tupleIJlmEE>
+[20:25:32.442633] [derecho_rpc] [Thread 522834] [trace] Setting a value for reply_promises_are_ready
+[20:25:32.442640] [derecho_rpc] [Thread 522834] [trace] Received an RPC response from node 0 with invocation ID 0x7ef51c000dc0
+[20:25:32.442657] [derecho_rpc] [Thread 522834] [trace] Received an RPC response for in
