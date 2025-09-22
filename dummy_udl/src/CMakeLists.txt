@@ -117,3 +117,27 @@ setup_config_target(update_config_dummy_no_op cfg_no_op cfg_no_op)
 setup_config_target(update_config_dummy_no_op_rdma cfg_no_op_rdma cfg_no_op_rdma)
 
 
+
+add_library(dummy_ack_udl SHARED
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_ack.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dummy_ack.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/udl_path_and_index.hpp
+)
+
+
+target_compile_definitions(dummy_ack_udl PRIVATE
+  LOG_DUMMY_BATCH_SEND_START=${LOG_DUMMY_BATCH_SEND_START}
+  LOG_DUMMY_BATCH_SEND_END=${LOG_DUMMY_BATCH_SEND_END}
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_DUMMY_HANDLER_END=${LOG_DUMMY_HANDLER_END}
+)
+
+target_link_libraries(dummy_ack_udl PRIVATE ${UDL_COMMON_LIBS})
+add_executable(run_dummy_ack_benchmark run_benchmark_ack.cpp)
+target_compile_features(run_dummy_ack_benchmark PRIVATE cxx_std_20)
+target_link_libraries(run_dummy_ack_benchmark PRIVATE ${UDL_COMMON_LIBS} Boost::program_options)
+target_compile_options(run_dummy_ack_benchmark PRIVATE -g -O0 -Wall)
+target_compile_definitions(run_dummy_ack_benchmark PRIVATE
+  LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
+  LOG_CLIENT_SEND_START=${LOG_CLIENT_SEND_START}
+)
