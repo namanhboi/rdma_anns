@@ -141,3 +141,7 @@ target_compile_definitions(run_dummy_ack_benchmark PRIVATE
   LOG_DUMMY_HANDLER_START=${LOG_DUMMY_HANDLER_START}
   LOG_CLIENT_SEND_START=${LOG_CLIENT_SEND_START}
 )
+
+
+setup_config_target(update_config_dummy_ack cfg_ack cfg_ack)
+setup_config_target(update_config_dummy_ack_rdma cfg_ack_rdma cfg_ack_rdma)

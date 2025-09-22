@@ -55,14 +55,10 @@ namespace derecho {
             
             std::string client_id_pool_path =
               RESULTS_OBJ_POOL_PREFIX "/" + std::to_string(client_node_id);
-            
+
             std::shared_ptr<Blob> blob =
               send_object_t::get_send_objects_blob(send_objects);
-
-            ObjectWithStringKey obj;
-	    obj.blob = std::move(*blob);
-	    obj.previous_version = INVALID_VERSION;
-	    obj.previous_version_by_key = INVALID_VERSION;
+            // std::cout << "blob size " << blob->size;
             TimestampLogger::log(LOG_DUMMY_BATCH_SEND_START,
                                  client_node_id,
                                  message_id, 0ull);

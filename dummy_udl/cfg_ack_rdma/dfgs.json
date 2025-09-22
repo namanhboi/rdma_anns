@@ -1,0 +1,17 @@
+[
+  {
+    "id": "87e6cd67-eae8-45c6-9a64-06c4bdb822cc",
+    "desc": "test roundtrip send latency. client send an object, udl send back the same object as ack",
+    "graph": [
+      {
+        "pathname": "/test",
+        "shard_dispatcher_list": ["one"],
+        "user_defined_logic_list": ["d62deb7a-c30b-41bd-8761-92b6ad42e94e"],
+        "user_defined_logic_stateful_list": ["stateful"],
+        "user_defined_logic_config_list": [{}],
+        "destinations": [{}]
+      }
+    ]
+  }
+]
+

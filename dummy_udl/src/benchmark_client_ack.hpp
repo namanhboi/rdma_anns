@@ -82,6 +82,7 @@ class BenchmarkClient {
     void signal_stop() {
       std::scoped_lock l(send_object_queue_mtx);
       running = false;
+      send_object_queue.push(nullptr);
       send_object_queue_cv.notify_all();
     }
     void start() {
@@ -104,11 +105,13 @@ class BenchmarkClient {
     void main_loop() {
       if (!running)
         return;
+      std::unique_lock<std::mutex> lock(thread_mtx, std::defer_lock);
       while (true) {
-        std::unique_lock<std::mutex> lock(thread_mtx);
+        lock.lock();
 
-        if (to_process.empty()) thread_signal.wait(lock);
-
+        while (to_process.empty() && (running == true)) {
+          thread_signal.wait(lock);
+        }
         if (!running)
           break;
 
@@ -146,6 +149,8 @@ class BenchmarkClient {
     void signal_stop() {
       std::scoped_lock<std::mutex> l(thread_mtx);
       running = false;
+      to_process.emplace(nullptr, 0);
+      std::cout << "stop signalled to notify thread" << std::endl; 
       thread_signal.notify_all();
     }
 
@@ -186,12 +191,14 @@ class BenchmarkClient {
   
 public:
   ~BenchmarkClient() {
+    std::cout << "destructor called " << std::endl;
     client_thread->signal_stop();
     client_thread->join();
     delete client_thread;
 
-    for(auto &t : notification_threads){
-        t.signal_stop();
+    for (auto &t : notification_threads) {
+      std::cout << "trying to call signal stop" << std::endl;
+      t.signal_stop();
     }
     
     for(auto &t : notification_threads){
@@ -347,8 +354,9 @@ public:
             std::cout << "  waited more than " << CLIENT_MAX_WAIT_TIME << " seconds, stopping ..." << std::endl;
             break;
         }
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        std::cout << "  received " << ack_received_count << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::cout << "  received " << ack_received_count << "sent "
+        << send_object_count << std::endl;
         wait_time += 2;
     }
   }
@@ -367,6 +375,7 @@ public:
       }
       shard_id++;
     }
+    
   }    
 };
   

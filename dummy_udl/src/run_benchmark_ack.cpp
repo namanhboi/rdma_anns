@@ -37,7 +37,6 @@ void benchmark(uint64_t num_msg, uint64_t num_bytes, int num_clusters,
   }
   client.wait_acks();
   client.dump_timestamp();
-  std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 int main(int argc, char **argv) {
@@ -63,9 +62,6 @@ int main(int argc, char **argv) {
   }
   po::notify(vm);
 
-  if (num_clusters <= 1) {
-    throw std::invalid_argument("num clusters must be bigger than 1");
-  }
   std::cout << "num clusters as args is " << num_clusters << std::endl;
   benchmark(num_msg, num_bytes, num_clusters, mili_sleep);
 }
