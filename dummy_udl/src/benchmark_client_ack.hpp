@@ -93,83 +93,9 @@ class BenchmarkClient {
     void join() { real_thread.join(); }
   };
 
-  class NotificationThread {
-    std::thread real_thread;
-    bool running = false;
-    std::mutex thread_mtx;
-    std::condition_variable thread_signal;
-
-    std::queue<std::pair<std::shared_ptr<uint8_t[]>, uint64_t>> to_process;
-    BenchmarkClient *parent;
-
-    void main_loop() {
-      if (!running)
-        return;
-      std::unique_lock<std::mutex> lock(thread_mtx, std::defer_lock);
-      while (true) {
-        lock.lock();
-
-        while (to_process.empty() && (running == true)) {
-          thread_signal.wait(lock);
-        }
-        if (!running)
-          break;
-
-        auto pending = to_process.front();
-        to_process.pop();
-
-	lock.unlock();
-        if (pending.second == 0) {
-          std::cerr << "Error: empty result blob" << std::endl;
-          continue;
-        }
-        std::vector<std::shared_ptr<send_object_t>> acks =
-          send_object_t::deserialize_send_objects(pending.first.get());
-        for (const auto &ack : acks) {
-	  parent->receive_ack(ack);
-        } 
-      }
-    }
-  public:
-    NotificationThread(BenchmarkClient *parent) {
-      this->parent = parent;
-    }
-
-
-    // receive ack blob, which contains the exact data sent from udl
-    void push_ack_blob(const Blob &ack_blob) {
-      std::scoped_lock<std::mutex> l(thread_mtx);
-      std::shared_ptr<uint8_t[]> res(new uint8_t[ack_blob.size]);
-      std::memcpy(res.get(), ack_blob.bytes, ack_blob.size);
-
-      to_process.emplace(res, ack_blob.size);
-      thread_signal.notify_all();
-    }
-
-    void signal_stop() {
-      std::scoped_lock<std::mutex> l(thread_mtx);
-      running = false;
-      to_process.emplace(nullptr, 0);
-      std::cout << "stop signalled to notify thread" << std::endl; 
-      thread_signal.notify_all();
-    }
-
-    void start() {
-      running = true;
-      real_thread = std::thread(&NotificationThread::main_loop, this);
-    }
-
-    void join() { real_thread.join(); }
-    
-  };
-
-  uint32_t num_result_threads = 1;
-  std::atomic<uint32_t> next_thread{0};
   ServiceClientAPI &capi = ServiceClientAPI::get_service_client();
   uint32_t my_id = capi.get_my_id();
   ClientThread *client_thread;
-  std::deque<NotificationThread> notification_threads;
-
 
   std::atomic<uint64_t> send_object_count = 0;
   std::unordered_map<uint64_t, std::chrono::steady_clock::time_point> send_object_time;
@@ -178,13 +104,10 @@ class BenchmarkClient {
 
   std::atomic<uint64_t> ack_received_count = 0;
   std::shared_mutex ack_received_mutex;
-  std::unordered_map<uint64_t, std::shared_ptr<send_object_t>>
-      ack_received;  
 
   void receive_ack(std::shared_ptr<send_object_t> ack) {
     std::unique_lock<std::shared_mutex> lock(ack_received_mutex);
     uint64_t message_id = ack->message_id;
-    ack_received[message_id] = ack;
     ack_received_count++;
     ack_time[message_id] = std::chrono::steady_clock::now();
   }
@@ -195,15 +118,6 @@ public:
     client_thread->signal_stop();
     client_thread->join();
     delete client_thread;
-
-    for (auto &t : notification_threads) {
-      std::cout << "trying to call signal stop" << std::endl;
-      t.signal_stop();
-    }
-    
-    for(auto &t : notification_threads){
-        t.join();
-    }
 
     std::cout << "Finished joining the threads" << std::endl;
 
@@ -261,8 +175,6 @@ public:
   }
 
   void setup(uint32_t num_result_threads) {
-    this->num_result_threads = num_result_threads;
-
     auto res_udl = capi.template create_object_pool<UDL_OBJ_POOL_TYPE>(
 								       UDL_OBJ_POOL, UDL_SUBGROUP_INDEX, HASH, {});
 
@@ -281,11 +193,13 @@ public:
 
     std::cout << " registering notification handler " << result_pool_name
     << std::endl;
-    bool ret = capi.register_notification_handler(
-        [&](const Blob &ack_blob) {
-          notification_threads[next_thread].push_ack_blob(ack_blob);
-          next_thread = (next_thread + 1) % this->num_result_threads;
-          return true;
+    bool ret = capi.register_notification_handler([&](const Blob &ack_blob) {
+      std::vector<std::shared_ptr<send_object_t>> acks =
+        send_object_t::deserialize_send_objects(ack_blob.bytes);
+          for (const auto &ack : acks) {
+            ack_received_count++;
+            ack_time[ack->message_id] = std::chrono::steady_clock::now();
+          }
         },
 						  result_pool_name);
     auto shards = capi.get_subgroup_members<VolatileCascadeStoreWithStringKey>(
@@ -308,13 +222,6 @@ public:
       }
       i++;
     }
-
-    for (int i = 0; i < num_result_threads; i++) {
-      notification_threads.emplace_back(this);
-    }
-    for (auto &t : notification_threads)
-      t.start();
-
 
     client_thread =
       new ClientThread(this);
