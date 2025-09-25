@@ -2,7 +2,7 @@
 #include <cascade/service_client_api.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include "../benchmark/benchmark_dataset.hpp"
-#include "../src/serialize_utils.hpp"
+#include "serialize_utils.hpp"
 #include <limits>
 #include <random>
 // what nees to be tested?

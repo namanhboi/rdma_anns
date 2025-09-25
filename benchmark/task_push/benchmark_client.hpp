@@ -13,8 +13,8 @@
 #include <atomic>
 #include <unordered_map>
 #include <shared_mutex>
-#include "../src/serialize_utils.hpp"
-#include "../src/udl_path_and_index.hpp"
+#include "serialize_utils.hpp"
+#include "udl_path_and_index.hpp"
 
 
 using namespace derecho::cascade;

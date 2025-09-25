@@ -1,5 +1,11 @@
 set(UDL_COMMON_LIBS derecho derecho::cascade pthread diskann aio)
 
+
+set(COMMON_INCLUDE_DIR
+  ${CMAKE_SOURCE_DIR}/extern/DiskANN/include
+  ${PROJECT_SOURCE_DIR}/include/task_push
+)
+
 set(LOG_HEAD_INDEX_UDL_START 10000)
 set(LOG_HEAD_INDEX_LOADING_START 10001)
 set(LOG_HEAD_INDEX_LOADING_END 10002)
@@ -15,12 +21,12 @@ set(LOG_HEAD_INDEX_UDL_END 10009)
 
 add_library(head_index_search_udl SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/head_index_search_udl.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/head_index_search_udl.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/udl_path_and_index.hpp
 )
-target_include_directories(head_index_search_udl PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/include) # needed to include this to access the methods of diskann library
+target_include_directories(head_index_search_udl PRIVATE
+  ${COMMON_INCLUDE_DIR}
+)
+
 target_compile_definitions(head_index_search_udl PRIVATE 
     DATA_TYPE="${DATA_TYPE}"
     LOG_HEAD_INDEX_UDL_START=${LOG_HEAD_INDEX_UDL_START}
@@ -89,14 +95,10 @@ set(LOG_GLOBAL_INDEX_UDL_HANDLER_END 20221)
 
 add_library(global_search_udl SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/global_search_udl.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/global_search_udl.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/serialize_utils.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/get_request_manager.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/in_mem_search_index.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/ssd_search_index.hpp
 )
-target_include_directories(global_search_udl PRIVATE ${CMAKE_SOURCE_DIR}/extern/DiskANN/include) # needed to include this to access the methods of diskann library
+target_include_directories(global_search_udl PRIVATE ${COMMON_INCLUDE_DIR})# needed to include this to access the methods of diskann library
+
 target_compile_definitions(global_search_udl PUBLIC 
     DATA_TYPE="${DATA_TYPE}" 
     GLOBAL_BASELINE

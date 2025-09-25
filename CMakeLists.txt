@@ -4,6 +4,15 @@ project(rdma_anns LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# set(CMAKE_C_COMPILER_LAUNCHER ccache)
+# set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
+
+include_directories(
+  ${PROJECT_SOURCE_DIR}/include/concurrentqueue
+)
+
 add_library(Parlay INTERFACE)
 target_include_directories(Parlay INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}/extern/ParlayANN/parlaylib/include
@@ -81,8 +90,9 @@ endif()
 
 add_subdirectory(extern/gp-ann)
 add_subdirectory(extern/DiskANN)
-add_subdirectory(benchmark)
-add_subdirectory(src)
-add_subdirectory(test)
-add_subdirectory(dummy_udl/src)
+add_subdirectory(benchmark/task_push)
+add_subdirectory(benchmark/state_send)
+add_subdirectory(src/task_push)
+# add_subdirectory(test)
+# add_subdirectory(dummy_udl/src)
 

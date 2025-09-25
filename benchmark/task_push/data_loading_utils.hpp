@@ -26,7 +26,7 @@
 #include "index_config.h"
 #include "utils.h"
 #include "benchmark_dataset.hpp"
-#include "../src/udl_path_and_index.hpp"
+#include "udl_path_and_index.hpp"
 #include <filesystem>
 #include "partition.h"
 #include "disk_utils.h"

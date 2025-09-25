@@ -9,7 +9,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
-#include "../../src/blockingconcurrentqueue.h"
+#include "blockingconcurrentqueue.h"
 #include "udl_path_and_index.hpp"
 #include "serialize_utils.hpp"
 
