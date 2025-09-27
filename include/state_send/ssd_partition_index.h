@@ -23,6 +23,9 @@
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 #define READ_UNSIGNED(stream, val) stream.read((char *)&val, sizeof(unsigned))
 
+
+#define MAX_SEARCH_THREADS 64
+
 static constexpr int kMaxVectorDim = 512;
 
 /**
@@ -89,7 +92,7 @@ inline void pq_dist_lookup(const uint8_t *pq_ids, const uint64_t n_pts,
 }
 } // namespace
 
-
+constexpr int max_requests = 1000;
 /**
   job is to manage search threads which advance the search states, eventually
   either sending them to other servers or send to client
@@ -112,14 +115,24 @@ private:
        - One file reader belonging to SSDIndex but multiple contexts
   */
   class IOSubmissionThread {
-    moodycamel::BlockingConcurrentQueue<std::pair<void *, IORequest>>
+    struct thread_io_req_t {
+      void *ctx;
+      uint64_t thread_id;
+      IORequest io_request;
+    };
+    SSDPartitionIndex *parent;
+    moodycamel::BlockingConcurrentQueue<thread_io_req_t>
         concurrent_io_req_queue;
     std::thread real_thread;
-    bool running = false;
+    std::atomic<bool> running{false};
+    uint32_t num_search_threads;
+    std::array<std::vector<IORequest>, MAX_SEARCH_THREADS> thread_io_requests;
+    std::array<void*, MAX_SEARCH_THREADS> thread_io_ctx;
+    void submit_requests(std::vector<IORequest> &io_requests, void *ctx);
     void main_loop();
   public:
-    IOSubmissionThread();
-    void push_io_requests(void * ctx, IORequest io_request);
+    IOSubmissionThread(SSDPartitionIndex *parent, uint32_t num_search_threads);
+    void push_io_request(thread_io_req_t thread_io_req);
     void start();
     void join();
     void signal_stop();
