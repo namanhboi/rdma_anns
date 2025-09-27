@@ -7,3 +7,6 @@
 [submodule "extern/DiskANN"]
 	path = extern/DiskANN
 	url = https://github.com/microsoft/DiskANN
+[submodule "extern/liburing"]
+	path = extern/liburing
+	url = https://github.com/axboe/liburing.git

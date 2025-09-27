@@ -18,3 +18,15 @@ template <typename TagT> struct result_t {
   std::shared_ptr<TagT[]> result_tags;
   std::shared_ptr<float[]> result_dists;
 };
+
+
+
+template <typename T> struct query_t {
+  const T *query_emb;
+  uint32_t dim;
+  query_id_t query_id;
+  client_id_t client_id;
+  uint32_t K;
+  uint32_t L;
+  uint32_t mem_L;
+};
