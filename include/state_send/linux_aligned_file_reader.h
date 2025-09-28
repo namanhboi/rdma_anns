@@ -26,11 +26,16 @@ class LinuxAlignedFileReader : public AlignedFileReader {
   void read_fd(int fd, std::vector<IORequest> &read_reqs, void *ctx);
   void write_fd(int fd, std::vector<IORequest> &write_reqs, void *ctx);
 
+  /**
+     search_state is io request will be null which is a signal to stop the main
+     loop of search thread
+  */
+  void send_noop(IORequest *req, void *ctx);
   void send_io(IORequest &reqs, void *ctx, bool write);
   void send_io(std::vector<IORequest> &reqs, void *ctx, bool write);
   int poll(void *ctx);
   void poll_all(void *ctx);
-  void poll_wait(void *ctx);
+  IORequest *poll_wait(void *ctx);
 
   // register thread-id for a context
   void register_thread(int flag = 0);

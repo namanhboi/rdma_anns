@@ -1,52 +1,51 @@
 #include "linux_aligned_file_reader.h"
 
-#include "liburing.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
-#include "query_buf.h"
-
+#include <mutex>
+#include <thread>
 #define MAX_EVENTS 256
 namespace {
-  constexpr uint64_t kNoUserData = 0;
-  void execute_io(void *context, int fd, std::vector<IORequest> &reqs,
-                  uint64_t n_retries = 0, bool write = false) {
-    io_uring *ring = (io_uring *)context;
-    while (true) {
-      for (uint64_t j = 0; j < reqs.size(); j++) {
-	auto sqe = io_uring_get_sqe(ring);
-	sqe->user_data = kNoUserData;
-	if (write) {
-          io_uring_prep_write(sqe, fd, reqs[j].buf, reqs[j].len, reqs[j].offset);
-	} else {
-          io_uring_prep_read(sqe, fd, reqs[j].buf, reqs[j].len, reqs[j].offset);
-	}
-      }
-      io_uring_submit(ring);
-
-      io_uring_cqe *cqe = nullptr;
-      bool fail = false;
-      for (uint64_t j = 0; j < reqs.size(); j++) {
-	int ret = 0;
-	do {
-          ret = io_uring_wait_cqe(ring, &cqe);
-	} while (ret == -EINTR);
-
-	if (ret < 0 || cqe->res < 0) {
-          fail = true;
-          LOG(ERROR) << "Failed " << strerror(-ret) << " " << ring << " " << j
-          << " " << reqs[j].buf << " " << reqs[j].len << " "
-          << reqs[j].offset;
-          break; // CQE broken.
-	}
-	io_uring_cqe_seen(ring, cqe);
-      }
-      if (!fail) { // repeat until no fails.
-	break;
+constexpr uint64_t kNoUserData = 0;
+void execute_io(void *context, int fd, std::vector<IORequest> &reqs,
+                uint64_t n_retries = 0, bool write = false) {
+  io_uring *ring = (io_uring *)context;
+  while (true) {
+    for (uint64_t j = 0; j < reqs.size(); j++) {
+      auto sqe = io_uring_get_sqe(ring);
+      sqe->user_data = kNoUserData;
+      if (write) {
+        io_uring_prep_write(sqe, fd, reqs[j].buf, reqs[j].len, reqs[j].offset);
+      } else {
+        io_uring_prep_read(sqe, fd, reqs[j].buf, reqs[j].len, reqs[j].offset);
       }
     }
+    io_uring_submit(ring);
+
+    io_uring_cqe *cqe = nullptr;
+    bool fail = false;
+    for (uint64_t j = 0; j < reqs.size(); j++) {
+      int ret = 0;
+      do {
+        ret = io_uring_wait_cqe(ring, &cqe);
+      } while (ret == -EINTR);
+
+      if (ret < 0 || cqe->res < 0) {
+        fail = true;
+        LOG(ERROR) << "Failed " << strerror(-ret) << " " << ring << " " << j
+                   << " " << reqs[j].buf << " " << reqs[j].len << " "
+                   << reqs[j].offset;
+        break; // CQE broken.
+      }
+      io_uring_cqe_seen(ring, cqe);
+    }
+    if (!fail) { // repeat until no fails.
+      break;
+    }
   }
+}
 } // namespace
 
 LinuxAlignedFileReader::LinuxAlignedFileReader() { this->file_desc = -1; }
@@ -63,37 +62,63 @@ LinuxAlignedFileReader::~LinuxAlignedFileReader() {
       // error checks
       if (ret == -1) {
         std::cerr << "close() failed; returned " << ret << ", errno=" << errno
-        << ":" << ::strerror(errno) << std::endl;
+                  << ":" << ::strerror(errno) << std::endl;
       }
     }
   }
 }
 
-namespace ioctx {
-  static thread_local io_uring *ring = nullptr;
-};
-
 void *LinuxAlignedFileReader::get_ctx(int flag) {
-  if (unlikely(ioctx::ring == nullptr)) {
-    register_thread(flag);
+  std::unique_lock<std::mutex> lk(ctx_mut);
+  // perform checks only in DEBUG mode
+  if (ctx_map.find(std::this_thread::get_id()) == ctx_map.end()) {
+    std::cerr << "bad thread access; returning -1 as io_context_t" << std::endl;
+    return this->bad_ctx;
+  } else {
+    return ctx_map[std::this_thread::get_id()];
   }
-  return ioctx::ring;
 }
 
 void LinuxAlignedFileReader::register_thread(int flag) {
-  if (ioctx::ring == nullptr) {
-    ioctx::ring = new io_uring();
-    io_uring_queue_init(MAX_EVENTS, ioctx::ring, flag);
+  auto my_id = std::this_thread::get_id();
+  std::unique_lock<std::mutex> l(ctx_mut);
+  if (ctx_map.find(my_id) != ctx_map.end()){
+    std::cerr << "multiple calls to register_thread from the same thread" << std::endl;
+    return;
   }
+  io_uring* ctx = new io_uring();
+  io_uring_queue_init(MAX_EVENTS, ctx, flag);
+  ctx_map[my_id] = ctx;
+  ctx_mutex_map[ctx] = std::make_unique<std::mutex>();
+  l.unlock();
 }
+
 
 void LinuxAlignedFileReader::deregister_thread() {
-  io_uring_queue_exit(ioctx::ring);
-  delete ioctx::ring;
-  ioctx::ring = nullptr;
+  auto my_id = std::this_thread::get_id();
+  std::unique_lock<std::mutex> lk(ctx_mut);
+  assert(ctx_map.find(my_id) != ctx_map.end());
+  lk.unlock();
+  io_uring *ctx = reinterpret_cast<io_uring *>(this->get_ctx());
+  
+  io_uring_queue_exit(ctx);
+
+  lk.lock();
+  ctx_map.erase(my_id);
+  ctx_mutex_map.erase(ctx);
+  std::cerr << "returned ctx from thread-id:" << my_id << std::endl;
+  lk.unlock();
 }
 
-void LinuxAlignedFileReader::deregister_all_threads() { return; }
+void LinuxAlignedFileReader::deregister_all_threads() {
+  std::unique_lock<std::mutex> lk(ctx_mut);
+  for (auto x = ctx_map.begin(); x != ctx_map.end(); x++) {
+    io_uring* ctx= x->second;
+    io_uring_queue_exit(ctx);
+  }
+  ctx_map.clear();
+  ctx_mutex_map.clear();
+}
 
 void LinuxAlignedFileReader::open(const std::string &fname,
                                   bool enable_writes = false,
@@ -121,6 +146,8 @@ void LinuxAlignedFileReader::close() {
 
 void LinuxAlignedFileReader::read(std::vector<IORequest> &read_reqs, void *ctx,
                                   bool async) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);
   assert(this->file_desc != -1);
   execute_io(ctx, this->file_desc, read_reqs);
   if (async == true) {
@@ -130,6 +157,8 @@ void LinuxAlignedFileReader::read(std::vector<IORequest> &read_reqs, void *ctx,
 
 void LinuxAlignedFileReader::write(std::vector<IORequest> &write_reqs,
                                    void *ctx, bool async) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);  
   assert(this->file_desc != -1);
   execute_io(ctx, this->file_desc, write_reqs, 0, true);
   if (async == true) {
@@ -139,6 +168,8 @@ void LinuxAlignedFileReader::write(std::vector<IORequest> &write_reqs,
 
 void LinuxAlignedFileReader::read_fd(int fd, std::vector<IORequest> &read_reqs,
                                      void *ctx) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);  
   assert(this->file_desc != -1);
   execute_io(ctx, fd, read_reqs);
 }
@@ -146,11 +177,15 @@ void LinuxAlignedFileReader::read_fd(int fd, std::vector<IORequest> &read_reqs,
 void LinuxAlignedFileReader::write_fd(int fd,
                                       std::vector<IORequest> &write_reqs,
                                       void *ctx) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);
   assert(this->file_desc != -1);
   execute_io(ctx, fd, write_reqs, 0, true);
 }
 
 void LinuxAlignedFileReader::send_io(IORequest &req, void *ctx, bool write) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);
   io_uring *ring = (io_uring *)ctx;
   auto sqe = io_uring_get_sqe(ring);
   req.finished = false;
@@ -163,8 +198,22 @@ void LinuxAlignedFileReader::send_io(IORequest &req, void *ctx, bool write) {
   io_uring_submit(ring);
 }
 
+void LinuxAlignedFileReader::send_noop(IORequest *req,void *ctx) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);
+  io_uring *ring = (io_uring *)ctx;
+  auto sqe = io_uring_get_sqe(ring);
+  req->finished = false;
+  sqe->user_data = (uint64_t)req;
+  io_uring_prep_nop(sqe);
+  io_uring_submit(ring);
+}
+
+
 void LinuxAlignedFileReader::send_io(std::vector<IORequest> &reqs, void *ctx,
                                      bool write) {
+  std::unique_ptr<std::mutex> &ctx_mut = ctx_mutex_map[ctx];
+  std::unique_lock<std::mutex> lock(*ctx_mut);  
   io_uring *ring = (io_uring *)ctx;
   for (uint64_t j = 0; j < reqs.size(); j++) {
     auto sqe = io_uring_get_sqe(ring);
@@ -218,7 +267,7 @@ void LinuxAlignedFileReader::poll_all(void *ctx) {
   }
 }
 
-void LinuxAlignedFileReader::poll_wait(void *ctx) {
+IORequest* LinuxAlignedFileReader::poll_wait(void *ctx) {
   io_uring *ring = (io_uring *)ctx;
   io_uring_cqe *cqe = nullptr;
   int ret = 0;
@@ -233,4 +282,5 @@ void LinuxAlignedFileReader::poll_wait(void *ctx) {
     req->finished = true;
   }
   io_uring_cqe_seen(ring, cqe);
+  return req;
 }

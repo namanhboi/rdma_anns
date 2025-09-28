@@ -17,12 +17,15 @@ struct IORequest {
   uint64_t u_offset;  // where to read from (unaligned)
   uint64_t u_len;     // how much to read (unaligned)
   void *mr;           // memory region for this request, if needed.
+  void* search_state; // pointer to the search state where this request came from 
   
   IORequest() : offset(0), len(0), buf(nullptr) {
   }
 
-  IORequest(uint64_t offset, uint64_t len, void *buf, uint64_t u_offset, uint64_t u_len, void *mr = nullptr)
-      : offset(offset), len(len), buf(buf), u_offset(u_offset), u_len(u_len), mr(mr) {
+  IORequest(uint64_t offset, uint64_t len, void *buf, uint64_t u_offset,
+            uint64_t u_len, void *mr = nullptr, void *search_state = nullptr)
+      : offset(offset), len(len), buf(buf), u_offset(u_offset), u_len(u_len),
+      mr(mr), search_state(search_state) {
     assert(IS_512_ALIGNED(offset));
     assert(IS_512_ALIGNED(len));
     assert(IS_512_ALIGNED(buf));

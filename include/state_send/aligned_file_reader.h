@@ -6,10 +6,19 @@
 #include <unistd.h>
 #include "query_buf.h"
 
+#include "liburing.h"
 #include <malloc.h>
 #include <cstdio>
+#include "query_buf.h"
+#include <thread>
+#include "tsl/robin_map.h"
 
 class AlignedFileReader {
+protected:
+  tsl::robin_map<std::thread::id, io_uring *> ctx_map;
+  tsl::robin_map<void *, std::unique_ptr<std::mutex>> ctx_mutex_map;
+  std::mutex ctx_mut;
+  
  public:
   // returns the thread-specific io ring.
   // If not constructed, it will register the thread (using the flag) and return the context.
@@ -32,14 +41,19 @@ class AlignedFileReader {
   virtual void read_fd(int fd, std::vector<IORequest> &read_reqs, void *ctx) = 0;
   virtual void write_fd(int fd, std::vector<IORequest> &write_reqs, void *ctx) = 0;
 
+
+    /**
+     search_state is io request will be null which is a signal to stop the main
+     loop of search thread
+  */
+  virtual void send_noop(IORequest *req, void *ctx) = 0;
   virtual void send_io(IORequest &reqs, void *ctx, bool write) = 0;
   virtual void send_io(std::vector<IORequest> &reqs, void *ctx, bool write) = 0;
 
   virtual int poll(void *ctx) = 0;
   virtual void poll_all(void *ctx) = 0;
-  virtual void poll_wait(void *ctx) = 0;
+  virtual IORequest* poll_wait(void *ctx) = 0;
 
- protected:
   // register thread-id for a context
   virtual void register_thread(int flag = 0) = 0;
   // de-register thread-id for a context

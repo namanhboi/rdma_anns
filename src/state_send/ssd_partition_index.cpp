@@ -3,95 +3,6 @@
 #include <limits>
 #include <stdexcept>
 
-
-
-template <typename T, typename TagT>
-SSDPartitionIndex<T, TagT>::IOSubmissionThread::IOSubmissionThread(
-    SSDPartitionIndex *parent, uint32_t num_search_threads)
-: parent(parent), num_search_threads(num_search_threads) {
-  if (!parent) throw std::invalid_argument("parent cannot be null");
-  if (num_search_threads > MAX_SEARCH_THREADS)
-    throw std::invalid_argument("too many search threads");
-  for (auto i = 0; i < num_search_threads; i++) {
-    thread_io_requests[i].reserve(max_requests);
-  }
-
-  thread_io_ctx.fill(nullptr);
-  LOG(INFO) << "created the io submission thread";
-}
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::start() {
-  running = true;
-  this->real_thread = std::thread(
-				  &SSDPartitionIndex<T, TagT>::IOSubmissionThread::main_loop, this);
-}
-
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::signal_stop() {
-  running = false;
-  this->concurrent_io_req_queue.enqueue({nullptr, std::numeric_limits<uint64_t>::max(), {}});
-}
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::join() {
-  if (this->real_thread.joinable())
-    this->real_thread.join();
-}
-
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::push_io_request(
-								     thread_io_req_t thread_io_req) {
-  this->concurrent_io_req_queue.enqueue(thread_io_req);
-}
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::submit_requests(
-								     std::vector<IORequest> &io_requests, void *ctx) {
-  parent->reader->read(io_requests, ctx);
-}
-
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::IOSubmissionThread::main_loop() {
-  std::array<thread_io_req_t, max_requests> requests;
-  while (running) {
-    size_t num_dequeued_requests =
-        this->concurrent_io_req_queue.wait_dequeue_bulk(requests.begin(),
-                                                        max_requests);
-    for (size_t i = 0; i < num_dequeued_requests; i++) {
-      if (requests[i].thread_id == std::numeric_limits<uint64_t>::max() &&
-          requests[i].ctx == nullptr) {
-        continue;
-      }
-
-      if (requests[i].thread_id >= MAX_SEARCH_THREADS) {
-        throw std::runtime_error("invalid thread id " +
-                                 std::to_string(requests[i].thread_id));
-      }
-
-      thread_io_requests[requests[i].thread_id].emplace_back(
-							     requests[i].io_request);
-
-      if (thread_io_ctx[requests[i].thread_id] == nullptr) {
-        thread_io_ctx[requests[i].thread_id] = requests[i].ctx;
-      }
-    }
-    for (auto thread_id = 0; thread_id < num_search_threads; thread_id++) {
-      if (!thread_io_requests[thread_id].empty()) {
-	submit_requests(thread_io_requests[thread_id], thread_io_ctx[thread_id]);
-        thread_io_requests[thread_id].clear();
-      }
-    }
-  }
-}
-
-
-
-
-
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::Metric m, uint32_t num_partitions, uint32_t num_search_threads,
@@ -374,22 +285,76 @@ void SSDPartitionIndex<T, TagT>::compute_pq_dists(const uint32_t src,
                                             count);
 }
 
+
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::search(const T *query, const uint64_t k_search,
-                                        const uint32_t mem_L,
-                                        const uint64_t l_search, TagT *res_tags,
-                                        float *res_dists,
-                                        const uint64_t beam_width) {
-  throw std::runtime_error("search not yet implemented");
+void SSDPartitionIndex<T, TagT>::notify_client_local(
+						     SearchState *search_state) {
+  auto &full_retset = search_state->full_retset;
+  std::sort(full_retset.begin(), full_retset.end(),
+            [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
+              return left < right;
+            });
+
+  uint64_t t = 0;
+  for (uint64_t i = 0; i < full_retset.size() && t < search_state->k_search; i++) {
+    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
+      continue;  // deduplicate.
+    }
+    search_state->res_tags[t] = full_retset[i].id;  // use ID to replace tags
+    if (search_state->res_dists != nullptr) {
+      search_state->res_dists[t] = full_retset[i].distance;
+    }
+    t++;
+  }
+  std::shared_ptr<std::atomic<uint64_t>> completion_count =
+    search_state->completion_count;
+  (*completion_count) = (*completion_count) + 1;
+  delete search_state;
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
+    const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
+    const uint64_t l_search, TagT *res_tags, float *res_dists,
+    const uint64_t beam_width,
+    std::shared_ptr<std::atomic<uint64_t>> completion_count) {
+
+  // need to create a state then issue io
+  SearchState *new_search_state = new SearchState;
+  new_search_state->client_type = ClientType::LOCAL;
+  new_search_state->l_search = l_search;
+  new_search_state->k_search = k_search;
+  new_search_state->beam_width = k_search;
+  new_search_state->res_tags = res_tags;
+  new_search_state->res_dists = res_dists;
+  new_search_state->completion_count = completion_count;
+  
+  
+  memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
+  float *pq_dists = new_search_state->pq_dists;
+  pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
+  new_search_state->reset();
+  uint32_t best_medoid = medoids[0];
+  new_search_state->compute_and_add_to_retset(&best_medoid, 1);
 }
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
-  throw std::runtime_error("start not yet implemented");
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    search_threads.push_back(std::make_unique<SearchThread>(this, thread_id));
+  }
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    search_threads[thread_id]->start();
+  }
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::shutdown() {
-  throw std::runtime_error("shutdown not yet implemented");
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    search_threads[thread_id]->signal_stop();
+  }
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    search_threads[thread_id]->join();
+  }
 }
 
 template <typename T, typename TagT>

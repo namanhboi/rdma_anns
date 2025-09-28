@@ -1,5 +1,5 @@
 #pragma once
-#include "aligned_file_reader.h"
+
 #include "blockingconcurrentqueue.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "linux_aligned_file_reader.h"
@@ -23,42 +23,15 @@
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 #define READ_UNSIGNED(stream, val) stream.read((char *)&val, sizeof(unsigned))
 
-
 #define MAX_SEARCH_THREADS 64
-
-static constexpr int kMaxVectorDim = 512;
-
-/**
-   state of a beam search execution
- */
-template <typename T> struct alignas(SECTOR_LEN) SearchState {
-  // buffer.
-  char sectors[SECTOR_LEN * 128];
-  T query[kMaxVectorDim];
-  uint8_t pq_coord_scratch[32768 * 32];
-  float pq_dists[32768];
-  T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
-  float dist_scratch[512];
-  uint64_t data_buf_idx;
-  uint64_t sector_idx;
-
-  // search state.
-  std::vector<pipeann::Neighbor> full_retset;
-  std::vector<pipeann::Neighbor> retset;
-  tsl::robin_set<uint64_t> visited;
-
-  std::vector<unsigned> frontier;
-  using fnhood_t = std::tuple<unsigned, unsigned, char *>;
-  std::vector<fnhood_t> frontier_nhoods;
-  std::vector<IORequest> frontier_read_reqs;
-};
 
 namespace {
 inline void aggregate_coords(const unsigned *ids, const uint64_t n_ids,
                              const uint8_t *all_coords, const uint64_t ndims,
                              uint8_t *out) {
   for (uint64_t i = 0; i < n_ids; i++) {
-    memcpy(out + i * ndims, all_coords + ids[i] * ndims, ndims * sizeof(uint8_t));
+    memcpy(out + i * ndims, all_coords + ids[i] * ndims,
+           ndims * sizeof(uint8_t));
   }
 }
 
@@ -92,18 +65,83 @@ inline void pq_dist_lookup(const uint8_t *pq_ids, const uint64_t n_pts,
 }
 } // namespace
 
+static constexpr int kMaxVectorDim = 512;
+
 constexpr int max_requests = 1000;
 /**
   job is to manage search threads which advance the search states, eventually
   either sending them to other servers or send to client
  */
 template <typename T, typename TagT = uint32_t> class SSDPartitionIndex {
+public:
+  enum class SearchExecutionState {
+    FINISHED,
+    TOP_CAND_NODE_OFF_SERVER,
+    TOP_CAND_NODE_ON_SERVER
+  };
+  enum class ClientType {
+    LOCAL,
+    TCP,
+    RDMA,
+    CASCADE
+  };
+  /**
+     state of a beam search execution
+   */
+  struct alignas(SECTOR_LEN) SearchState {
+    // buffer.
+    char sectors[SECTOR_LEN * 128];
+    T query[kMaxVectorDim];
+    uint8_t pq_coord_scratch[32768 * 32];
+    float pq_dists[32768];
+    T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
+    float dist_scratch[512];
+    uint64_t data_buf_idx;
+    uint64_t sector_idx;
+
+    // search state.
+    std::vector<pipeann::Neighbor> full_retset;
+    std::vector<pipeann::Neighbor> retset;
+    tsl::robin_set<uint64_t> visited;
+
+    std::vector<unsigned> frontier;
+    using fnhood_t = std::tuple<unsigned, unsigned, char *>;
+    std::vector<fnhood_t> frontier_nhoods;
+    std::vector<IORequest> frontier_read_reqs;
+
+    SSDPartitionIndex *parent;
+    unsigned cur_list_size, cmps, k;
+    uint64_t l_search, k_search, beam_width;
+
+    void compute_dists(const unsigned *ids, const uint64_t n_ids,
+                       float *dists_out);
+    void print();
+    void reset();
+
+    void compute_and_add_to_retset(const unsigned *node_ids,
+                                   const uint64_t n_ids);
+    void issue_next_io_batch(void *ctx);
+
+    SearchExecutionState explore_frontier();
+
+    bool search_ends();
+
+    // client information to notify of completion
+    ClientType client_type;
+    //local
+    TagT *res_tags;
+    float *res_dists;
+    std::shared_ptr<std::atomic<uint64_t>> completion_count;
+  };
+
 private:
   /**
+     Version 1:
      All search threads will share a io thread. All io
      operations of the searchthreads must happen through that io thread.
      This is based on https://github.com/axboe/liburing/issues/129.
-     The io thread will manage all the contexts that the search threads registers.
+     The io thread will manage all the contexts that the search threads
+     registers.
 
      For SubmissionThread and SearchThread:
      - TODO: Need to do the diskann way of having a map to get the appropriate
@@ -112,8 +150,14 @@ private:
      of pipeann
      - Search thread will call register_thread then expose the context via a
      getter function call
-       - One file reader belonging to SSDIndex but multiple contexts
-  */
+     - One file reader belonging to SSDIndex but multiple contexts
+
+     Version 2 (probably better, will use this one):
+     just put a lock on sqe submission ring and then both the send thread and
+     the parent can send requests through the same context safely
+     seems like this version is much simpler and avoid overhead of extra thread.
+     Lock contention for the ring shouldn't be too bad but we'll see.
+   */
   class IOSubmissionThread {
     struct thread_io_req_t {
       void *ctx;
@@ -127,9 +171,10 @@ private:
     std::atomic<bool> running{false};
     uint32_t num_search_threads;
     std::array<std::vector<IORequest>, MAX_SEARCH_THREADS> thread_io_requests;
-    std::array<void*, MAX_SEARCH_THREADS> thread_io_ctx;
+    std::array<void *, MAX_SEARCH_THREADS> thread_io_ctx;
     void submit_requests(std::vector<IORequest> &io_requests, void *ctx);
     void main_loop();
+
   public:
     IOSubmissionThread(SSDPartitionIndex *parent, uint32_t num_search_threads);
     void push_io_request(thread_io_req_t thread_io_req);
@@ -137,37 +182,35 @@ private:
     void join();
     void signal_stop();
   };
-
   class SearchThread {
     SSDPartitionIndex *parent;
     std::thread real_thread;
     // id used so that parent can send queries round robin
     uint64_t thread_id;
-    bool running = false;
+    std::atomic<bool> running{false};
     void *ctx;
     /**
        main loop that runs the search
        Needs to deregister the thread's ctx after while loop exits
      */
-    void main_loop(); 
-    friend class SSDPartitionIndex; // to access ctx of class
+    void main_loop();
+    friend class SSDPartitionIndex; // to access ctx of class to send io
   public:
     /**
        will run the search, won't contain a queue/have any way of directly
-       issueing a query. Instead, wait on io requests submitted from the io
-       thread to complete. Any io request must be issued through the io
-       thread.
+       issueing a query. Instead, wait on io requests
      */
-    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id, void *ctx);
+    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id);
     void start();
     void signal_stop();
-    void stop();
+    void join();
   };
 
   std::vector<std::unique_ptr<SearchThread>> search_threads;
   std::unique_ptr<IOSubmissionThread> io_thread;
   uint32_t num_search_threads;
   std::atomic<int> current_search_thread_id = 0;
+
 public:
   /**
      starts all search and io threads
@@ -177,7 +220,8 @@ public:
   /**
      shutdown all search and io threads
    */
-  void shutdown(); 
+  void shutdown();
+
 public:
   /**
      contains code for general setup stuff for the pipeann disk index.
@@ -239,7 +283,6 @@ public:
     return (sector_no - 1) * nnodes_per_sector + sector_off;
   }
 
-
   static constexpr uint32_t kInvalidID = std::numeric_limits<uint32_t>::max();
 
   // TODO:load function needs load the cluster index mapping file.
@@ -268,7 +311,7 @@ public:
   libcuckoo::cuckoohash_map<uint32_t, TagT> tags;
   TagT id2tag(uint32_t id) {
 #ifdef NO_MAPPING
-    return id;  // use ID to replace tags.
+    return id; // use ID to replace tags.
 #else
     TagT ret;
     if (tags.find(id, ret)) {
@@ -278,7 +321,6 @@ public:
     }
 #endif
   }
-
 
   // load compressed data, and obtains the handle to the disk-resident index
   // also loads in the paritition index mapping file if num_partitions > 1
@@ -295,8 +337,9 @@ public:
   }
 
   // computes PQ dists between src->[ids] into fp_dists (merge, insert)
-  void compute_pq_dists(const uint32_t src, const uint32_t *ids, float *fp_dists,
-                        const uint32_t count, uint8_t *aligned_scratch = nullptr);
+  void compute_pq_dists(const uint32_t src, const uint32_t *ids,
+                        float *fp_dists, const uint32_t count,
+                        uint8_t *aligned_scratch = nullptr);
 
   std::pair<uint8_t *, uint32_t> get_pq_config() {
     return std::make_pair(this->data.data(), (uint32_t)this->n_chunks);
@@ -349,26 +392,36 @@ private:
   bool data_is_normalized = false;
 
   // medoid/start info
-  uint32_t *medoids = nullptr;  // by default it is just one entry point of graph, we
+  uint32_t *medoids =
+      nullptr; // by default it is just one entry point of graph, we
   // can optionally have multiple starting points
   size_t num_medoids = 1; // by default it is set to 1
-
 
   // test the estimation efficacy.
   uint32_t beam_width, l_index, range, maxc;
   float alpha;
   // assumed max thread, only the first nthreads are initialized.
 
-
-  bool load_flag = false;    // already loaded.
-  bool enable_tags = false;  // support for tags and dynamic indexing
-
+  bool load_flag = false;   // already loaded.
+  bool enable_tags = false; // support for tags and dynamic indexing
 
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;
-  
+
 public:
-  void search(const T *query, const uint64_t k_search, const uint32_t mem_L,
-              const uint64_t l_search, TagT *res_tags, float *res_dists,
-              const uint64_t beam_width);
+  /** right now we search the disk index directly without going through the in
+   * mem index
+   After query is done, increment completion_count
+   */
+  void search_ssd_index_local(
+      const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
+      const uint64_t l_search, TagT *res_tags, float *res_dists,
+      const uint64_t beam_width,
+			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
+
+  /**
+     writes results to the res_tags and res_dists that client specified and
+     increment completion count. Deallocates the search_state as well.
+  */
+  void notify_client_local(SearchState *search_state);
 };

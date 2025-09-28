@@ -3,8 +3,15 @@ set(COMMON_INCLUDE_DIR
   ${PROJECT_SOURCE_DIR}/extern/liburing/src/include
 )
 
-
-file(GLOB CPP_FILES *.cpp)
+set (CPP_FILES
+  distance.cpp
+  io_submission_thread.cpp
+  linux_aligned_file_reader.cpp
+  search_state.cpp
+  ssd_partition_index.cpp
+  utils.cpp
+  search_thread.cpp
+)
 add_library(ssd_state_send SHARED
   ${CPP_FILES}
 )
