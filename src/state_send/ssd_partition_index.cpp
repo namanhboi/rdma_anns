@@ -356,12 +356,19 @@ template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::shutdown() {
+  std::set<void *> ctxs;
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    ctxs.insert(search_threads[thread_id]->ctx);
+    assert(ctxs.size() == thread_id + 1);
+  }
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
     search_threads[thread_id]->signal_stop();
   }
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+
     search_threads[thread_id]->join();
   }
+  std::cout << "DONE WITH SHUTOWN" <<std::endl;
 }
 
 template <typename T, typename TagT>

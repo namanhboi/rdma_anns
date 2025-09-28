@@ -21,10 +21,11 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop() {
   if (ctx == nullptr) {
     throw std::runtime_error("ctx given by get_ctx is nullptr");
   }
+  int num_requests = 0;
   while (running) {
     IORequest *req = this->parent->reader->poll_wait(ctx);
+    num_requests++;
     if (req->search_state == nullptr) {
-      std::cerr << "poison pill detected in search thread " << std::endl;
       delete req;
       break;
     }
@@ -65,8 +66,10 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::join() {
-  if (real_thread.joinable())
+  if (real_thread.joinable()) {
+    assert(running == false);
     real_thread.join();
+  }
 }
 
 

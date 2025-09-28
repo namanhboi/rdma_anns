@@ -1,5 +1,7 @@
 #include "benchmark_client.hpp"
+#include <chrono>
 #include <iomanip>
+#include <thread>
 #include "ssd_partition_index.h"
 #include "linux_aligned_file_reader.h"
 
@@ -95,14 +97,15 @@ template <typename T> int search_disk_index(int argc, char **argv) {
     LOG(INFO) << "Load memory index " << mem_index_path << " " << query_dim;
     _pFlashIndex->load_mem_index(m, query_dim, mem_index_path);
   }
+  _pFlashIndex->start();
+  std::this_thread::sleep_for(std::chrono::seconds(3));
+  _pFlashIndex->shutdown();
   return 0;
 }
 
 /**
    export INDEX_PREFIX=/home/nam/big-ann-benchmarks/data/bigann/pipeann_10M
-   ./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} //
-16 32 /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin //
-/home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 10 10 20 30 40
+   ./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} 16 32 /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin /home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 10 10 20 30 40
 
 */
 

@@ -408,6 +408,8 @@ private:
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;
 
+
+  std::atomic<uint64_t> current_search_thread_index{0};
 public:
   /** right now we search the disk index directly without going through the in
    * mem index

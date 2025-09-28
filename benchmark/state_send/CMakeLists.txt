@@ -8,3 +8,4 @@ target_include_directories(run_benchmark_state_send PRIVATE ${COMMON_INCLUDE_DIR
 target_link_libraries(run_benchmark_state_send
   ssd_state_send)
 
+target_compile_options(run_benchmark_state_send PRIVATE -g -O0 -Wall)

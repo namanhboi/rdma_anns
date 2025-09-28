@@ -17,7 +17,7 @@ struct IORequest {
   uint64_t u_offset;  // where to read from (unaligned)
   uint64_t u_len;     // how much to read (unaligned)
   void *mr;           // memory region for this request, if needed.
-  void* search_state; // pointer to the search state where this request came from 
+  void* search_state = nullptr; // pointer to the search state where this request came from 
   
   IORequest() : offset(0), len(0), buf(nullptr) {
   }
