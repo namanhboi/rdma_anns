@@ -319,6 +319,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
     const uint64_t beam_width,
     std::shared_ptr<std::atomic<uint64_t>> completion_count) {
 
+  if (beam_width != 1) {
+    throw std::invalid_argument("beam width has to be 1 because of the design");
+  }
   // need to create a state then issue io
   SearchState *new_search_state = new SearchState;
   new_search_state->client_type = ClientType::LOCAL;
@@ -336,6 +339,10 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   new_search_state->reset();
   uint32_t best_medoid = medoids[0];
   new_search_state->compute_and_add_to_retset(&best_medoid, 1);
+
+  void *ctx = search_threads[current_search_thread_id]->ctx;
+  new_search_state->issue_next_io_batch(ctx);
+  current_search_thread_id = (current_search_thread_id + 1) % num_search_threads;
 }
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {

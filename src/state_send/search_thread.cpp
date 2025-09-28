@@ -24,6 +24,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop() {
   while (running) {
     IORequest *req = this->parent->reader->poll_wait(ctx);
     if (req->search_state == nullptr) {
+      std::cerr << "poison pill detected in search thread " << std::endl;
       delete req;
       break;
     }
