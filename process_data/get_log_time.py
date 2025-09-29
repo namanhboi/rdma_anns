@@ -69,38 +69,78 @@ def get_start_end_type_log_tags(log_tags_df):
 
 
 
+
+
+# def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'],duration_name='latency'):
+#      filtered_df = log_df[(log_df['tag'] == start_tag) | (log_df['tag'] == end_tag)]
+#      grouped = filtered_df.groupby(group_by_columns)['timestamp']
+#      duration_results = []
+#      num_malformed = 0
+#      for group_values, timestamps in grouped:
+#           latency = timestamps.max() - timestamps.min()
+#           if (len(timestamps) != 2):
+#               # print("len timestamp is " , len(timestamps))
+#               # print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
+#               # len_timestamps_list.append(len(timestamps))
+#               num_malformed += 1
+#               continue
+#           if len(group_by_columns) > 1:
+#                result = {group_by_column: value for group_by_column, value in zip(group_by_columns, group_values)}
+#                result[duration_name] = latency
+#                result["timestamp"] = timestamps.min()
+#                duration_results.append(result)
+#           else:
+#                duration_results.append({group_by_columns[0]: group_values, duration_name: latency, "timestamp": timestamps.min()})
+#      duration_df = pd.DataFrame(duration_results)
+#      if (num_malformed != 0):
+#          print("num_malformed", num_malformed)
+#      # print(f"{duration_name} duration size",len(duration_df))
+#      # print("num malformed", num_malformed)
+#      # print(pd.Series(len_timestamps_list).describe())
+#      return duration_df
 def get_durations(log_df, start_tag, end_tag, group_by_columns=['client_node_id'],duration_name='latency'):
      filtered_df = log_df[(log_df['tag'] == start_tag) | (log_df['tag'] == end_tag)]
      grouped = filtered_df.groupby(group_by_columns)['timestamp']
      duration_results = []
      num_malformed = 0
      for group_values, timestamps in grouped:
-          latency = timestamps.max() - timestamps.min()
-          # timestamps.sort_values()
-          # num_timestamps = len(timestamps)
-          # for i in range(0, num_timestamps - 1):
-              # latency = timestamps.max() - timstamps
           if (len(timestamps) != 2):
-              # print("len timestamp is " , len(timestamps))
-              # print("tag is" , group_values, start_tag, end_tag, filtered_df.loc[timestamps.index[0]])
-              # len_timestamps_list.append(len(timestamps))
               num_malformed += 1
               continue
+          
+          # Verify that min timestamp belongs to start_tag and max to end_tag
+          # Get the corresponding group data to check tags
+          if len(group_by_columns) == 1:
+              group_data = filtered_df[filtered_df[group_by_columns[0]] == group_values]
+          else:
+              # For multiple columns, create a mask for all conditions
+              mask = True
+              for col, val in zip(group_by_columns, group_values):
+                  mask = mask & (filtered_df[col] == val)
+              group_data = filtered_df[mask]
+          
+          # Get timestamps for each tag explicitly
+          start_timestamp = group_data[group_data['tag'] == start_tag]['timestamp'].iloc[0]
+          end_timestamp = group_data[group_data['tag'] == end_tag]['timestamp'].iloc[0]
+          
+          # Optional: warn if end timestamp is before start timestamp (negative latency)
+          if end_timestamp < start_timestamp:
+              print(f"Warning: Negative latency for group {group_values}. "
+                    f"End timestamp ({end_timestamp}) < Start timestamp ({start_timestamp})")
+          
+          latency = end_timestamp - start_timestamp
+          
           if len(group_by_columns) > 1:
                result = {group_by_column: value for group_by_column, value in zip(group_by_columns, group_values)}
                result[duration_name] = latency
-               result["timestamp"] = timestamps.min()
+               result["timestamp"] = start_timestamp
                duration_results.append(result)
           else:
-               duration_results.append({group_by_columns[0]: group_values, duration_name: latency, "timestamp": timestamps.min()})
+               duration_results.append({group_by_columns[0]: group_values, duration_name: latency, "timestamp": start_timestamp})
      duration_df = pd.DataFrame(duration_results)
      if (num_malformed != 0):
          print("num_malformed", num_malformed)
-     # print(f"{duration_name} duration size",len(duration_df))
-     # print("num malformed", num_malformed)
-     # print(pd.Series(len_timestamps_list).describe())
      return duration_df
-
 
 
 if __name__ == "__main__":

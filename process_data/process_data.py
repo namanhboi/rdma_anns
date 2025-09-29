@@ -224,7 +224,7 @@ def dummy_no_deserialize_udl_times(df, tag_fn):
     global_udl_handler_bytes_df = df[df["tag"] == tag_fn("LOG_DUMMY_HANDLER_START")]
     global_udl_handler_bytes_df = global_udl_handler_bytes_df[global_udl_handler_bytes_df["batch_id"] != 0]
 
-    return batch_send_latency, put_and_forget_time, udl_handler_time, udl_handler_bytes_df
+    return batch_send_latency, put_and_forget_time, udl_handler_time, global_udl_handler_bytes_df
 
 def dummy_udl_times(df, tag_fn):
     batch_send_latency = get_durations(df, tag_fn("LOG_DUMMY_BATCH_SEND_START"), tag_fn("LOG_DUMMY_HANDLER_START"),  ['batch_id'])

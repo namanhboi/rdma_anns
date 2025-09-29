@@ -306,9 +306,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_local(
     }
     t++;
   }
-  std::shared_ptr<std::atomic<uint64_t>> completion_count =
-    search_state->completion_count;
-  (*completion_count) = (*completion_count) + 1;
+  search_state->completion_count->fetch_add(1);
   delete search_state;
 }
 
@@ -318,32 +316,40 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
     const uint64_t l_search, TagT *res_tags, float *res_dists,
     const uint64_t beam_width,
     std::shared_ptr<std::atomic<uint64_t>> completion_count) {
-
   if (beam_width != 1) {
     throw std::invalid_argument("beam width has to be 1 because of the design");
   }
   // need to create a state then issue io
   SearchState *new_search_state = new SearchState;
+  new_search_state->parent = this;
   new_search_state->client_type = ClientType::LOCAL;
   new_search_state->l_search = l_search;
   new_search_state->k_search = k_search;
-  new_search_state->beam_width = k_search;
+  new_search_state->beam_width = beam_width;
   new_search_state->res_tags = res_tags;
   new_search_state->res_dists = res_dists;
   new_search_state->completion_count = completion_count;
-  
-  
+
+
   memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
   float *pq_dists = new_search_state->pq_dists;
   pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
   new_search_state->reset();
   uint32_t best_medoid = medoids[0];
   new_search_state->compute_and_add_to_retset(&best_medoid, 1);
-
+  // std::sort(new_search_state->retset.begin(),
+            // new_search_state->retset.begin() + new_search_state->cur_list_size);  
   void *ctx = search_threads[current_search_thread_id]->ctx;
+  if (ctx == nullptr) {
+    std::stringstream err;
+    err << "[" << __func__ << "] tried to issue io but ctx = nullptr" << std::endl;
+    throw std::runtime_error(err.str());
+  }
   new_search_state->issue_next_io_batch(ctx);
-  current_search_thread_id = (current_search_thread_id + 1) % num_search_threads;
+  current_search_thread_id =
+    (current_search_thread_id + 1) % search_threads.size();
 }
+
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
@@ -356,11 +362,6 @@ template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::shutdown() {
-  std::set<void *> ctxs;
-  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
-    ctxs.insert(search_threads[thread_id]->ctx);
-    assert(ctxs.size() == thread_id + 1);
-  }
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
     search_threads[thread_id]->signal_stop();
   }
@@ -380,9 +381,6 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     exit(1);
   }
   throw std::runtime_error("Just doing testing on main diskann rn");
-  // mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(metric,
-  // query_dim, 0, false, false, true);
-  // mem_index_->load(mem_index_path.c_str());
 }
 
 template class SSDPartitionIndex<float>;

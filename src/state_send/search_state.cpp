@@ -48,9 +48,9 @@ void SSDPartitionIndex<T, TagT>::SearchState::compute_and_add_to_retset(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchState::issue_next_io_batch(void *ctx) {
   if (search_ends()) {
+    std::cout << "search end deteced in issue next batch" << std::endl;
     return;
-  }
-  // clear iteration state
+  }  
   frontier.clear();
   frontier_nhoods.clear();
   frontier_read_reqs.clear();
@@ -82,6 +82,14 @@ void SSDPartitionIndex<T, TagT>::SearchState::issue_next_io_batch(void *ctx) {
     }
     parent->reader->send_io(frontier_read_reqs, ctx, false);
   }
+  // LOG(INFO) << "k, size of batch " << k << " " << frontier_read_reqs.size();
+  // LOG(INFO) << "k, size of frontier " << k << " " << frontier.size();
+  // if (frontier.empty()) {
+  //   LOG(INFO) << "k, frontier[0] " << "null";
+  // }
+  // else {
+  //   LOG(INFO) << "k, frontier[0] " << frontier[0];
+  // }
 }
 
 template <typename T, typename TagT>
@@ -138,10 +146,15 @@ SSDPartitionIndex<T, TagT>::SearchExecutionState SSDPartitionIndex<T, TagT>::Sea
     }
   }
 
-  if (nk <= k)
+  if (nk <= k) {
     k = nk; // k is the best position in retset updated in this round.
-  else
+  }else {
     ++k;
+  }
+  // LOG(INFO) << "k cur_list_size: " << k << " " << cur_list_size;
+  // for (auto &x : full_retset) {
+    // LOG(INFO) << "id dist: " << x.id << " " << x.distance;
+  // }  
 
   if (search_ends()) {
     return SearchExecutionState::FINISHED;

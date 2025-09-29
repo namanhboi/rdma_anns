@@ -21,22 +21,34 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop() {
   if (ctx == nullptr) {
     throw std::runtime_error("ctx given by get_ctx is nullptr");
   }
-  int num_requests = 0;
   while (running) {
     IORequest *req = this->parent->reader->poll_wait(ctx);
-    num_requests++;
     if (req->search_state == nullptr) {
+      std::cerr << "poison poll detected" << std::endl;
+      // this is a poison pill to shutdown the thread
       delete req;
       break;
     }
-    SearchState *state = reinterpret_cast<SearchState*>(req->search_state);
+    // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
+    // LOG(INFO) << "number of completions: " << ready;
+    
+    SearchState *state = reinterpret_cast<SearchState *>(req->search_state);
+    // assert(state->io_finished(ctx));
+    // std::cout << "l and k are  " << state->l_search << " " << state->k_search << std::endl;
+    // std::cout << "k and cur_list_size " << state->k << " " << state->cur_list_size << std::endl;
     SearchExecutionState s = state->explore_frontier();
     if (s == SearchExecutionState::FINISHED) {
       // TODO:send results to client, delete the state
-      this->parent->notify_client_local(state);
+      if (state->client_type == ClientType::LOCAL) {
+        this->parent->notify_client_local(state);
+      }
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
-      // TODO:issue io
+      // LOG(INFO) << "Issuing io";
       state->issue_next_io_batch(ctx);
+      if (state->frontier.empty()) {
+        // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
+        this->parent->notify_client_local(state);
+      }
     } else {
       throw std::runtime_error("multiple partitions not yet implemented");
     }
@@ -67,7 +79,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::join() {
   if (real_thread.joinable()) {
-    assert(running == false);
     real_thread.join();
   }
 }

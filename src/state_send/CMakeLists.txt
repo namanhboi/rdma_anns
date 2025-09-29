@@ -10,6 +10,7 @@ set (CPP_FILES
   search_state.cpp
   ssd_partition_index.cpp
   utils.cpp
+  aux_utils.cpp
   search_thread.cpp
 )
 add_library(ssd_state_send SHARED

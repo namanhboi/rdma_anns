@@ -121,6 +121,17 @@ public:
     void compute_and_add_to_retset(const unsigned *node_ids,
                                    const uint64_t n_ids);
     void issue_next_io_batch(void *ctx);
+    
+    bool io_finished(void *ctx) {
+      parent->reader->poll(ctx);
+      for (auto &req : frontier_read_reqs) {
+        if (!req.finished) {
+          return false;
+        }
+      }
+      return true;
+    }
+
 
     SearchExecutionState explore_frontier();
 
@@ -188,7 +199,7 @@ private:
     // id used so that parent can send queries round robin
     uint64_t thread_id;
     std::atomic<bool> running{false};
-    void *ctx;
+    void *ctx = nullptr;
     /**
        main loop that runs the search
        Needs to deregister the thread's ctx after while loop exits

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
-#define MAX_EVENTS 256
+#define MAX_EVENTS 4096
 namespace {
 constexpr uint64_t kNoUserData = 0;
 void execute_io(void *context, int fd, std::vector<IORequest> &reqs,
@@ -247,7 +247,10 @@ void LinuxAlignedFileReader::send_io(std::vector<IORequest> &reqs, void *ctx,
                          reqs[j].offset);
     }
   }
-  io_uring_submit(ring);
+  int ret = io_uring_submit(ring);
+  if (ret < 0) {
+    LOG(INFO) << "Submit failed: " << strerror(-ret);
+  }
 }
 
 int LinuxAlignedFileReader::poll(void *ctx) {
