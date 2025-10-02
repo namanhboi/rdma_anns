@@ -30,3 +30,8 @@ target_compile_definitions(communicator PRIVATE ZMQ_BUILD_DRAFT_API=1)
 add_executable(zmq_p2p_server zmq_p2p_server.cpp)
 target_include_directories(zmq_p2p_server PUBLIC ${COMMON_INCLUDE_DIR})
 target_link_libraries(zmq_p2p_server communicator)
+
+
+add_executable(get_version get_version.cpp)
+target_include_directories(get_version PUBLIC ${COMMON_INCLUDE_DIR})
+target_link_libraries(get_version ${ZeroMQ_LIBRARIES})
