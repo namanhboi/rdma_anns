@@ -40,6 +40,7 @@ template <typename T> int search_disk_index(int argc, char **argv) {
   std::string truthset_bin(argv[index++]);
   uint64_t recall_at = std::atoi(argv[index++]);
   std::string dist_metric(argv[index++]);
+  uint32_t search_mode = std::atoi(argv[index++]);
   uint32_t mem_L = std::atoi(argv[index++]);
 
   pipeann::Metric m =
@@ -130,7 +131,7 @@ template <typename T> int search_disk_index(int argc, char **argv) {
           query_result_tags_32.data() + (i * recall_at),
           query_result_dists[test_id].data() + (i * recall_at),
 					   (uint64_t)beamwidth, completion_count);
-      std::this_thread::sleep_for(std::chrono::microseconds(200));
+      // std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
     while (*completion_count != query_num) {
       std::this_thread::sleep_for(std::chrono::microseconds(100));

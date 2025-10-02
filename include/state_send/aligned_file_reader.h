@@ -50,7 +50,7 @@ protected:
   virtual void send_io(IORequest &reqs, void *ctx, bool write) = 0;
   virtual void send_io(std::vector<IORequest> &reqs, void *ctx, bool write) = 0;
 
-  virtual int poll(void *ctx) = 0;
+  virtual IORequest* poll(void *ctx) = 0;
   virtual void poll_all(void *ctx) = 0;
   virtual IORequest* poll_wait(void *ctx) = 0;
 

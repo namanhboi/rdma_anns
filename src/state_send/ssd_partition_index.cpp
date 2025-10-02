@@ -307,7 +307,6 @@ void SSDPartitionIndex<T, TagT>::notify_client_local(
     t++;
   }
   search_state->completion_count->fetch_add(1);
-  delete search_state;
 }
 
 template <typename T, typename TagT>
@@ -339,6 +338,7 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   new_search_state->compute_and_add_to_retset(&best_medoid, 1);
   // std::sort(new_search_state->retset.begin(),
             // new_search_state->retset.begin() + new_search_state->cur_list_size);  
+#ifdef BALANCE_ALL
   void *ctx = search_threads[current_search_thread_id]->ctx;
   if (ctx == nullptr) {
     std::stringstream err;
@@ -346,6 +346,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
     throw std::runtime_error(err.str());
   }
   new_search_state->issue_next_io_batch(ctx);
+#else
+  search_threads[current_search_thread_id]->push_state(new_search_state);
+#endif
   current_search_thread_id =
     (current_search_thread_id + 1) % search_threads.size();
 }

@@ -253,12 +253,12 @@ void LinuxAlignedFileReader::send_io(std::vector<IORequest> &reqs, void *ctx,
   }
 }
 
-int LinuxAlignedFileReader::poll(void *ctx) {
+IORequest * LinuxAlignedFileReader::poll(void *ctx) {
   io_uring *ring = (io_uring *)ctx;
   io_uring_cqe *cqe = nullptr;
   int ret = io_uring_peek_cqe(ring, &cqe);
   if (ret < 0) {
-    return ret; // not finished yet.
+    return nullptr; // not finished yet.
   }
   if (cqe->res < 0) {
     LOG(ERROR) << "Failed " << strerror(-cqe->res);
@@ -268,7 +268,7 @@ int LinuxAlignedFileReader::poll(void *ctx) {
     req->finished = true;
   }
   io_uring_cqe_seen(ring, cqe);
-  return 0;
+  return req;
 }
 
 void LinuxAlignedFileReader::poll_all(void *ctx) {

@@ -33,7 +33,7 @@ class LinuxAlignedFileReader : public AlignedFileReader {
   void send_noop(IORequest *req, void *ctx);
   void send_io(IORequest &reqs, void *ctx, bool write);
   void send_io(std::vector<IORequest> &reqs, void *ctx, bool write);
-  int poll(void *ctx);
+  IORequest * poll(void *ctx);
   void poll_all(void *ctx);
   IORequest *poll_wait(void *ctx);
 

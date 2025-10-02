@@ -21,13 +21,18 @@ export $bin_path=$HOME/.local/bin
 curl -sfL https://direnv.net/install.sh | bash
 ```
 
-
+## Install derecho/cascade
 Follow the guide here: https://docs.google.com/document/d/108KxSywDMZ3suJ3kaoqFck7SFpBnq902Huu_4PerFM0/edit?tab=t.0
 - create you own [name]_env.sh file and run the files here step by step: https://github.com/aliciayuting/CloudlabSetup/tree/main/installation
 
-
 `git submodule update --init --recursive --remote`
 this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
+## install libzmq
+follow: https://github.com/zeromq/cppzmq
+
+## nholman json
+
+
 ## gcc
 need to install gcc-10 and g++-10: 
 https://askubuntu.com/questions/1192955/how-to-install-g-10-on-ubuntu-18-04

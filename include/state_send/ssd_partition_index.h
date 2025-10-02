@@ -137,12 +137,16 @@ public:
 
     bool search_ends();
 
+
     // client information to notify of completion
     ClientType client_type;
-    //local
+
+    /// LOCAL
     TagT *res_tags;
     float *res_dists;
     std::shared_ptr<std::atomic<uint64_t>> completion_count;
+
+    // TCP
   };
 
 private:
@@ -200,18 +204,32 @@ private:
     uint64_t thread_id;
     std::atomic<bool> running{false};
     void *ctx = nullptr;
+
+
+    static constexpr uint64_t max_batch_size = 128;
+    uint64_t batch_size = 0;
+
+    moodycamel::ConcurrentQueue<SearchState *> state_queue;
+
     /**
-       main loop that runs the search
-       Needs to deregister the thread's ctx after while loop exits
+       main loop that runs the search. This version balances all queries at
+       once, resulting in poor qps
      */
-    void main_loop();
+    void main_loop_balance_all();
+
+    /**
+       main loop that runs the search. This version only balances batch_size queries at a
+       time. 
+     */
+    void main_loop_batch();
     friend class SSDPartitionIndex; // to access ctx of class to send io
   public:
     /**
        will run the search, won't contain a queue/have any way of directly
        issueing a query. Instead, wait on io requests
      */
-    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id);
+    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id, uint64_t batch_size = 24);
+    void push_state(SearchState *new_state);
     void start();
     void signal_stop();
     void join();
@@ -421,10 +439,15 @@ private:
 
 
   std::atomic<uint64_t> current_search_thread_index{0};
+
 public:
-  /** right now we search the disk index directly without going through the in
-   * mem index
-   After query is done, increment completion_count
+  /////////
+  // FOR LOCAL TESTING PURPOSES
+  ////////
+  /**
+     right now we search the disk index directly without going through the in
+     mem index
+     After query is done, increment completion_count
    */
   void search_ssd_index_local(
       const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
