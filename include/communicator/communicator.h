@@ -1,4 +1,5 @@
 #pragma once
+#define ZMQ_BUILD_DRAFT_API 1
 #include <cstdint>
 #include <functional>
 #include <string_view>

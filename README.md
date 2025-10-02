@@ -28,7 +28,14 @@ Follow the guide here: https://docs.google.com/document/d/108KxSywDMZ3suJ3kaoqFc
 `git submodule update --init --recursive --remote`
 this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
 ## install libzmq
-follow: https://github.com/zeromq/cppzmq
+follow: https://zeromq.org/download/
+```
+echo "deb https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/ ./" >> /etc/apt/sources.list
+wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/Release.key -O- | sudo sudo apt-key add
+sudo apt-get install libzmq3-dev
+
+
+```
 
 ## nholman json
 
@@ -212,6 +219,13 @@ cmake --install build
 `git submodule init`
 `git submodule update`
 
+
+
+## liburing
+```
+./configure
+make -j
+```
 
 # Build
 
