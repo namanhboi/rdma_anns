@@ -13,7 +13,7 @@
 #include <immintrin.h>
 #include <set>
 #include <string>
-
+#include "communicator.h"
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
@@ -150,6 +150,7 @@ public:
     std::shared_ptr<std::atomic<uint64_t>> completion_count;
 
     // TCP
+    uint64_t client_peer_id;
   };
 
 private:
@@ -257,12 +258,17 @@ public:
 public:
   /**
      contains code for general setup stuff for the pipeann disk index.
-  */
-  SSDPartitionIndex(pipeann::Metric m, uint32_t num_partitions,
-                    uint32_t num_search_threads,
+     is_local determines whether we want to spin up the communication layer or
+     if we just want to search the index directly without going through tcp.
+     numpartitions > 1 must mean that we use is_local = false;
+     is_local = true and num_parittion = 1 is fine, this just means that we send
+     query and receive results via tcp.
+   */
+  SSDPartitionIndex(pipeann::Metric m, uint8_t cluster_id,
+                    uint32_t num_partitions, uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     bool single_file_index, bool tags = false,
-                    Parameters *parameters = nullptr);
+                    Parameters *parameters = nullptr, bool is_local = true);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -356,7 +362,8 @@ public:
 
   // load compressed data, and obtains the handle to the disk-resident index
   // also loads in the paritition index mapping file if num_partitions > 1
-  int load(const char *index_prefix, bool new_index_format = true);
+  int load(const char *index_prefix, bool new_index_format = true,
+           const char *cluster_assignment_file = nullptr);
 
   void load_mem_index(pipeann::Metric metric, const size_t query_dim,
                       const std::string &mem_index_path);
@@ -381,7 +388,12 @@ public:
 
   uint64_t get_frozen_loc() { return this->frozen_location; }
 
+  inline uint8_t get_cluster_assignment(uint32_t node_id) {
+    return cluster_assignment[node_id];
+  }
+
 private:
+  uint8_t my_cluster_id;
   // index info
   // nhood of node `i` is in sector: [i / nnodes_per_sector]
   // offset in sector: [(i % nnodes_per_sector) * max_node_len]
@@ -440,27 +452,39 @@ private:
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;
 
-
   std::atomic<uint64_t> current_search_thread_index{0};
 
-public:
+  std::vector<uint8_t> cluster_assignment;
+
+private:
+  bool is_local;
+  // section is for commmunication
+  std::unique_ptr<P2PCommunicator> communicator;
+  
+private:
   /////////
   // FOR LOCAL TESTING PURPOSES
   ////////
-  /**
-     right now we search the disk index directly without going through the in
-     mem index
-     After query is done, increment completion_count
-   */
-  void search_ssd_index_local(
-      const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
-      const uint64_t l_search, TagT *res_tags, float *res_dists,
-      const uint64_t beam_width,
-			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
 
   /**
      writes results to the res_tags and res_dists that client specified and
      increment completion count. Deallocates the search_state as well.
   */
   void notify_client_local(SearchState *search_state);
+
+  // if is_local then just write the thing, if not then send the result back with communicato'r
+  void notify_client(SearchState *search_state);
+public:
+  /**
+     right now we search the disk index directly without going through the in
+     mem index. After query is done, increment completion_count
+   */
+  void search_ssd_index_local(
+      const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
+      const uint64_t l_search, TagT *res_tags, float *res_dists,
+      const uint64_t beam_width,
+			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
+  void search_ssd_index(const T *query_emb, const uint64_t k_search,
+                        const uint32_t mem_L, const uint64_t l_search,
+                        const uint64_t beam_width, const uint64_t peer_id);
 };

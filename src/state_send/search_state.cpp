@@ -51,7 +51,7 @@ void SSDPartitionIndex<T, TagT>::SearchState::issue_next_io_batch(void *ctx) {
   // read nhoods of frontier ids
   if (!frontier.empty()) {
     for (uint64_t i = 0; i < frontier.size(); i++) {
-      uint32_t loc = frontier[i];
+      uint32_t loc = parent->id2loc(frontier[i]);
       uint64_t offset = parent->loc_sector_no(loc) * SECTOR_LEN;
       auto sector_buf = sectors + sector_idx * parent->size_per_io;
       fnhood_t fnhood = std::make_tuple(loc, loc, sector_buf);
@@ -134,15 +134,16 @@ SSDPartitionIndex<T, TagT>::SearchExecutionState SSDPartitionIndex<T, TagT>::Sea
   if (search_ends()) {
     return SearchExecutionState::FINISHED;
   }
-  if (parent->num_partitions != 1) {
-    throw std::runtime_error("search state has not been setup to handle multiple partitions");
-  }
-
   // updates frontier
   update_frontier_based_on_retset();
 
   if (frontier.empty()) {
     return SearchExecutionState::FINISHED;
+  }
+  if (parent->num_partitions > 1) {
+    if (parent->get_cluster_assignment(frontier[0]) != parent->my_cluster_id) {
+      return SearchExecutionState::TOP_CAND_NODE_OFF_SERVER;
+    }
   }
 
   return SearchExecutionState::TOP_CAND_NODE_ON_SERVER;

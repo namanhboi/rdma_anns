@@ -5,10 +5,11 @@
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
-    pipeann::Metric m, uint32_t num_partitions, uint32_t num_search_threads,
-    std::shared_ptr<AlignedFileReader> &fileReader, bool single_file_index,
-    bool tags, Parameters *params)
-    : reader(fileReader) {
+    pipeann::Metric m, uint8_t cluster_id, uint32_t num_partitions,
+    uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
+					      bool single_file_index, bool tags, Parameters *params, bool is_local)
+: reader(fileReader), is_local(is_local) {
+  this->my_cluster_id = cluster_id;
   this->num_partitions = num_partitions;
   if (num_search_threads > MAX_SEARCH_THREADS) {
     throw std::invalid_argument("num search threads > MAX_SEARCH_THREADS");
@@ -55,7 +56,8 @@ SSDPartitionIndex<T, TagT>::~SSDPartitionIndex() {
 
 template <typename T, typename TagT>
 int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
-                                     bool new_index_format) {
+                                     bool new_index_format,
+                                     const char* cluster_assignment_file) {
   std::string pq_table_bin, pq_compressed_vectors, disk_index_file,
       centroids_file;
 
@@ -209,6 +211,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   medoids[0] = (uint32_t)(medoid_id_on_file);
 
   if (num_partitions > 1) {
+    // loading the id2loc file
     std::string id2loc_file = iprefix + "_ids_uint32_t.bin";
     if (!file_exists(id2loc_file)) {
       throw std::invalid_argument(
@@ -234,8 +237,33 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
       id2loc_.insert_or_assign(id2loc_v[i], i);
     }
     LOG(INFO) << "Id2loc file loaded successfully.";
+
+    std::string cluster_file(cluster_assignment_file);
+    if (!file_exists(cluster_file)) {
+      throw std::invalid_argument(
+          "number of partitions is " + std::to_string(num_partitions) +
+          ", but the cluster assignment bin file doesn't exist: " + id2loc_file);
+    }
+    std::ifstream cluster_assignment_in(cluster_assignment_file,
+                                        std::ios::binary);
+    uint32_t whole_graph_num_pts;
+    uint8_t num_clusters;
+    cluster_assignment_in.read((char *)&whole_graph_num_pts,
+			       sizeof(whole_graph_num_pts));
+    cluster_assignment_in.read((char *)&num_clusters, sizeof(num_clusters));
+
+    cluster_assignment = std::vector<uint8_t>(whole_graph_num_pts);
+    cluster_assignment_in.read((char *)cluster_assignment.data(),
+                               whole_graph_num_pts * sizeof(uint8_t));
+    cluster_assignment_in.close();
+
+    LOG(INFO) << "cluster assignment file loaded successfully.";    
   }
+
+
+  
   LOG(INFO) << "SSDIndex loaded successfully.";
+
 
   load_flag = true;
   return 0;
@@ -289,6 +317,7 @@ void SSDPartitionIndex<T, TagT>::compute_pq_dists(const uint32_t src,
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_local(
 						     SearchState *search_state) {
+  assert(is_local);
   auto &full_retset = search_state->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
             [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
@@ -314,7 +343,8 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
     const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
     const uint64_t l_search, TagT *res_tags, float *res_dists,
     const uint64_t beam_width,
-    std::shared_ptr<std::atomic<uint64_t>> completion_count) {
+							std::shared_ptr<std::atomic<uint64_t>> completion_count) {
+  assert(is_local);
   if (beam_width != 1) {
     throw std::invalid_argument("beam width has to be 1 because of the design");
   }
@@ -353,6 +383,33 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
     (current_search_thread_id + 1) % search_threads.size();
 }
 
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::search_ssd_index(const T *query_emb,
+                                                  const uint64_t k_search,
+                                                  const uint32_t mem_L,
+                                                  const uint64_t l_search,
+                                                  const uint64_t beam_width,
+                                                  const uint64_t client_peer_id) {
+  assert(is_local);
+  if (beam_width != 1) {
+    throw std::invalid_argument("beam width has to be 1 because of the design");
+  }
+  // need to create a state then issue io
+  SearchState *new_search_state = new SearchState;
+  new_search_state->parent = this;
+  new_search_state->client_type = ClientType::LOCAL;
+  new_search_state->l_search = l_search;
+  new_search_state->k_search = k_search;
+  new_search_state->beam_width = beam_width;
+  new_search_state->client_peer_id = client_peer_id;
+
+  memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
+  float *pq_dists = new_search_state->pq_dists;
+  pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
+  new_search_state->reset();
+  uint32_t best_medoid = medoids[0];
+  new_search_state->compute_and_add_to_retset(&best_medoid, 1);
+}
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
@@ -386,6 +443,18 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
   throw std::runtime_error("Just doing testing on main diskann rn");
 }
 
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::notify_client(SearchState *search_state) {
+  if (is_local)
+    notify_client_local(search_state);
+}
+
+
+    
 template class SSDPartitionIndex<float>;
 template class SSDPartitionIndex<uint8_t>;
 template class SSDPartitionIndex<int8_t>;
+
+
+

@@ -1,6 +1,7 @@
 set(COMMON_INCLUDE_DIR
   ${PROJECT_SOURCE_DIR}/include/state_send
   ${PROJECT_SOURCE_DIR}/extern/liburing/src/include
+  ${PROJECT_SOURCE_DIR}/include/communicator
 )
 
 set (CPP_FILES
@@ -26,7 +27,7 @@ target_compile_options(ssd_state_send PRIVATE
 target_link_directories(ssd_state_send PUBLIC
 	${PROJECT_SOURCE_DIR}/extern/liburing/src
 )
-target_link_libraries(ssd_state_send uring)
+target_link_libraries(ssd_state_send uring communicator)
 
 if(BALANCE_ALL)
     target_compile_definitions(ssd_state_send PRIVATE BALANCE_ALL)

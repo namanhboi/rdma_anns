@@ -91,7 +91,7 @@ template <typename T> int search_disk_index(int argc, char **argv) {
 
   uint32_t num_partitions = 1;
   std::unique_ptr<SSDPartitionIndex<T>> _pFlashIndex(new SSDPartitionIndex<T>(
-      m, num_partitions, num_threads, reader, tags_flag));
+									      m, 0, num_partitions, num_threads, reader, tags_flag));
 
   int res = _pFlashIndex->load(index_prefix_path.c_str(), true);
 
@@ -215,8 +215,13 @@ template <typename T> int search_disk_index(int argc, char **argv) {
 
 /**
    export INDEX_PREFIX=/home/nam/big-ann-benchmarks/data/bigann/pipeann_10M
-   ./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} 16 32  /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin /home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 10 10 20 30 40
+   ./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX}
+16 32  /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin
+/home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 10 10 20 30 40
 
+./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} 15 1
+/home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin
+/home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 0 10 20 30 40
 */
 
 int main(int argc, char **argv) {

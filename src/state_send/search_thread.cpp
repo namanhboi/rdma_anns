@@ -150,23 +150,17 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     // << number_concurrent_queries << " " << state_queue.size_approx();
     SearchExecutionState s = state->explore_frontier();
     if (s == SearchExecutionState::FINISHED) {
-      // TODO:send results to client, delete the state
-      if (state->client_type == ClientType::LOCAL) {
-        this->parent->notify_client_local(state);
-      }
+      this->parent->notify_client(state);
       number_concurrent_queries--;
       delete state;
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
       state->issue_next_io_batch(ctx);
-      // if (state->frontier.empty()) {
-      //   // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
-      //   this->parent->notify_client_local(state);
-      // 	number_concurrent_queries--;
-      // 	delete state;        
-      // }
     } else {
-      throw std::runtime_error("multiple partitions not yet implemented");
+      assert(parent->num_partitions > 1);
+      // TODO: serialize the state and send that bitch
+      // complication: how to make it work both locally and distributed/
+      // make the iothread unique ptr, if local then nullptr
     }    
   }
 }
