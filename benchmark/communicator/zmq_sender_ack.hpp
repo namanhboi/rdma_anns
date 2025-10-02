@@ -1,6 +1,7 @@
 #pragma once
 #include "communicator.h"
 #include <chrono>
+#include <limits>
 #include <thread>
 
 class AckNode {
@@ -37,6 +38,10 @@ private:
   void receive_ack(const char *data, size_t size) {
     const uint64_t *header = reinterpret_cast<const uint64_t *>(data);
     uint64_t msg_id = header[1];
+    //warmup 
+    if (msg_id == std::numeric_limits<uint64_t>::max())
+      return;
+    
     receive_time[msg_id] = std::chrono::steady_clock::now();
     num_ack_received.fetch_add(1);
   }
@@ -50,12 +55,23 @@ public:
     });
   }
 
-  void blocking_send_msgs() {
+  void blocking_send_msgs(int num_warmup) {
     std::vector<uint64_t> other_peers;
     for (uint64_t i = 0; i < server.get_num_peers(); i++) {
       if (i != server.get_my_id()) 
 	other_peers.push_back(i);
     }
+    for (size_t i = 0; i < num_warmup; i++) {
+      for (const uint64_t peer_id : other_peers) {
+        char *tmp = new char[msg_size];
+        uint64_t *region_header = reinterpret_cast<uint64_t *>(tmp);
+        region_header[0] = server.get_my_id();
+        region_header[1] = std::numeric_limits<uint64_t>::max();
+        Region r = {.addr = tmp, .length = msg_size};
+        server.send_to_peer(peer_id, r);
+      }
+    }
+
     for (size_t i = 0; i < num_msg; i++) {
       for (const uint64_t peer_id : other_peers) {
         char *tmp = new char[msg_size];

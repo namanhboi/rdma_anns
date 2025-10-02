@@ -19,6 +19,6 @@ int main(int argc, char **argv) {
   }
   SenderNode sender_node(num_ack_nodes, config_file, num_msg, msg_size);
   sender_node.start_recv_thread();
-  sender_node.blocking_send_msgs();
+  sender_node.blocking_send_msgs(0);
   sender_node.blocking_wait_all_acks();
 }
