@@ -30,12 +30,23 @@ this downloads all the dependecies to extern, then we have to install some depen
 ## install libzmq
 follow: https://zeromq.org/download/
 ```
-echo "deb https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/ ./" >> /etc/apt/sources.list
-wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/Release.key -O- | sudo sudo apt-key add
+echo "deb https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/ ./" | sudo tee -a /etc/apt/sources.list
+wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/Release.key -O- | sudo apt-key add
 sudo apt-get install libzmq3-dev
+
+```
+
+```
+git clone https://github.com/zeromq/libzmq/
+./autogen.sh
+./configure --prefix=/usr/local --enable-drafts
+make -j
+sudo make install
+sudo ldconfig
 
 
 ```
+
 
 ## nholman json
 

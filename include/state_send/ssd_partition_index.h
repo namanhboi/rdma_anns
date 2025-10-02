@@ -96,7 +96,7 @@ public:
     float pq_dists[32768];
     T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
     float dist_scratch[512];
-    uint64_t data_buf_idx;
+    uint64_t data_buf_idx; 
     uint64_t sector_idx;
 
     // search state.
@@ -118,25 +118,28 @@ public:
     void print();
     void reset();
 
+    /**
+       called at the end of compute and add to retset and explore frontier. This
+       is so that  issue_next_io_batch can read the frontier and issue the reads
+     */
+    void update_frontier_based_on_retset();
+
     void compute_and_add_to_retset(const unsigned *node_ids,
                                    const uint64_t n_ids);
+
+
     void issue_next_io_batch(void *ctx);
-    
-    bool io_finished(void *ctx) {
-      parent->reader->poll(ctx);
-      for (auto &req : frontier_read_reqs) {
-        if (!req.finished) {
-          return false;
-        }
-      }
-      return true;
-    }
 
-
+    /**
+       advances the state based on whatever is in frontier_nhoods, which is the
+       result of reading what's in the frontier.
+       It also updates the frontier after exploring what's in frontier_nhoods.
+       Based on the state of the frontier, it can return the corresponding SearchExecutionState
+     */
     SearchExecutionState explore_frontier();
 
     bool search_ends();
-
+    uint64_t get_serialize_size();
 
     // client information to notify of completion
     ClientType client_type;

@@ -209,7 +209,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   medoids[0] = (uint32_t)(medoid_id_on_file);
 
   if (num_partitions > 1) {
-    std::string id2loc_file = iprefix + "_uint32_t.bin";
+    std::string id2loc_file = iprefix + "_ids_uint32_t.bin";
     if (!file_exists(id2loc_file)) {
       throw std::invalid_argument(
           "number of partitions is " + std::to_string(num_partitions) +

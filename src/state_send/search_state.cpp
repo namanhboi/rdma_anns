@@ -43,31 +43,11 @@ void SSDPartitionIndex<T, TagT>::SearchState::compute_and_add_to_retset(
     cur_list_size++;
     visited.insert(node_ids[i]);
   }
+  update_frontier_based_on_retset();  
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchState::issue_next_io_batch(void *ctx) {
-  if (search_ends()) {
-    std::cout << "search end deteced in issue next batch" << std::endl;
-    return;
-  }  
-  frontier.clear();
-  frontier_nhoods.clear();
-  frontier_read_reqs.clear();
-  sector_idx = 0;
-
-  uint32_t marker = k;
-  uint32_t num_seen = 0;
-  while (marker < cur_list_size && frontier.size() < beam_width &&
-         num_seen < beam_width) {
-    if (retset[marker].flag) {
-      num_seen++;
-      frontier.push_back(retset[marker].id);
-      retset[marker].flag = false;
-    }
-    marker++;
-  }
-
   // read nhoods of frontier ids
   if (!frontier.empty()) {
     for (uint64_t i = 0; i < frontier.size(); i++) {
@@ -151,17 +131,20 @@ SSDPartitionIndex<T, TagT>::SearchExecutionState SSDPartitionIndex<T, TagT>::Sea
   }else {
     ++k;
   }
-  // LOG(INFO) << "k cur_list_size: " << k << " " << cur_list_size;
-  // for (auto &x : full_retset) {
-    // LOG(INFO) << "id dist: " << x.id << " " << x.distance;
-  // }  
-
   if (search_ends()) {
     return SearchExecutionState::FINISHED;
   }
   if (parent->num_partitions != 1) {
     throw std::runtime_error("search state has not been setup to handle multiple partitions");
   }
+
+  // updates frontier
+  update_frontier_based_on_retset();
+
+  if (frontier.empty()) {
+    return SearchExecutionState::FINISHED;
+  }
+
   return SearchExecutionState::TOP_CAND_NODE_ON_SERVER;
 }
 
@@ -171,6 +154,34 @@ bool SSDPartitionIndex<T, TagT>::SearchState::search_ends() {
   // this->print();
   return k >= cur_list_size;
 }
+
+template <typename T, typename TagT> uint64_t get_serialize_size() {
+  
+
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T,
+                       TagT>::SearchState::update_frontier_based_on_retset() {
+  // updates frontier
+  frontier.clear();
+  frontier_nhoods.clear();
+  frontier_read_reqs.clear();
+  sector_idx = 0;
+
+  uint32_t marker = k;
+  uint32_t num_seen = 0;
+  while (marker < cur_list_size && frontier.size() < beam_width &&
+         num_seen < beam_width) {
+    if (retset[marker].flag) {
+      num_seen++;
+      frontier.push_back(retset[marker].id);
+      retset[marker].flag = false;
+    }
+    marker++;
+  }    
+}
+
 
 template struct SSDPartitionIndex<float>::SearchState;
 template struct SSDPartitionIndex<uint8_t>::SearchState;

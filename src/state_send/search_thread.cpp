@@ -135,7 +135,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       continue;
 
     if (req->search_state == nullptr) {
-      std::cerr << "poison poll detected" << std::endl;
+      std::cerr << "poison pill detected" << std::endl;
       // this is a poison pill to shutdown the thread
       delete req;
       break;
@@ -159,12 +159,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
       state->issue_next_io_batch(ctx);
-      if (state->frontier.empty()) {
-        // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
-        this->parent->notify_client_local(state);
-	number_concurrent_queries--;
-	delete state;        
-      }
+      // if (state->frontier.empty()) {
+      //   // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
+      //   this->parent->notify_client_local(state);
+      // 	number_concurrent_queries--;
+      // 	delete state;        
+      // }
     } else {
       throw std::runtime_error("multiple partitions not yet implemented");
     }    
