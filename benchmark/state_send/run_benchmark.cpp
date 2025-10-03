@@ -1,10 +1,12 @@
 #include "aux_utils.h"
 #include "benchmark_client.hpp"
+#include "communicator.h"
 #include "linux_aligned_file_reader.h"
 #include "percentile_stats.h"
 #include "ssd_partition_index.h"
 #include <chrono>
 #include <iomanip>
+#include <memory_resource>
 #include <thread>
 
 void print_stats(std::string category, std::vector<float> percentiles,
@@ -90,8 +92,9 @@ template <typename T> int search_disk_index(int argc, char **argv) {
   reader.reset(new LinuxAlignedFileReader());
 
   uint32_t num_partitions = 1;
+  std::unique_ptr<P2PCommunicator> null_com;
   std::unique_ptr<SSDPartitionIndex<T>> _pFlashIndex(new SSDPartitionIndex<T>(
-									      m, 0, num_partitions, num_threads, reader, tags_flag));
+									      m, 0, num_partitions, num_threads, reader, null_com, tags_flag));
 
   int res = _pFlashIndex->load(index_prefix_path.c_str(), true);
 

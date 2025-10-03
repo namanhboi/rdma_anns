@@ -79,11 +79,10 @@ public:
     TOP_CAND_NODE_OFF_SERVER,
     TOP_CAND_NODE_ON_SERVER
   };
-  enum class ClientType {
-    LOCAL,
-    TCP,
-    RDMA,
-    CASCADE
+  enum class ClientType:uint32_t {
+    LOCAL = 0,
+    TCP = 1,
+    RDMA = 2
   };
   /**
      state of a beam search execution
@@ -139,7 +138,6 @@ public:
     SearchExecutionState explore_frontier();
 
     bool search_ends();
-    uint64_t get_serialize_size();
 
     // client information to notify of completion
     ClientType client_type;
@@ -151,6 +149,42 @@ public:
 
     // TCP
     uint64_t client_peer_id;
+
+
+    ////// serialization functions
+
+    /*
+      deserialize one search state
+     */
+    static SearchState *deserialize(const char* buffer);
+
+    /**
+       used by the handler to deserialize the blob into states to then send to
+       the search threads
+     */
+    static std::vector<SearchState *>
+    deserialize_states(const char *buffer, size_t size);
+
+    /**
+       write the serialized form of this state into the buffer.
+       Data to be serialized:
+       - full_retset
+       - retset
+       - visited nodes
+       - frontier
+       - cur_list_size
+       - k
+       - k_search
+       - l_search
+       - beamwidth
+       - cmps
+     */
+    size_t write_serialize(char *buffer) const;
+    size_t get_serialize_size() const;
+
+    static size_t write_serialize_states(char *buffer, const std::vector<SearchState*> &states);
+
+    static size_t get_serialize_size_states(const std::vector<SearchState*> &states);
   };
 
 private:
@@ -267,6 +301,7 @@ public:
   SSDPartitionIndex(pipeann::Metric m, uint8_t cluster_id,
                     uint32_t num_partitions, uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
+                    std::unique_ptr<P2PCommunicator> &communicator,
                     bool single_file_index, bool tags = false,
                     Parameters *parameters = nullptr, bool is_local = true);
   ~SSDPartitionIndex();
@@ -459,13 +494,9 @@ private:
 private:
   bool is_local;
   // section is for commmunication
-  std::unique_ptr<P2PCommunicator> communicator;
+  std::unique_ptr<P2PCommunicator> &communicator;
   
 private:
-  /////////
-  // FOR LOCAL TESTING PURPOSES
-  ////////
-
   /**
      writes results to the res_tags and res_dists that client specified and
      increment completion count. Deallocates the search_state as well.
@@ -474,6 +505,15 @@ private:
 
   // if is_local then just write the thing, if not then send the result back with communicato'r
   void notify_client(SearchState *search_state);
+
+public:
+  /**
+   * will be registered to the communicator by the server cpp file.
+   * Need to construct the states and enqueue them onto the search thread
+   * from these handler
+   */
+  void receive_handler(const char* buffer, size_t size);
+
 public:
   /**
      right now we search the disk index directly without going through the in

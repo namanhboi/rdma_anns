@@ -7,8 +7,12 @@ template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::Metric m, uint8_t cluster_id, uint32_t num_partitions,
     uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
-					      bool single_file_index, bool tags, Parameters *params, bool is_local)
-: reader(fileReader), is_local(is_local) {
+    std::unique_ptr<P2PCommunicator> &communicator, bool single_file_index,
+    bool tags, Parameters *params, bool is_local)
+: reader(fileReader), is_local(is_local), communicator(communicator) {
+  if (is_local) {
+    assert(communicator == nullptr);
+  }
   this->my_cluster_id = cluster_id;
   this->num_partitions = num_partitions;
   if (num_search_threads > MAX_SEARCH_THREADS) {
@@ -449,6 +453,21 @@ void SSDPartitionIndex<T, TagT>::notify_client(SearchState *search_state) {
   if (is_local)
     notify_client_local(search_state);
 }
+
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
+                                                 size_t size) {
+  std::vector<SearchState *> states =
+    SearchState::deserialize_states(buffer, size);
+  for (const auto &state : states) {
+    state->parent = this;
+    uint64_t thread_id = current_search_thread_id.fetch_add(1);
+    thread_id = thread_id % num_search_threads;
+    search_threads[thread_id]->push_state(state);
+  }
+}
+
 
 
     
