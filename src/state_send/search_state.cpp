@@ -142,7 +142,7 @@ SSDPartitionIndex<T, TagT>::SearchExecutionState SSDPartitionIndex<T, TagT>::Sea
     return SearchExecutionState::FINISHED;
   }
   if (parent->num_partitions > 1) {
-    if (parent->get_cluster_assignment(frontier[0]) != parent->my_cluster_id) {
+    if (parent->get_cluster_assignment(frontier[0]) != parent->my_partition_id) {
       return SearchExecutionState::TOP_CAND_NODE_OFF_SERVER;
     }
   }
@@ -157,10 +157,6 @@ bool SSDPartitionIndex<T, TagT>::SearchState::search_ends() {
   return k >= cur_list_size;
 }
 
-template <typename T, typename TagT> uint64_t get_serialize_size() {
-  
-
-}
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T,

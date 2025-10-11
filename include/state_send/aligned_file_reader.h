@@ -12,6 +12,7 @@
 #include "query_buf.h"
 #include <thread>
 #include "tsl/robin_map.h"
+#include <mutex>
 
 class AlignedFileReader {
 protected:

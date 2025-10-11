@@ -24,7 +24,7 @@ public :
       this->ack(data, size);
     });
   }
-  void start() { server.start_recv_loop(); }
+  void start() { server.start_recv_thread(); }
 };
 
 class SenderNode {
@@ -85,8 +85,8 @@ public:
     }
     std::cout << "sent all msgs" << std::endl;
   }
-  void start_recv_thread() { server.start_recv_loop(); }
-  void stop_recv_thread() { server.stop_recv_loop(); }
+  void start_recv_thread() { server.start_recv_thread(); }
+  void stop_recv_thread() { server.stop_recv_thread(); }
 
   void blocking_wait_all_acks() {
     std::cout << "starting to wait for acks" << std::endl;

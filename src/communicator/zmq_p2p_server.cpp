@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
   server.register_receive_handler(
 				  [&num_received](const char *data, size_t len) { num_received++; });
   std::cout << "number of peers " << server.get_num_peers() << std::endl;
-  server.start_recv_loop();
+  server.start_recv_thread();
   for (size_t i = 0; i < num_msg; i++) {
     for (uint64_t peer_id = 0; peer_id < server.get_num_peers(); peer_id++) {
       if (peer_id != server.get_my_id()) {

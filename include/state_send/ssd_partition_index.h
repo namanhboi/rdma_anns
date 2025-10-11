@@ -14,6 +14,8 @@
 #include <set>
 #include <string>
 #include "communicator.h"
+#include "libcuckoo/cuckoohash_map.hh"
+
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
@@ -79,11 +81,19 @@ public:
     TOP_CAND_NODE_OFF_SERVER,
     TOP_CAND_NODE_ON_SERVER
   };
-  enum class ClientType:uint32_t {
-    LOCAL = 0,
-    TCP = 1,
-    RDMA = 2
+  enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
+  
+  /**
+     includes both full embeddings and pq representation of query
+   */
+  struct alignas(SECTOR_LEN) QueryEmbedding {
+    T query[kMaxVectorDim];
+    float pq_dists[32768];
   };
+
+  // concurernt hashmap
+  libcuckoo::cuckoohash_map<uint64_t, QueryEmbedding> query_emb_map;
+
   /**
      state of a beam search execution
    */
@@ -184,7 +194,18 @@ public:
 
     static size_t write_serialize_states(char *buffer, const std::vector<SearchState*> &states);
 
-    static size_t get_serialize_size_states(const std::vector<SearchState*> &states);
+    static size_t
+    get_serialize_size_states(const std::vector<SearchState *> &states);
+
+    // static void write_serialize_query(const T *query_emb,
+    //                                   const uint64_t k_search,
+    //                                   const uint64_t mem_l,
+    //                                   const uint64_t l_search,
+    //                                   const uint64_t beam_width, char *buffer) {
+            
+    // }
+    
+    
   };
 
 private:
@@ -298,12 +319,12 @@ public:
      is_local = true and num_parittion = 1 is fine, this just means that we send
      query and receive results via tcp.
    */
-  SSDPartitionIndex(pipeann::Metric m, uint8_t cluster_id,
+  SSDPartitionIndex(pipeann::Metric m, uint8_t partition_id,
                     uint32_t num_partitions, uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
-                    bool single_file_index, bool tags = false,
-                    Parameters *parameters = nullptr, bool is_local = true);
+                    bool tags = false, Parameters *parameters = nullptr,
+                    bool is_local = true);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -428,7 +449,7 @@ public:
   }
 
 private:
-  uint8_t my_cluster_id;
+  uint8_t my_partition_id;
   // index info
   // nhood of node `i` is in sector: [i / nnodes_per_sector]
   // offset in sector: [(i % nnodes_per_sector) * max_node_len]
@@ -503,7 +524,7 @@ private:
   */
   void notify_client_local(SearchState *search_state);
 
-  // if is_local then just write the thing, if not then send the result back with communicato'r
+  // if is_local then just write the thing, if not then send the result back with communicator
   void notify_client(SearchState *search_state);
 
 public:

@@ -1,0 +1,12 @@
+ {
+  "type":"uint8",
+  "index_prefix":"/home/nam/big-ann-benchmarks/data/bigann/pipeann_10M",
+  "cluster_assignment_file":"",
+  "use_tags":false,
+  "use_mem_index":false,
+  "metric":"l2",
+  "num_partitions":1,
+  "my_partition_id":0,
+  "num_search_threads":8
+}
+

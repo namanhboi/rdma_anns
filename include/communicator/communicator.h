@@ -55,8 +55,15 @@ public:
   virtual void recv_loop() = 0;
   virtual void register_receive_handler(recv_handler_t handler) = 0;
   // starts running recv loop on a different thread
-  virtual void start_recv_loop() = 0;
-  virtual void stop_recv_loop() = 0;
+  virtual void start_recv_thread() = 0;
+  virtual void stop_recv_thread() = 0;
+  virtual uint64_t get_my_id() = 0; 
+  /** including our own */
+  virtual uint64_t get_num_peers() =0;
+
+  /** doesn't include your own */
+  virtual std::vector<uint64_t> get_other_peer_ids() = 0;
+  
 };
 
 
@@ -89,11 +96,15 @@ public:
   void send_to_peer(uint64_t peer_id, Region r) override;
   void recv_loop() override;
   void register_receive_handler(recv_handler_t handler) override;
-  void start_recv_loop() override;
-  void stop_recv_loop() override;
-  uint64_t get_my_id();
+  void start_recv_thread() override;
+  void stop_recv_thread() override;
+  uint64_t get_my_id() override;
   /** including our own */
-  uint64_t get_num_peers();
+  uint64_t get_num_peers() override;
+
+  /** doesn't include your own */
+  std::vector<uint64_t> get_other_peer_ids() override;
+
   ZMQP2PCommunicator(uint64_t my_id,
                   const std::string &config_path);
   ~ZMQP2PCommunicator();

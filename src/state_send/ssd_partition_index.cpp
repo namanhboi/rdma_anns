@@ -5,15 +5,15 @@
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
-    pipeann::Metric m, uint8_t cluster_id, uint32_t num_partitions,
+    pipeann::Metric m, uint8_t partition_id, uint32_t num_partitions,
     uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
-    std::unique_ptr<P2PCommunicator> &communicator, bool single_file_index,
+    std::unique_ptr<P2PCommunicator> &communicator,
     bool tags, Parameters *params, bool is_local)
 : reader(fileReader), is_local(is_local), communicator(communicator) {
   if (is_local) {
     assert(communicator == nullptr);
   }
-  this->my_cluster_id = cluster_id;
+  this->my_partition_id = partition_id;
   this->num_partitions = num_partitions;
   if (num_search_threads > MAX_SEARCH_THREADS) {
     throw std::invalid_argument("num search threads > MAX_SEARCH_THREADS");
@@ -255,6 +255,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     cluster_assignment_in.read((char *)&whole_graph_num_pts,
 			       sizeof(whole_graph_num_pts));
     cluster_assignment_in.read((char *)&num_clusters, sizeof(num_clusters));
+    assert(num_clusters == num_partitions);
 
     cluster_assignment = std::vector<uint8_t>(whole_graph_num_pts);
     cluster_assignment_in.read((char *)cluster_assignment.data(),

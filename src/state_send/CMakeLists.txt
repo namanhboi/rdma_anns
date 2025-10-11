@@ -33,4 +33,10 @@ if(BALANCE_ALL)
     target_compile_definitions(ssd_state_send PRIVATE BALANCE_ALL)
 endif()
 
+add_executable(state_send_server state_send_server.cpp)
+target_link_libraries(state_send_server ssd_state_send)
+target_compile_options(state_send_server PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops>
+)
 

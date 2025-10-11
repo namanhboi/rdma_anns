@@ -122,12 +122,12 @@ void ZMQP2PCommunicator::recv_loop() {
   }
 }
 
-void ZMQP2PCommunicator::start_recv_loop() {
+void ZMQP2PCommunicator::start_recv_thread() {
   running = true;
   real_thread = std::thread(&ZMQP2PCommunicator::recv_loop, this);
 }
 
-void ZMQP2PCommunicator::stop_recv_loop() {
+void ZMQP2PCommunicator::stop_recv_thread() {
   running = false;
   if (sock) {
     zmq_close(sock);
@@ -142,7 +142,7 @@ void ZMQP2PCommunicator::register_receive_handler(recv_handler_t handler) {
 }
 
 ZMQP2PCommunicator::~ZMQP2PCommunicator() {
-  stop_recv_loop();
+  stop_recv_thread();
   zmq_ctx_destroy(ctx);
 }
 
@@ -150,5 +150,15 @@ uint64_t ZMQP2PCommunicator::get_my_id() { return this->my_id; }
 uint64_t ZMQP2PCommunicator::get_num_peers() {
   return this->peer_to_routing_id.size() + 1;
 }
+
+std::vector<uint64_t> ZMQP2PCommunicator::get_other_peer_ids() {
+  std::vector<uint64_t> peer_ids;
+  uint64_t num_peers = get_num_peers();
+  for (uint64_t i = 0; i < num_peers; i++) {
+    if (i != my_id) peer_ids.push_back(i);
+  }
+  return peer_ids;
+}
+
 
 
