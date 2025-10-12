@@ -15,6 +15,8 @@
 #include <string>
 #include "communicator.h"
 #include "libcuckoo/cuckoohash_map.hh"
+#include "types.h"
+
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -67,7 +69,6 @@ inline void pq_dist_lookup(const uint8_t *pq_ids, const uint64_t n_pts,
 }
 } // namespace
 
-static constexpr int kMaxVectorDim = 512;
 
 constexpr int max_requests = 1000;
 /**
@@ -76,126 +77,40 @@ constexpr int max_requests = 1000;
  */
 template <typename T, typename TagT = uint32_t> class SSDPartitionIndex {
 public:
-  enum class SearchExecutionState {
-    FINISHED,
-    TOP_CAND_NODE_OFF_SERVER,
-    TOP_CAND_NODE_ON_SERVER
-  };
-  enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
-  
-  /**
-     includes both full embeddings and pq representation of query
-   */
-  struct alignas(SECTOR_LEN) QueryEmbedding {
-    T query[kMaxVectorDim];
-    float pq_dists[32768];
-  };
-
   // concurernt hashmap
-  libcuckoo::cuckoohash_map<uint64_t, QueryEmbedding> query_emb_map;
+  libcuckoo::cuckoohash_map<uint64_t, QueryEmbedding<T>> query_emb_map;
 
   /**
      state of a beam search execution
    */
-  struct alignas(SECTOR_LEN) SearchState {
-    // buffer.
-    char sectors[SECTOR_LEN * 128];
-    T query[kMaxVectorDim];
-    uint8_t pq_coord_scratch[32768 * 32];
-    float pq_dists[32768];
-    T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
-    float dist_scratch[512];
-    uint64_t data_buf_idx; 
-    uint64_t sector_idx;
+  void state_compute_dists(SearchState<T, TagT> *state, const unsigned *ids,
+                           const uint64_t n_ids, float *dists_out);
 
-    // search state.
-    std::vector<pipeann::Neighbor> full_retset;
-    std::vector<pipeann::Neighbor> retset;
-    tsl::robin_set<uint64_t> visited;
+  void state_print(SearchState<T, TagT> *state);
+  void state_reset(SearchState<T, TagT> *state);
+  
+  /**
+     called at the end of compute and add to retset and explore frontier. This
+     is so that  issue_next_io_batch can read the frontier and issue the reads
+   */
+  void state_update_frontier(SearchState<T, TagT> *state);
 
-    std::vector<unsigned> frontier;
-    using fnhood_t = std::tuple<unsigned, unsigned, char *>;
-    std::vector<fnhood_t> frontier_nhoods;
-    std::vector<IORequest> frontier_read_reqs;
+  void state_compute_and_add_to_retset(SearchState<T, TagT> *state,
+                                       const unsigned *node_ids,
+                                       const uint64_t n_ids);
 
-    SSDPartitionIndex *parent;
-    unsigned cur_list_size, cmps, k;
-    uint64_t l_search, k_search, beam_width;
-
-    void compute_dists(const unsigned *ids, const uint64_t n_ids,
-                       float *dists_out);
-    void print();
-    void reset();
-
-    /**
-       called at the end of compute and add to retset and explore frontier. This
-       is so that  issue_next_io_batch can read the frontier and issue the reads
-     */
-    void update_frontier_based_on_retset();
-
-    void compute_and_add_to_retset(const unsigned *node_ids,
-                                   const uint64_t n_ids);
-
-
-    void issue_next_io_batch(void *ctx);
-
+  void state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx);
+  
     /**
        advances the state based on whatever is in frontier_nhoods, which is the
        result of reading what's in the frontier.
        It also updates the frontier after exploring what's in frontier_nhoods.
        Based on the state of the frontier, it can return the corresponding SearchExecutionState
      */
-    SearchExecutionState explore_frontier();
+    SearchExecutionState state_explore_frontier(SearchState<T, TagT> *state);
 
-    bool search_ends();
+    bool state_search_ends(SearchState<T, TagT> *state);
 
-    // client information to notify of completion
-    ClientType client_type;
-
-    /// LOCAL
-    TagT *res_tags;
-    float *res_dists;
-    std::shared_ptr<std::atomic<uint64_t>> completion_count;
-
-    // TCP
-    uint64_t client_peer_id;
-
-
-    ////// serialization functions
-
-    /*
-      deserialize one search state
-     */
-    static SearchState *deserialize(const char* buffer);
-
-    /**
-       used by the handler to deserialize the blob into states to then send to
-       the search threads
-     */
-    static std::vector<SearchState *>
-    deserialize_states(const char *buffer, size_t size);
-
-    /**
-       write the serialized form of this state into the buffer.
-       Data to be serialized:
-       - full_retset
-       - retset
-       - visited nodes
-       - frontier
-       - cur_list_size
-       - k
-       - k_search
-       - l_search
-       - beamwidth
-       - cmps
-     */
-    size_t write_serialize(char *buffer) const;
-    size_t get_serialize_size() const;
-
-    static size_t write_serialize_states(char *buffer, const std::vector<SearchState*> &states);
-
-    static size_t
-    get_serialize_size_states(const std::vector<SearchState *> &states);
 
     // static void write_serialize_query(const T *query_emb,
     //                                   const uint64_t k_search,
@@ -204,9 +119,6 @@ public:
     //                                   const uint64_t beam_width, char *buffer) {
             
     // }
-    
-    
-  };
 
 private:
   /**
@@ -268,7 +180,7 @@ private:
     static constexpr uint64_t max_batch_size = 128;
     uint64_t batch_size = 0;
 
-    moodycamel::ConcurrentQueue<SearchState *> state_queue;
+    moodycamel::ConcurrentQueue<SearchState<T, TagT> *> state_queue;
 
     /**
        main loop that runs the search. This version balances all queries at
@@ -288,7 +200,7 @@ private:
        issueing a query. Instead, wait on io requests
      */
     SearchThread(SSDPartitionIndex *parent, uint64_t thread_id, uint64_t batch_size = 24);
-    void push_state(SearchState *new_state);
+    void push_state(SearchState<T, TagT> *new_state);
     void start();
     void signal_stop();
     void join();
@@ -498,7 +410,7 @@ private:
   size_t num_medoids = 1; // by default it is set to 1
 
   // test the estimation efficacy.
-  uint32_t beam_width, l_index, range, maxc;
+  uint32_t beamwidth, l_index, range, maxc;
   float alpha;
   // assumed max thread, only the first nthreads are initialized.
 
@@ -522,10 +434,10 @@ private:
      writes results to the res_tags and res_dists that client specified and
      increment completion count. Deallocates the search_state as well.
   */
-  void notify_client_local(SearchState *search_state);
+  void notify_client_local(SearchState<T, TagT> *search_state);
 
   // if is_local then just write the thing, if not then send the result back with communicator
-  void notify_client(SearchState *search_state);
+  void notify_client(SearchState<T, TagT> *search_state);
 
 public:
   /**

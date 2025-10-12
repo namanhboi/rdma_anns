@@ -222,9 +222,7 @@ template <typename T> int search_disk_index(int argc, char **argv) {
 16 32  /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin
 /home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 10 10 20 30 40
 
-./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} 15 1
-/home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin
-/home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 0 10 20 30 40
+./build/benchmark/state_send/run_benchmark_state_send uint8 ${INDEX_PREFIX} 1 1 /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin /home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 l2 0 0 10 20 30 40
 */
 
 int main(int argc, char **argv) {

@@ -1,3 +1,4 @@
+#include "types.h"
 #include "ssd_partition_index.h"
 #include "query_buf.h"
 #include <limits>
@@ -38,12 +39,12 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   this->dist_cmp.reset(pipeann::get_distance_function<T>(m));
   // this->pq_reader = new LinuxAlignedFileReader();
   if (params != nullptr) {
-    this->beam_width = params->Get<uint32_t>("beamwidth");
+    this->beamwidth = params->Get<uint32_t>("beamwidth");
     this->l_index = params->Get<uint32_t>("L");
     this->range = params->Get<uint32_t>("R");
     this->maxc = params->Get<uint32_t>("C");
     this->alpha = params->Get<float>("alpha");
-    LOG(INFO) << "Beamwidth: " << this->beam_width << ", L: " << this->l_index
+    LOG(INFO) << "Beamwidth: " << this->beamwidth << ", L: " << this->l_index
               << ", R: " << this->range << ", C: " << this->maxc;
   }
 }
@@ -321,7 +322,7 @@ void SSDPartitionIndex<T, TagT>::compute_pq_dists(const uint32_t src,
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_local(
-						     SearchState *search_state) {
+						     SearchState<T, TagT> *search_state) {
   assert(is_local);
   auto &full_retset = search_state->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
@@ -353,9 +354,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   if (beam_width != 1) {
     throw std::invalid_argument("beam width has to be 1 because of the design");
   }
+  assert(k_search != 0);
   // need to create a state then issue io
-  SearchState *new_search_state = new SearchState;
-  new_search_state->parent = this;
+  SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
   new_search_state->client_type = ClientType::LOCAL;
   new_search_state->l_search = l_search;
   new_search_state->k_search = k_search;
@@ -368,9 +369,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
   float *pq_dists = new_search_state->pq_dists;
   pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
-  new_search_state->reset();
+  state_reset(new_search_state);
   uint32_t best_medoid = medoids[0];
-  new_search_state->compute_and_add_to_retset(&best_medoid, 1);
+  state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
   // std::sort(new_search_state->retset.begin(),
             // new_search_state->retset.begin() + new_search_state->cur_list_size);  
 #ifdef BALANCE_ALL
@@ -400,8 +401,7 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index(const T *query_emb,
     throw std::invalid_argument("beam width has to be 1 because of the design");
   }
   // need to create a state then issue io
-  SearchState *new_search_state = new SearchState;
-  new_search_state->parent = this;
+  SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
   new_search_state->client_type = ClientType::LOCAL;
   new_search_state->l_search = l_search;
   new_search_state->k_search = k_search;
@@ -411,9 +411,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index(const T *query_emb,
   memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
   float *pq_dists = new_search_state->pq_dists;
   pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
-  new_search_state->reset();
+  state_reset(new_search_state);
   uint32_t best_medoid = medoids[0];
-  new_search_state->compute_and_add_to_retset(&best_medoid, 1);
+  state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
 }
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
@@ -450,7 +450,7 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
 
 
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::notify_client(SearchState *search_state) {
+void SSDPartitionIndex<T, TagT>::notify_client(SearchState<T, TagT> *search_state) {
   if (is_local)
     notify_client_local(search_state);
 }
@@ -459,10 +459,9 @@ void SSDPartitionIndex<T, TagT>::notify_client(SearchState *search_state) {
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                                  size_t size) {
-  std::vector<SearchState *> states =
-    SearchState::deserialize_states(buffer, size);
+  std::vector<SearchState<T, TagT> *> states =
+    SearchState<T, TagT>::deserialize_states(buffer, size);
   for (const auto &state : states) {
-    state->parent = this;
     uint64_t thread_id = current_search_thread_id.fetch_add(1);
     thread_id = thread_id % num_search_threads;
     search_threads[thread_id]->push_state(state);
@@ -472,9 +471,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 
 
     
-template class SSDPartitionIndex<float>;
-template class SSDPartitionIndex<uint8_t>;
-template class SSDPartitionIndex<int8_t>;
+template class SSDPartitionIndex<float, uint32_t>;
+template class SSDPartitionIndex<uint8_t, uint32_t>;
+template class SSDPartitionIndex<int8_t, uint32_t>;
 
 
 

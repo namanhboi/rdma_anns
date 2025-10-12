@@ -13,7 +13,9 @@ set (CPP_FILES
   utils.cpp
   aux_utils.cpp
   search_thread.cpp
+  types.cpp
 )
+
 add_library(ssd_state_send SHARED
   ${CPP_FILES}
 )

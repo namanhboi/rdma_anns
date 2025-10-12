@@ -43,12 +43,13 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all() {
     }
     // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
     // LOG(INFO) << "number of completions: " << ready;
-    
-    SearchState *state = reinterpret_cast<SearchState *>(req->search_state);
+
+    SearchState<T, TagT> *state =
+      reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
     // assert(state->io_finished(ctx));
     // std::cout << "l and k are  " << state->l_search << " " << state->k_search << std::endl;
     // std::cout << "k and cur_list_size " << state->k << " " << state->cur_list_size << std::endl;
-    SearchExecutionState s = state->explore_frontier();
+    SearchExecutionState s = parent->state_explore_frontier(state);
     if (s == SearchExecutionState::FINISHED) {
       // TODO:send results to client, delete the state
       if (state->client_type == ClientType::LOCAL) {
@@ -56,7 +57,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all() {
       }
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
-      state->issue_next_io_batch(ctx);
+      parent->state_issue_next_io_batch(state, ctx);
       if (state->frontier.empty()) {
         // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
         this->parent->notify_client_local(state);
@@ -92,11 +93,10 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::push_state(
-							  SearchState *new_state) {
+							  SearchState<T, TagT> *new_state) {
   bool ret = state_queue.enqueue(new_state);
   assert(ret);
 }
-
 
 
 template <typename T, typename TagT>
@@ -108,7 +108,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     throw std::runtime_error("ctx given by get_ctx is nullptr");
   }
   uint64_t number_concurrent_queries = 0;
-  std::array<SearchState *, max_batch_size> allocated_states;
+  std::array<SearchState<T, TagT> *, max_batch_size> allocated_states;
 
   while (running) {
     // LOG(INFO) <<"Concurrent queries " <<number_concurrent_queries;
@@ -125,7 +125,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           //poison pill from queue
           break;
         }
-        allocated_states[i]->issue_next_io_batch(ctx);
+        parent->state_issue_next_io_batch(allocated_states[i], ctx);
         number_concurrent_queries++;
       }
     }
@@ -142,20 +142,21 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     }
     // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
     // LOG(INFO) << "number of completions: " << ready;
-    
-    SearchState *state = reinterpret_cast<SearchState *>(req->search_state);
+
+    SearchState<T, TagT> *state =
+      reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
     // LOG(INFO) << "l and k are  " << state->l_search << " " << state->k_search;
     // LOG(INFO) << "k and cur_list_size " << state->k << " " << state->cur_list_size;
     // LOG(INFO) << "concurrent queries and QUEUE size approx"
     // << number_concurrent_queries << " " << state_queue.size_approx();
-    SearchExecutionState s = state->explore_frontier();
+    SearchExecutionState s = parent->state_explore_frontier(state);
     if (s == SearchExecutionState::FINISHED) {
       this->parent->notify_client(state);
       number_concurrent_queries--;
       delete state;
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
-      state->issue_next_io_batch(ctx);
+      parent->state_issue_next_io_batch(state, ctx);
     } else {
       assert(parent->num_partitions > 1);
       // TODO: serialize the state and send that bitch
