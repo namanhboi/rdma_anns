@@ -370,6 +370,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   std::shared_ptr<QueryEmbedding<T>> q = std::make_shared<QueryEmbedding<T>>();
   memcpy(q->query, query_emb, this->data_dim * sizeof(T));
   pq_table.populate_chunk_distances(q->query, q->pq_dists);
+  q->query_id = query_id;
+  q->dim = this->data_dim;
+  q->num_chunks = this->n_chunks;
 
   new_search_state->query_emb = q;
 
@@ -468,15 +471,15 @@ void SSDPartitionIndex<T, TagT>::notify_client(SearchState<T, TagT> *search_stat
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                                  size_t size) {
-  std::vector<SearchState<T, TagT> *> states =
-    SearchState<T, TagT>::deserialize_states(buffer, size);
-  for (auto &state : states) {
-    // will prob need to look at what other initializations we have to do
-    state->partition_history.push_back(this->my_partition_id);
-    uint64_t thread_id = current_search_thread_id.fetch_add(1);
-    thread_id = thread_id % num_search_threads;
-    search_threads[thread_id]->push_state(state);
-  }
+  // std::vector<SearchState<T, TagT> *> states =
+  //   SearchState<T, TagT>::deserialize_states(buffer, size);
+  // for (auto &state : states) {
+  //   // will prob need to look at what other initializations we have to do
+  //   state->partition_history.push_back(this->my_partition_id);
+  //   uint64_t thread_id = current_search_thread_id.fetch_add(1);
+  //   thread_id = thread_id % num_search_threads;
+  //   search_threads[thread_id]->push_state(state);
+  // }
 }
 
 

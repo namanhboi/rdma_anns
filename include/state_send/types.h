@@ -1,17 +1,17 @@
 /**
-   includes types like searchstate, queryemb, results, etc and their serialization
+   includes types like searchstate, queryemb, results, etc and their
+   serialization
  */
 #pragma once
-#include "utils.h"
 #include "neighbor.h"
-#include "tsl/robin_set.h"
 #include "query_buf.h"
+#include "tsl/robin_set.h"
+#include "utils.h"
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
 #define SECTOR_LEN 4096
-
 
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
@@ -19,6 +19,12 @@ static constexpr int maxKSearch = 256;
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
+
+// message type for the server, it then uses the correct
+// deserialize_states/queries method to get the batch of states/queries. I say
+// batch but most of the time its 1
+enum class MessageType : uint32_t { QUERIES, STATES, RESULT };
+
 enum class SearchExecutionState {
   FINISHED,
   TOP_CAND_NODE_OFF_SERVER,
@@ -26,16 +32,33 @@ enum class SearchExecutionState {
 };
 
 /**
-   includes both full embeddings and pq representation of query
+   includes both full embeddings and pq representation of query. Client uses
+   this to send stuff to server. Server upon receving a query, makes a
+   queryembedding struct to put into map and also make an empty state.
  */
-template<typename T>
-struct alignas(SECTOR_LEN) QueryEmbedding {
+template <typename T> struct QueryEmbedding {
+  uint64_t query_id;
+  uint32_t dim;
+  uint32_t num_chunks;
   T query[kMaxVectorDim];
   float pq_dists[32768];
+
+  static std::shared_ptr<QueryEmbedding> deserialize(const char *buffer);
+  static std::vector<std::shared_ptr<QueryEmbedding>>
+  deserialize_queries(const char *buffer, size_t size);
+
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
+  static size_t write_serialize_queries(
+      char *buffer,
+      const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
+
+  static size_t get_serialize_size_queries(
+					   const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
+
 };
 
-
-template<typename T, typename TagT=uint32_t>
+template <typename T, typename TagT = uint32_t>
 struct alignas(SECTOR_LEN) SearchState {
   // buffer.
   char sectors[SECTOR_LEN * 128];
@@ -44,10 +67,9 @@ struct alignas(SECTOR_LEN) SearchState {
   T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
   float dist_scratch[512];
 
-
   std::shared_ptr<QueryEmbedding<T>> query_emb;
 
-  uint64_t data_buf_idx; 
+  uint64_t data_buf_idx;
   uint64_t sector_idx;
 
   // search state.
@@ -81,7 +103,7 @@ struct alignas(SECTOR_LEN) SearchState {
   /*
     deserialize one search state
    */
-  static SearchState *deserialize(const char* buffer);
+  static SearchState *deserialize(const char *buffer);
 
   /**
      used by the handler to deserialize the blob into states to then send to
@@ -106,12 +128,13 @@ struct alignas(SECTOR_LEN) SearchState {
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
 
-  static size_t write_serialize_states(char *buffer, const std::vector<SearchState*> &states);
+  static size_t
+  write_serialize_states(char *buffer,
+                         const std::vector<SearchState *> &states);
 
   static size_t
   get_serialize_size_states(const std::vector<SearchState *> &states);
 };
-
 
 struct search_result_t {
   uint64_t query_id;
@@ -119,8 +142,9 @@ struct search_result_t {
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
 
-  static search_result_t deserialize(const char *buffer);
+  static std::shared_ptr<search_result_t> deserialize(const char *buffer);
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
 };
+
 

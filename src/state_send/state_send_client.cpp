@@ -1,42 +1,163 @@
 #include "state_send_client.h"
-
-
+#include "types.h"
+#include <chrono>
+#include <thread>
 
 template <typename T>
-StateSendClient<T>::StateSendClient(const uint64_t id,
-                                    const std::string &communicator_json)
-: my_id(id) {
-  communicator = std::make_unique<ZMQP2PCommunicator>(my_id, communicator_json);
-  std::cout << "Done with constructor for statesendclient" << std::endl;
-  other_peer_ids = communicator->get_other_peer_ids();
+StateSendClient<T>::ClientThread::ClientThread(uint64_t id,
+                                               StateSendClient<T> *parent)
+    : my_thread_id(id), parent(parent) {}
+
+template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
+  std::vector<std::shared_ptr<QueryEmbedding<T>>> batch_of_queries;
+  constexpr int max_batch_size = 16;
+  batch_of_queries.reserve(max_batch_size);
+  while (running) {
+    size_t num_dequeued = concurrent_query_queue.wait_dequeue_bulk(
+        batch_of_queries.begin(), max_batch_size);
+    assert(num_dequeued == batch_of_queries.size());
+    // check for poison pill
+    for (auto i = 0; i < num_dequeued; i++) {
+      if (batch_of_queries[i] == nullptr) {
+        batch_of_queries.erase(batch_of_queries.begin() + i);
+        break;
+      }
+    }
+    if (batch_of_queries.size() == 0) {
+      assert(running == false);
+      break;
+    }
+    size_t region_size =
+        sizeof(MessageType::QUERIES) +
+        QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
+    MessageType msg_type = MessageType::QUERIES;
+    Region r;
+    r.length = region_size;
+    r.addr = new char[region_size];
+
+    size_t offset = 0;
+    std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+    offset += sizeof(msg_type);
+
+    QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
+                                               batch_of_queries);
+    uint32_t server_peer_id =
+        parent->current_round_robin_peer_index.fetch_add(1) %
+        parent->other_peer_ids.size();
+
+    parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
+                                       r);
+
+    batch_of_queries.clear();
+  }
 }
 
-template <typename T> void StateSendClient<T>::start() {
-  communicator->start_recv_thread();
+template <typename T>
+void StateSendClient<T>::ClientThread::push_query(
+    std::shared_ptr<QueryEmbedding<T>> query) {
+  parent->query_send_time.insert_or_assign(query->query_id, query);
+  concurrent_query_queue.enqueue(query);
 }
-
 
 template <typename T>
 void StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
                                 const uint64_t mem_l, const uint64_t l_search,
                                 const uint64_t beam_width) {
-  uint64_t server_peer_id_index =
-    this->current_round_robin_peer_index.fetch_add(1) % other_peer_ids.size();
-  uint64_t server_peer_id = other_peer_ids[server_peer_id_index];
-    
+  std::shared_ptr<SearchState<T>> state = std::make_shared<SearchState<T>>();
+  uint64_t query_id = this->query_id.fetch_add(1);
+  std::shared_ptr<QueryEmbedding<T>> query =
+      std::make_shared<QueryEmbedding<T>>();
+
+  query->query_id = query_id;
+  query->dim = this->dim;
+  query->num_chunks = 0;
+  std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
+  uint64_t next_client_thread_id =
+      current_client_thread_id.fetch_add(1) % num_client_threads;
+  client_threads[next_client_thread_id]->push_query(query);
 }
 
-template <typename T> void StateSendClient<T>::wait_results() {
-    
+template <typename T> void StateSendClient<T>::ClientThread::start() {
+  real_thread = std::thread(&StateSendClient<T>::ClientThread::main_loop, this);
+  running = true;
+}
+
+template <typename T> void StateSendClient<T>::ClientThread::signal_stop() {
+  running = false;
+  concurrent_query_queue.enqueue(nullptr);
+}
+
+template <typename T> void StateSendClient<T>::ClientThread::join() {
+  if (real_thread.joinable())
+    real_thread.join();
 }
 
 
 template <typename T>
-void StateSendClient<T>::receive_handler(const char *buffer, size_t size) {}
+StateSendClient<T>::StateSendClient(const uint64_t id,
+                                    const std::string &communicator_json,
+                                    int num_client_threads, uint64_t dim)
+    : my_id(id), num_client_threads(num_client_threads), dim(dim) {
+  communicator = std::make_unique<ZMQP2PCommunicator>(my_id, communicator_json);
+  std::cout << "Done with constructor for statesendclient" << std::endl;
+  other_peer_ids = communicator->get_other_peer_ids();
 
-
-template <typename T> void StateSendClient<T>::signal_stop() {
-  communicator->stop_recv_thread();
+  for (uint64_t i = 0; i < num_client_threads; i++) {
+    client_threads.emplace_back(i, this);
+  }
 }
 
+template <typename T> void StateSendClient<T>::start_result_thread() {
+  communicator->start_recv_thread();
+}
 
+template <typename T> void StateSendClient<T>::start_client_threads() {
+  for (auto &client_thread : client_threads) {
+    client_thread->start();
+  }
+}
+
+// template <typename T>
+// void StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
+//                                 const uint64_t mem_l, const uint64_t
+//                                 l_search, const uint64_t beam_width) {
+//   uint64_t server_peer_id_index =
+//     this->current_round_robin_peer_index.fetch_add(1) %
+//     other_peer_ids.size();
+//   uint64_t server_peer_id = other_peer_ids[server_peer_id_index];
+
+// }
+
+template <typename T>
+void StateSendClient<T>::wait_results(const uint64_t num_results) {
+  while (num_results_received != num_results) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+
+template <typename T>
+void StateSendClient<T>::receive_result_handler(const char *buffer,
+                                                size_t size) {
+  size_t offset = 0;
+  MessageType msg_type;
+  std::memcpy(&msg_type, buffer, sizeof(msg_type));
+  assert(msg_type == MessageType::RESULT);
+  offset += sizeof(msg_type);
+
+  std::shared_ptr<search_result_t> res =
+    search_result_t::deserialize(buffer + offset);
+  query_result_time.insert_or_assign(res->query_id,
+                                     std::chrono::steady_clock::now());
+  results.insert_or_assign(res->query_id, res);
+  num_results_received.fetch_add(1);
+}
+
+template <typename T> void StateSendClient<T>::shutdown() {
+  communicator->stop_recv_thread();
+  for (auto &client_thread : client_threads) {
+    client_thread->signal_stop();
+  }
+  for (auto &client_thread : client_threads) {
+    client_thread->join();
+  }
+}
