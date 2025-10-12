@@ -47,6 +47,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 
     parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                        r);
+    
 
     batch_of_queries.clear();
   }
@@ -55,12 +56,12 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 template <typename T>
 void StateSendClient<T>::ClientThread::push_query(
     std::shared_ptr<QueryEmbedding<T>> query) {
-  parent->query_send_time.insert_or_assign(query->query_id, query);
+  parent->query_send_time.insert_or_assign(query->query_id, std::chrono::steady_clock::now());
   concurrent_query_queue.enqueue(query);
 }
 
 template <typename T>
-void StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
+uint64_t StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
                                 const uint64_t mem_l, const uint64_t l_search,
                                 const uint64_t beam_width) {
   std::shared_ptr<SearchState<T>> state = std::make_shared<SearchState<T>>();
@@ -69,12 +70,18 @@ void StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
       std::make_shared<QueryEmbedding<T>>();
 
   query->query_id = query_id;
+  query->client_peer_id = my_id;
+  query->mem_l = mem_l;
+  query->l_search = l_search;
+  query->k_search = k_search;
+  query->beam_width = beam_width;
   query->dim = this->dim;
   query->num_chunks = 0;
   std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
   uint64_t next_client_thread_id =
       current_client_thread_id.fetch_add(1) % num_client_threads;
   client_threads[next_client_thread_id]->push_query(query);
+  return query_id;
 }
 
 template <typename T> void StateSendClient<T>::ClientThread::start() {
@@ -101,9 +108,13 @@ StateSendClient<T>::StateSendClient(const uint64_t id,
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, communicator_json);
   std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
+  communicator->register_receive_handler(
+      [this](const char *buffer, size_t size) {
+        this->receive_result_handler(buffer, size);
+      });
 
   for (uint64_t i = 0; i < num_client_threads; i++) {
-    client_threads.emplace_back(i, this);
+    client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
   }
 }
 
@@ -125,14 +136,41 @@ template <typename T> void StateSendClient<T>::start_client_threads() {
 //     this->current_round_robin_peer_index.fetch_add(1) %
 //     other_peer_ids.size();
 //   uint64_t server_peer_id = other_peer_ids[server_peer_id_index];
-
 // }
 
 template <typename T>
 void StateSendClient<T>::wait_results(const uint64_t num_results) {
   while (num_results_received != num_results) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
+}
+
+template <typename T>
+std::shared_ptr<search_result_t> StateSendClient<T>::get_result(const uint64_t query_id) {
+  return results.find(query_id);
+}
+
+template <typename T>
+double StateSendClient<T>::get_query_latency_milli(const uint64_t query_id) {
+  auto sent = query_send_time.find(query_id);
+  auto received = query_result_time.find(query_id);
+  std::chrono::microseconds elapsed = std::chrono::duration_cast<std::chrono::microseconds>(received - sent);
+
+  double lat = static_cast<double>(elapsed.count()) / 1000.0;
+  return lat;
+}
+
+
+template <typename T>
+std::chrono::steady_clock::time_point
+StateSendClient<T>::get_query_send_time(const uint64_t query_id) {
+  return query_send_time.find(query_id);
+}
+
+template <typename T>
+std::chrono::steady_clock::time_point
+StateSendClient<T>::get_query_result_time(const uint64_t query_id) {
+  return query_result_time.find(query_id);
 }
 
 template <typename T>
@@ -161,3 +199,13 @@ template <typename T> void StateSendClient<T>::shutdown() {
     client_thread->join();
   }
 }
+
+
+template <typename T> StateSendClient<T>::~StateSendClient() {
+  shutdown();
+}
+
+
+template class StateSendClient<uint8_t>;
+template class StateSendClient<int8_t>;
+template class StateSendClient<float>;

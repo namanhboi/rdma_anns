@@ -432,6 +432,10 @@ private:
   
 private:
   /**
+     notify based on client peer id
+   */
+  void notify_client_tcp(SearchState<T, TagT> *search_state);
+  /**
      writes results to the res_tags and res_dists that client specified and
      increment completion count. Deallocates the search_state as well.
   */

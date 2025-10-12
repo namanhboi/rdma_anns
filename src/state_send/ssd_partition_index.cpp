@@ -1,3 +1,4 @@
+#include "communicator.h"
 #include "types.h"
 #include "ssd_partition_index.h"
 #include "query_buf.h"
@@ -324,22 +325,29 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_local(
 						     SearchState<T, TagT> *search_state) {
   assert(is_local);
-  auto &full_retset = search_state->full_retset;
-  std::sort(full_retset.begin(), full_retset.end(),
-            [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
-              return left < right;
-            });
+  search_result_t result = search_state->get_search_result();
+  // auto &full_retset = search_state->full_retset;
+  // std::sort(full_retset.begin(), full_retset.end(),
+  // [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
+  // return left < right;
+  // });
 
-  uint64_t t = 0;
-  for (uint64_t i = 0; i < full_retset.size() && t < search_state->k_search; i++) {
-    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
-      continue;  // deduplicate.
+  // uint64_t t = 0;
+  // for (uint64_t i = 0; i < full_retset.size() && t <
+  // search_state->k_search; i++) { if (i > 0 && full_retset[i].id ==
+  // full_retset[i - 1].id) { continue;  // deduplicate.
+  // }
+  // search_state->res_tags[t] = full_retset[i].id;  // use ID to replace
+  // tags if (search_state->res_dists != nullptr) {
+  // search_state->res_dists[t] = full_retset[i].distance;
+  // }
+  // t++;
+  // }
+  for (auto i = 0; i < result.num_res; i++) {
+    search_state->res_tags[i] = result.node_id[i];
+    if (search_state != nullptr) {
+      search_state->res_dists[i] = result.distance[i];
     }
-    search_state->res_tags[t] = full_retset[i].id;  // use ID to replace tags
-    if (search_state->res_dists != nullptr) {
-      search_state->res_dists[t] = full_retset[i].distance;
-    }
-    t++;
   }
   search_state->completion_count->fetch_add(1);
 }
@@ -385,9 +393,12 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   uint32_t best_medoid = medoids[0];
   state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
   // std::sort(new_search_state->retset.begin(),
-            // new_search_state->retset.begin() + new_search_state->cur_list_size);  
+  // new_search_state->retset.begin() + new_search_state->cur_list_size);
+  uint64_t thread_id =
+    current_search_thread_id.fetch_add(1) % num_search_threads;
+  
 #ifdef BALANCE_ALL
-  void *ctx = search_threads[current_search_thread_id]->ctx;
+  void *ctx = search_threads[thread_id]->ctx;
   if (ctx == nullptr) {
     std::stringstream err;
     err << "[" << __func__ << "] tried to issue io but ctx = nullptr" << std::endl;
@@ -395,10 +406,8 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   }
   new_search_state->issue_next_io_batch(ctx);
 #else
-  search_threads[current_search_thread_id]->push_state(new_search_state);
+  search_threads[thread_id]->push_state(new_search_state);
 #endif
-  current_search_thread_id =
-    (current_search_thread_id + 1) % search_threads.size();
 }
 
 // template <typename T, typename TagT>
@@ -457,20 +466,78 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     LOG(ERROR) << "mem_index_path is needed";
     exit(1);
   }
-  throw std::runtime_error("Just doing testing on main diskann rn");
+  throw std::runtime_error(
+			   "Just doing testing on main diskann rn, so in mem index yet");
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::notify_client_tcp(
+						   SearchState<T, TagT> *search_state) {
+  Region r;
+  search_result_t result = search_state->get_search_result();
+  size_t region_size =
+    sizeof(MessageType::RESULT) + result.get_serialize_size();
+  r.length = region_size;
+  r.addr = new char[region_size];
+
+  size_t offset = 0;
+  MessageType msg_type = MessageType::RESULT;
+  std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+  offset += sizeof(msg_type);
+  result.write_serialize(r.addr + offset);
+  this->communicator->send_to_peer(search_state->client_peer_id, r);
 }
 
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client(SearchState<T, TagT> *search_state) {
-  if (is_local)
+  if (search_state->client_type == ClientType::LOCAL) {
     notify_client_local(search_state);
+  } else if (search_state->client_type == ClientType::TCP) {
+    notify_client_tcp(search_state);
+  }
 }
 
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                                  size_t size) {
+  assert(is_local == false);
+  MessageType msg_type;
+  size_t offset = 0;
+  std::memcpy(&msg_type, buffer, sizeof(msg_type));
+  offset += sizeof(msg_type);
+  if (msg_type == MessageType::QUERIES) {
+    std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
+      QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+    for (auto &query : queries) {
+      query->num_chunks = this->n_chunks;
+      // lets check how long this takes, if it takes long then we can do it lazily
+      // (ie when the search thread first accesses it
+      pq_table.populate_chunk_distances(query->query, query->pq_dists);
+      query_emb_map.insert_or_assign(query->query_id, query);
+
+      SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
+      new_search_state->client_type = ClientType::TCP;
+      new_search_state->mem_l = query->mem_l;    
+      new_search_state->l_search = query->l_search;
+      new_search_state->k_search = query->k_search;
+      new_search_state->beam_width = query->beam_width;
+      new_search_state->query_id = query->query_id;
+      new_search_state->client_peer_id = query->client_peer_id;
+      new_search_state->partition_history.push_back(this->my_partition_id);
+    
+      uint64_t thread_id =
+	current_search_thread_id.fetch_add(1) % num_search_threads;
+
+      search_threads[thread_id]->push_state(new_search_state);
+    }
+  } else {
+    throw std::runtime_error(
+			     "Right now message types other than queries are not handled");
+  }
+  
+  
   // std::vector<SearchState<T, TagT> *> states =
   //   SearchState<T, TagT>::deserialize_states(buffer, size);
   // for (auto &state : states) {

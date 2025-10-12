@@ -42,3 +42,11 @@ target_compile_options(state_send_server PRIVATE
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops>
 )
 
+add_library(state_send_client SHARED state_send_client.cpp)
+target_link_libraries(state_send_client ssd_state_send)
+# add_executable(state_send_client state_send_client.cpp)
+target_compile_options(state_send_client PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops>
+)
+

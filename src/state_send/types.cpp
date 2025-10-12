@@ -69,6 +69,8 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(&cmps), sizeof(cmps),
              offset);
   write_data(buffer, reinterpret_cast<const char *>(&k), sizeof(k), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&mem_l), sizeof(mem_l),
+             offset);
   write_data(buffer, reinterpret_cast<const char *>(&l_search),
              sizeof(l_search), offset);
   write_data(buffer, reinterpret_cast<const char *>(&k_search),
@@ -123,6 +125,7 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
   num_bytes += sizeof(cur_list_size);
   num_bytes += sizeof(cmps);
   num_bytes += sizeof(k);
+  num_bytes += sizeof(mem_l);  
   num_bytes += sizeof(l_search);
   num_bytes += sizeof(k_search);
   num_bytes += sizeof(beam_width);
@@ -228,6 +231,9 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&state->k, buffer + offset, sizeof(state->k));
   offset += sizeof(state->k);
 
+  std::memcpy(&state->mem_l, buffer + offset, sizeof(state->mem_l));
+  offset += sizeof(state->mem_l);
+
   std::memcpy(&state->l_search, buffer + offset, sizeof(state->l_search));
   offset += sizeof(state->l_search);
 
@@ -281,6 +287,38 @@ size_t SearchState<T, TagT>::write_serialize_states(
 }
 
 template <typename T, typename TagT>
+search_result_t SearchState<T, TagT>::get_search_result() {
+  search_result_t result;
+  auto &full_retset = this->full_retset;
+  std::sort(full_retset.begin(), full_retset.end(),
+            [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
+              return left < right;
+            });
+  size_t offset = 0;
+  result.query_id = query_id;
+  // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
+             // sizeof(this->query_id), offset);
+
+
+  uint64_t num_res = 0;
+  // static uint32_t res_id[256];
+  // static uint32_t res_dist[256];
+
+  for (uint64_t i = 0; i < full_retset.size() && num_res < this->k_search; i++) {
+    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
+      continue;  // deduplicate.
+    }
+    // write_data(char *buffer, const char *data, size_t size, size_t &offset)
+    result.node_id[num_res] = full_retset[i].id;  // use ID to replace tags
+    result.distance[num_res] = full_retset[i].distance;
+    num_res++;
+  }
+  result.num_res = num_res;
+  return result;
+}
+
+
+template <typename T, typename TagT>
 size_t SearchState<T, TagT>::get_serialize_size_states(
     const std::vector<SearchState *> &states) {
   size_t num_bytes = sizeof(states.size());
@@ -309,20 +347,21 @@ SearchState<T, TagT>::deserialize_states(const char *buffer, size_t size) {
   return states;
 }
 
-std::shared_ptr<search_result_t> search_result_t::deserialize(const char *buffer) {
+std::shared_ptr<search_result_t>
+search_result_t::deserialize(const char *buffer) {
   std::shared_ptr<search_result_t> res;
   size_t offset = 0;
 
   std::memcpy(&res->query_id, buffer + offset, sizeof(res->query_id));
   offset += sizeof(res->query_id);
-  std::memcpy(&res->k_search, buffer + offset, sizeof(res->k_search));
-  offset += sizeof(res->k_search);
+  std::memcpy(&res->num_res, buffer + offset, sizeof(res->num_res));
+  offset += sizeof(res->num_res);
 
-  std::memcpy(res->node_id, buffer + offset, sizeof(uint32_t) * res->k_search);
-  offset += sizeof(uint32_t) * res->k_search;
+  std::memcpy(res->node_id, buffer + offset, sizeof(uint32_t) * res->num_res);
+  offset += sizeof(uint32_t) * res->num_res;
 
-  std::memcpy(res->distance, buffer + offset, sizeof(float) * res->k_search);
-  offset += sizeof(float) * res->k_search;
+  std::memcpy(res->distance, buffer + offset, sizeof(float) * res->num_res);
+  offset += sizeof(float) * res->num_res;
 
   return res;
 }
@@ -332,18 +371,18 @@ size_t search_result_t::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
              sizeof(this->query_id), offset);
 
-  write_data(buffer, reinterpret_cast<const char *>(&this->k_search),
-             sizeof(this->k_search), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&this->num_res),
+             sizeof(this->num_res), offset);
   write_data(buffer, reinterpret_cast<const char *>(this->node_id),
-             sizeof(uint32_t) * k_search, offset);
+             sizeof(uint32_t) * num_res, offset);
   write_data(buffer, reinterpret_cast<const char *>(this->distance),
-             sizeof(float) * k_search, offset);
+             sizeof(float) * num_res, offset);
   return offset;
 }
 
 size_t search_result_t::get_serialize_size() const {
-  return sizeof(query_id) + sizeof(k_search) + sizeof(uint32_t) * k_search +
-         sizeof(float) * k_search;
+  return sizeof(query_id) + sizeof(num_res) + sizeof(uint32_t) * num_res +
+         sizeof(float) * num_res;
 }
 
 template <typename T>
@@ -354,6 +393,17 @@ QueryEmbedding<T>::deserialize(const char *buffer) {
   size_t offset = 0;
   std::memcpy(&query->query_id, buffer + offset, sizeof(query->query_id));
   offset += sizeof(query->query_id);
+  std::memcpy(&query->client_peer_id, buffer + offset,
+              sizeof(query->client_peer_id));
+  offset += sizeof(query->client_peer_id);
+  std::memcpy(&query->mem_l, buffer + offset, sizeof(query->mem_l));
+  offset += sizeof(query->mem_l);
+  std::memcpy(&query->l_search, buffer + offset, sizeof(query->l_search));
+  offset += sizeof(query->l_search);
+  std::memcpy(&query->k_search, buffer + offset, sizeof(query->k_search));
+  offset += sizeof(query->k_search);
+  std::memcpy(&query->beam_width, buffer + offset, sizeof(query->beam_width));
+  offset += sizeof(query->beam_width);
   std::memcpy(&query->dim, buffer + offset, sizeof(query->dim));
   offset += sizeof(query->dim);
   std::memcpy(&query->num_chunks, buffer + offset, sizeof(query->num_chunks));
@@ -367,23 +417,54 @@ QueryEmbedding<T>::deserialize(const char *buffer) {
 }
 
 template <typename T>
+std::vector<std::shared_ptr<QueryEmbedding<T>>>
+QueryEmbedding<T>::deserialize_queries(const char *buffer, size_t size) {
+  std::vector<std::shared_ptr<QueryEmbedding<T>>> queries;
+  size_t offset = 0;
+
+  size_t num_queries;
+  std::memcpy(&num_queries, buffer + offset, sizeof(num_queries));
+  offset += sizeof(num_queries);
+
+  queries.reserve(num_queries);
+  for (size_t i = 0; i < num_queries; i++) {
+    auto query = QueryEmbedding<T>::deserialize(buffer + offset);
+    offset += query->get_serialize_size();
+    queries.push_back(query);
+  }
+  return queries;
+}
+
+
+template <typename T>
 size_t QueryEmbedding<T>::write_serialize(char *buffer) const {
   size_t offset = 0;
   write_data(buffer, reinterpret_cast<const char *>(&query_id),
-                          sizeof(query_id), offset);
-  write_data(buffer, reinterpret_cast<const char *>(&dim),
-                          sizeof(dim), offset);
+             sizeof(query_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&client_peer_id),
+             sizeof(client_peer_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&mem_l),
+             sizeof(mem_l), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&l_search),
+             sizeof(l_search), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&k_search),
+             sizeof(k_search), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&beam_width),
+             sizeof(beam_width), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&dim), sizeof(dim), offset);
   write_data(buffer, reinterpret_cast<const char *>(&num_chunks),
-                          sizeof(num_chunks), offset);
-  write_data(buffer, reinterpret_cast<const char *>(query),
-                          sizeof(T) * dim, offset);
+             sizeof(num_chunks), offset);
+  write_data(buffer, reinterpret_cast<const char *>(query), sizeof(T) * dim,
+             offset);
   write_data(buffer, reinterpret_cast<const char *>(pq_dists),
-                          sizeof(float) * num_chunks, offset);
+             sizeof(float) * num_chunks, offset);
   return offset;
 }
 
 template <typename T> size_t QueryEmbedding<T>::get_serialize_size() const {
-  return sizeof(query_id) + sizeof(dim) + sizeof(num_chunks) + sizeof(T) * dim +
+  return sizeof(query_id) + sizeof(client_peer_id) + sizeof(mem_l) +
+         sizeof(l_search) + sizeof(k_search) + sizeof(beam_width) +
+         sizeof(dim) + sizeof(num_chunks) + sizeof(T) * dim +
          sizeof(float) * num_chunks;
 }
 
@@ -402,7 +483,7 @@ size_t QueryEmbedding<T>::write_serialize_queries(
 
 template <typename T>
 size_t QueryEmbedding<T>::get_serialize_size_queries(
-						     const std::vector<std::shared_ptr<QueryEmbedding>> &queries) {
+    const std::vector<std::shared_ptr<QueryEmbedding>> &queries) {
   size_t num_bytes = 0;
   num_bytes += sizeof(size_t);
   for (const auto &query : queries) {
@@ -410,8 +491,6 @@ size_t QueryEmbedding<T>::get_serialize_size_queries(
   }
   return num_bytes;
 }
-
-
 
 template struct QueryEmbedding<float>;
 template struct QueryEmbedding<uint8_t>;

@@ -31,6 +31,18 @@ enum class SearchExecutionState {
   TOP_CAND_NODE_ON_SERVER
 };
 
+struct search_result_t {
+  uint64_t query_id;
+  uint64_t num_res;
+  uint32_t node_id[maxKSearch];
+  float distance[maxKSearch];
+
+  static std::shared_ptr<search_result_t> deserialize(const char *buffer);
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
+};
+
+
 /**
    includes both full embeddings and pq representation of query. Client uses
    this to send stuff to server. Server upon receving a query, makes a
@@ -38,6 +50,11 @@ enum class SearchExecutionState {
  */
 template <typename T> struct QueryEmbedding {
   uint64_t query_id;
+  uint64_t client_peer_id;
+  uint64_t mem_l;
+  uint64_t l_search;
+  uint64_t k_search;
+  uint64_t beam_width;
   uint32_t dim;
   uint32_t num_chunks;
   T query[kMaxVectorDim];
@@ -83,7 +100,7 @@ struct alignas(SECTOR_LEN) SearchState {
   std::vector<IORequest> frontier_read_reqs;
 
   unsigned cur_list_size, cmps, k;
-  uint64_t l_search, k_search, beam_width;
+  uint64_t mem_l, l_search, k_search, beam_width;
 
   uint64_t query_id;
 
@@ -134,17 +151,13 @@ struct alignas(SECTOR_LEN) SearchState {
 
   static size_t
   get_serialize_size_states(const std::vector<SearchState *> &states);
+
+
+  /**
+     sort the full retset then create searchrseult
+   */
+  search_result_t get_search_result();
+  
+  
 };
-
-struct search_result_t {
-  uint64_t query_id;
-  uint64_t k_search;
-  uint32_t node_id[maxKSearch];
-  float distance[maxKSearch];
-
-  static std::shared_ptr<search_result_t> deserialize(const char *buffer);
-  size_t write_serialize(char *buffer) const;
-  size_t get_serialize_size() const;
-};
-
 
