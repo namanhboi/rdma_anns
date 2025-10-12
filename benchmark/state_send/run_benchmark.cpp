@@ -130,7 +130,7 @@ template <typename T> int search_disk_index(int argc, char **argv) {
       std::make_shared<std::atomic<uint64_t>>(0);
     for (int i = 0; i < (int64_t)query_num; i += 1) {
       _pFlashIndex->search_ssd_index_local(
-          query + (i * query_dim), (uint64_t)recall_at, mem_L, (uint64_t)L,
+					   query + (i * query_dim), i, (uint64_t)recall_at, mem_L, (uint64_t)L,
           query_result_tags_32.data() + (i * recall_at),
           query_result_dists[test_id].data() + (i * recall_at),
 					   (uint64_t)beamwidth, completion_count);

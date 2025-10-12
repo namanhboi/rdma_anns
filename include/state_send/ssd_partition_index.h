@@ -78,7 +78,8 @@ constexpr int max_requests = 1000;
 template <typename T, typename TagT = uint32_t> class SSDPartitionIndex {
 public:
   // concurernt hashmap
-  libcuckoo::cuckoohash_map<uint64_t, QueryEmbedding<T>> query_emb_map;
+  libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<QueryEmbedding<T>>>
+      query_emb_map;
 
   /**
      state of a beam search execution
@@ -453,11 +454,12 @@ public:
      mem index. After query is done, increment completion_count
    */
   void search_ssd_index_local(
-      const T *query_emb, const uint64_t k_search, const uint32_t mem_L,
-      const uint64_t l_search, TagT *res_tags, float *res_dists,
-      const uint64_t beam_width,
+      const T *query_emb, const uint64_t query_id, const uint64_t k_search,
+      const uint32_t mem_L, const uint64_t l_search, TagT *res_tags,
+      float *res_dists, const uint64_t beam_width,
 			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
-  void search_ssd_index(const T *query_emb, const uint64_t k_search,
-                        const uint32_t mem_L, const uint64_t l_search,
-                        const uint64_t beam_width, const uint64_t peer_id);
+  
+  // void search_ssd_index(const T *query_emb, const uint64_t k_search,
+                        // const uint32_t mem_L, const uint64_t l_search,
+                        // const uint64_t beam_width, const uint64_t peer_id);
 };

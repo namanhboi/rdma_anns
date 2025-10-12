@@ -9,7 +9,7 @@ void SSDPartitionIndex<T, TagT>::state_compute_dists(SearchState<T, TagT> *state
   ::aggregate_coords(ids, n_ids, this->data.data(), this->n_chunks,
                      state->pq_coord_scratch);
   ::pq_dist_lookup(state->pq_coord_scratch, n_ids, this->n_chunks,
-                   state->pq_dists, dists_out);
+                   state->query_emb->pq_dists, dists_out);
 }
 
 template <typename T, typename TagT>
@@ -94,7 +94,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
     memcpy(node_fp_coords_copy, node_fp_coords,
            this->data_dim * sizeof(T));
     float cur_expanded_dist = this->dist_cmp->compare(
-							state->query, node_fp_coords_copy, (unsigned)this->aligned_dim);
+							state->query_emb->query, node_fp_coords_copy, (unsigned)this->aligned_dim);
 
     pipeann::Neighbor n(id, cur_expanded_dist, true);
     state->full_retset.push_back(n);

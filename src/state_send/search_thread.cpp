@@ -145,10 +145,23 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 
     SearchState<T, TagT> *state =
       reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
-    // LOG(INFO) << "l and k are  " << state->l_search << " " << state->k_search;
-    // LOG(INFO) << "k and cur_list_size " << state->k << " " << state->cur_list_size;
-    // LOG(INFO) << "concurrent queries and QUEUE size approx"
+    // LOG(INFO) << "l and k are  " << state->l_search << " " <<
+    // state->k_search; LOG(INFO) << "k and cur_list_size " << state->k << " "
+    // << state->cur_list_size; LOG(INFO) << "concurrent queries and QUEUE size
+    // approx"
     // << number_concurrent_queries << " " << state_queue.size_approx();
+
+    if (state->query_emb == nullptr) {
+      if (parent->query_emb_map.contains(state->query_id)) {
+        state->query_emb = parent->query_emb_map.find(state->query_id);
+        
+      } else {
+        // here we need to reenter the state into the queue/iouring
+        throw std::runtime_error("the reentry of state what doesn't yet have "
+                                 "pq or embedding data is not yet impl");
+      }
+      
+    }
     SearchExecutionState s = parent->state_explore_frontier(state);
     if (s == SearchExecutionState::FINISHED) {
       this->parent->notify_client(state);
