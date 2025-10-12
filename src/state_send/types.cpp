@@ -312,7 +312,45 @@ std::vector<SearchState<T, TagT>*> SearchState<T, TagT>::deserialize_states(
   return states;
 }
 
+search_result_t search_result_t::deserialize(const char *buffer) {
+  search_result_t res;
+  size_t offset = 0;
 
+  std::memcpy(&res.query_id, buffer + offset, sizeof(res.query_id));
+  offset += sizeof(res.query_id);
+  std::memcpy(&res.k_search, buffer + offset, sizeof(res.k_search));
+  offset += sizeof(res.k_search);
+
+  std::memcpy(res.node_id, buffer + offset, sizeof(uint32_t) * res.k_search);
+  offset += sizeof(uint32_t) * res.k_search;
+
+  std::memcpy(res.distance, buffer + offset, sizeof(float) * res.k_search);
+  offset += sizeof(float) * res.k_search;
+
+  return res;
+}
+
+size_t search_result_t::write_serialize(char *buffer) const {
+  size_t offset = 0;
+  size_t num_bytes = 0;
+  num_bytes +=
+      write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
+                 sizeof(this->query_id), offset);
+  num_bytes +=
+      write_data(buffer, reinterpret_cast<const char *>(&this->k_search),
+                 sizeof(this->k_search), offset);
+  num_bytes += write_data(buffer, reinterpret_cast<const char *>(this->node_id),
+                          sizeof(uint32_t) * k_search, offset);
+  num_bytes +=
+      write_data(buffer, reinterpret_cast<const char *>(this->distance),
+                 sizeof(float) * k_search, offset);
+  return num_bytes;
+}
+
+size_t search_result_t::get_serialize_size() const {
+  return sizeof(query_id) + sizeof(k_search) + sizeof(uint32_t) * k_search +
+         sizeof(float) * k_search;
+}
 
 
 template struct SearchState<float>;
