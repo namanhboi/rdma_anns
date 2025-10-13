@@ -7,7 +7,8 @@
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SearchThread::SearchThread(
     SSDPartitionIndex *parent, uint64_t thread_id)
-: parent(parent), thread_id(thread_id) {}
+    : parent(parent), thread_id(thread_id),
+    search_thread_consumer_token(parent->global_state_queue) {}
 
 
 template <typename T, typename TagT>
@@ -83,14 +84,14 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
   IORequest *noop_req = new IORequest;
   this->parent->reader->send_noop(noop_req, this->ctx);
 #ifndef BALANCE_ALL
-  state_queue.enqueue(nullptr);
+  thread_state_queue.enqueue(nullptr);
 #endif  
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::push_state(
 							  SearchState<T, TagT> *new_state) {
-  bool ret = state_queue.enqueue(new_state);
+  bool ret = thread_state_queue.enqueue(new_state);
   assert(ret);
 }
 
@@ -110,11 +111,16 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     // LOG(INFO) <<"Concurrent queries " <<number_concurrent_queries;
     assert(batch_size >= number_concurrent_queries);
     uint64_t num_states_to_dequeue = parent->batch_size - number_concurrent_queries;
-    // LOG(INFO) << "number of concurrent queries " << number_concurrent_queries; 
+    // LOG(INFO) << "number of concurrent queries " << number_concurrent_queries;
     if (num_states_to_dequeue > 0) {
-      size_t num_dequeued = state_queue.try_dequeue_bulk(
+#ifdef PER_THREAD_QUEUE      
+      size_t num_dequeued = thread_state_queue.try_dequeue_bulk(
 							 allocated_states.begin(), num_states_to_dequeue);
-      
+#else
+      size_t num_dequeued = parent->global_state_queue.try_dequeue_bulk(
+          search_thread_consumer_token, allocated_states.begin(),
+									num_states_to_dequeue);
+#endif
       // LOG(INFO) << "Dequeued " << num_dequeued;
       for (size_t i = 0; i < num_dequeued; i++) {
         if (allocated_states[i] == nullptr) {

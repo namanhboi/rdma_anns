@@ -1,6 +1,7 @@
 #pragma once
 
 #include "blockingconcurrentqueue.h"
+#include "concurrentqueue.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "linux_aligned_file_reader.h"
 #include "neighbor.h"
@@ -122,55 +123,6 @@ public:
     // }
 
 private:
-  /**
-     Version 1:
-     All search threads will share a io thread. All io
-     operations of the searchthreads must happen through that io thread.
-     This is based on https://github.com/axboe/liburing/issues/129.
-     The io thread will manage all the contexts that the search threads
-     registers.
-
-     For SubmissionThread and SearchThread:
-     - TODO: Need to do the diskann way of having a map to get the appropriate
-     context given a thread id.
-     - Both threads must share the same context, can't use the thread_local way
-     of pipeann
-     - Search thread will call register_thread then expose the context via a
-     getter function call
-     - One file reader belonging to SSDIndex but multiple contexts
-
-     Version 2 (probably better, will use this one):
-     just put a lock on sqe submission ring and then both the send thread and
-     the parent can send requests through the same context safely
-     seems like this version is much simpler and avoid overhead of extra thread.
-     Lock contention for the ring shouldn't be too bad but we'll see.
-   */
-  class IOSubmissionThread {
-    struct thread_io_req_t {
-      void *ctx;
-      uint64_t thread_id;
-      IORequest io_request;
-    };
-    SSDPartitionIndex *parent;
-    moodycamel::BlockingConcurrentQueue<thread_io_req_t>
-        concurrent_io_req_queue;
-    std::thread real_thread;
-    std::atomic<bool> running{false};
-    uint32_t num_search_threads;
-    std::array<std::vector<IORequest>, MAX_SEARCH_THREADS> thread_io_requests;
-    std::array<void *, MAX_SEARCH_THREADS> thread_io_ctx;
-    void submit_requests(std::vector<IORequest> &io_requests, void *ctx);
-    void main_loop();
-
-  public:
-    IOSubmissionThread(SSDPartitionIndex *parent, uint32_t num_search_threads);
-    void push_io_request(thread_io_req_t thread_io_req);
-    void start();
-    void join();
-    void signal_stop();
-  };
-
-  // used for balance_batch
   static constexpr uint64_t max_batch_size = 128;
   uint64_t batch_size = 0;
   bool record_stats;
@@ -183,10 +135,9 @@ private:
     std::atomic<bool> running{false};
     void *ctx = nullptr;
 
+    moodycamel::ConsumerToken search_thread_consumer_token;
 
-
-
-    moodycamel::ConcurrentQueue<SearchState<T, TagT> *> state_queue;
+    moodycamel::ConcurrentQueue<SearchState<T, TagT> *> thread_state_queue;
 
     /**
        main loop that runs the search. This version balances all queries at
@@ -212,8 +163,11 @@ private:
     void join();
   };
 
+  moodycamel::ConcurrentQueue<SearchState<T, TagT> *> global_state_queue;
+  moodycamel::ProducerToken client_state_prod_token;
+  moodycamel::ProducerToken server_state_prod_token;
+
   std::vector<std::unique_ptr<SearchThread>> search_threads;
-  std::unique_ptr<IOSubmissionThread> io_thread;
   uint32_t num_search_threads;
   std::atomic<int> current_search_thread_id = 0;
 

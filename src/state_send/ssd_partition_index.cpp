@@ -12,7 +12,9 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator, bool tags,
     Parameters *params, bool is_local, uint64_t batch_size)
-    : reader(fileReader), is_local(is_local), communicator(communicator) {
+    : reader(fileReader), is_local(is_local), communicator(communicator),
+      client_state_prod_token(global_state_queue),
+      server_state_prod_token(global_state_queue) {
   if (is_local) {
     assert(communicator == nullptr);
   }
@@ -519,10 +521,15 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       // uint32_t best_medoid = medoids[0];
       // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
       // state_print(new_search_state);
+#ifdef PER_THREAD_QUEUE
       uint64_t thread_id =
           current_search_thread_id.fetch_add(1) % num_search_threads;
 
       search_threads[thread_id]->push_state(new_search_state);
+#else
+      // global_state_queue.enqueue()
+      global_state_queue.enqueue(client_state_prod_token, new_search_state);
+#endif
     }
   } else {
     throw std::runtime_error(

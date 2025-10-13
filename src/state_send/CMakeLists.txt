@@ -6,7 +6,6 @@ set(COMMON_INCLUDE_DIR
 
 set (CPP_FILES
   distance.cpp
-  io_submission_thread.cpp
   linux_aligned_file_reader.cpp
   search_state.cpp
   ssd_partition_index.cpp
