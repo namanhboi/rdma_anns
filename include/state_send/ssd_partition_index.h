@@ -16,7 +16,7 @@
 #include "communicator.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "types.h"
-
+#include "index.h"
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -366,6 +366,8 @@ public:
     return cluster_assignment[node_id];
   }
 
+  uint64_t get_data_dim() {return this->data_dim;}
+
 private:
   uint8_t my_partition_id;
   // index info
@@ -430,6 +432,8 @@ private:
 
   std::vector<uint8_t> cluster_assignment;
 
+
+  std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;
 private:
   bool is_local;
   // section is for commmunication

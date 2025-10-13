@@ -394,8 +394,9 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
   // float *pq_dists = new_search_state->pq_dists;
   // pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
   state_reset(new_search_state);
-  uint32_t best_medoid = medoids[0];
-  state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
+  // uint32_t best_medoid = medoids[0];
+  // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
+
   // std::sort(new_search_state->retset.begin(),
   // new_search_state->retset.begin() + new_search_state->cur_list_size);
   uint64_t thread_id =
@@ -415,34 +416,6 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
 #endif
 }
 
-// template <typename T, typename TagT>
-// void SSDPartitionIndex<T, TagT>::search_ssd_index(const T *query_emb,
-//                                                   const uint64_t k_search,
-//                                                   const uint32_t mem_L,
-//                                                   const uint64_t l_search,
-//                                                   const uint64_t beam_width,
-//                                                   const uint64_t
-//                                                   client_peer_id) {
-//   assert(is_local);
-//   if (beam_width != 1) {
-//     throw std::invalid_argument("beam width has to be 1 because of the
-//     design");
-//   }
-//   // need to create a state then issue io
-//   SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
-//   new_search_state->client_type = ClientType::LOCAL;
-//   new_search_state->l_search = l_search;
-//   new_search_state->k_search = k_search;
-//   new_search_state->beam_width = beam_width;
-//   new_search_state->client_peer_id = client_peer_id;
-
-//   memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
-//   float *pq_dists = new_search_state->pq_dists;
-//   pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
-//   state_reset(new_search_state);
-//   uint32_t best_medoid = medoids[0];
-//   state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
-// }
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
@@ -473,8 +446,9 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     LOG(ERROR) << "mem_index_path is needed";
     exit(1);
   }
-  throw std::runtime_error(
-      "Just doing testing on main diskann rn, so in mem index yet");
+  mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(
+							     metric, query_dim, 0, false, false, true);
+  mem_index_->load(mem_index_path.c_str());
 }
 
 template <typename T, typename TagT>
@@ -542,8 +516,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
         new_search_state->stats = std::make_shared<QueryStats>();
       }
       state_reset(new_search_state);
-      uint32_t best_medoid = medoids[0];
-      state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
+      // uint32_t best_medoid = medoids[0];
+      // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
       // state_print(new_search_state);
       uint64_t thread_id =
           current_search_thread_id.fetch_add(1) % num_search_threads;

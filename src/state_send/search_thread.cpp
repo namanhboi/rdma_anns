@@ -129,6 +129,27 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           allocated_states[i]->stats->n_4k++;
           allocated_states[i]->stats->n_ios++;
         }
+
+        // initialize the result set: either with in mem index or by just using the medoid
+        if (allocated_states[i]->retset.size() == 0) {
+          if (allocated_states[i]->mem_l > 0) {
+            assert(parent->mem_index_ != nullptr);
+            std::vector<unsigned> mem_tags(allocated_states[i]->mem_l);
+            std::vector<float> mem_dists(allocated_states[i]->mem_l);
+            parent->mem_index_->search_with_tags(
+                allocated_states[i]->query_emb->query,
+                allocated_states[i]->mem_l, allocated_states[i]->mem_l,
+						 mem_tags.data(), mem_dists.data());
+            parent->state_compute_and_add_to_retset(
+                allocated_states[i], mem_tags.data(),
+                std::min((unsigned)allocated_states[i]->mem_l,
+                         (unsigned)allocated_states[i]->l_search));
+          } else {
+	    uint32_t best_medoid = parent->medoids[0];
+            parent->state_compute_and_add_to_retset(allocated_states[i],
+                                                    &best_medoid, 1);
+          }
+        }
         parent->state_issue_next_io_batch(allocated_states[i], ctx);
         number_concurrent_queries++;
       }
@@ -152,17 +173,13 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     if (state->stats != nullptr) {
       state->stats->io_us += (double) state->io_timer.elapsed();
     }
-    if (state->query_emb == nullptr) {
-      if (parent->query_emb_map.contains(state->query_id)) {
-        state->query_emb = parent->query_emb_map.find(state->query_id);
-        
-      } else {
-        // here we need to reenter the state into the queue/iouring
-        throw std::runtime_error("the reentry of state what doesn't yet have "
-                                 "pq or embedding data is not yet impl");
-      }
-      
-    }
+    // if (state->query_emb == nullptr) {
+    //   if (parent->query_emb_map.contains(state->query_id)) {
+    //     state->query_emb = parent->query_emb_map.find(state->query_id);
+    //   } else {
+    //     throw std::runtime_error("the query_emb for this state doesn't exist");
+    //   }
+    // }
     SearchExecutionState s = parent->state_explore_frontier(state);
     if (s == SearchExecutionState::FINISHED) {
       // state->end_time = std::chrono::steady_clock::now();

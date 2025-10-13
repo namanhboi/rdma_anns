@@ -97,7 +97,7 @@ struct search_result_t {
 template <typename T> struct QueryEmbedding {
   uint64_t query_id;
   uint64_t client_peer_id;
-  uint64_t mem_l;
+  uint64_t mem_l = 0;
   uint64_t l_search;
   uint64_t k_search;
   uint64_t beam_width;
@@ -146,7 +146,7 @@ struct alignas(SECTOR_LEN) SearchState {
   std::vector<IORequest> frontier_read_reqs;
 
   unsigned cur_list_size, cmps, k;
-  uint64_t mem_l, l_search, k_search, beam_width;
+  uint64_t mem_l = 0, l_search, k_search, beam_width;
 
   uint64_t query_id;
 

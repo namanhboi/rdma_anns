@@ -89,7 +89,7 @@ if(NOT DEFINED DATA_TYPE)
 endif()
 
 add_subdirectory(extern/gp-ann)
-add_subdirectory(extern/DiskANN)
+# add_subdirectory(extern/DiskANN)
 # add_subdirectory(src/task_push)
 add_subdirectory(src/communicator)
 add_subdirectory(src/state_send)

@@ -19,7 +19,7 @@ public:
                   const std::string &index_prefix,
                   const std::string &cluster_assignment_file, pipeann::Metric m,
                   uint8_t my_partition_id, uint32_t num_partitions,
-                  uint32_t num_search_threads, bool use_mem_index, bool tags) {
+                  uint32_t num_search_threads, bool use_mem_index, bool tags, uint64_t batch_size) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
         static_cast<uint64_t>(my_partition_id), server_json);
     reader = std::make_shared<LinuxAlignedFileReader>();
@@ -29,13 +29,19 @@ public:
     }
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
         m, my_partition_id, num_partitions, num_search_threads, reader,
-        communicator, tags, nullptr, false);
+								 communicator, tags, nullptr, false, batch_size);
     int res =
       ssd_partition_index->load(index_prefix.c_str(), true, cluster_file_ptr);
     if (res != 0) {
       std::runtime_error("error loading index");
     }
 
+    if (use_mem_index) {
+      auto mem_index_path = index_prefix + "_mem.index";
+      LOG(INFO) << "Load memory index " << mem_index_path;
+      ssd_partition_index->load_mem_index(
+					  m, ssd_partition_index->get_data_dim(), mem_index_path);
+    }
     communicator->register_receive_handler(
         [index_ptr = (ssd_partition_index.get())](const char *buffer,
                                                   size_t size) {
@@ -94,6 +100,7 @@ int main(int argc, char **argv) {
   std::string metric = data["metric"].get<std::string>();
   uint32_t num_partitions = data["num_partitions"].get<uint32_t>();
   uint8_t my_partition_id = data["my_partition_id"].get<uint8_t>();
+  uint64_t batch_size = data["batch_size"].get<uint64_t>();
 
   if (type != "uint8" && type != "int8" && type != "float") {
     throw std::invalid_argument("data type doesn't make sense");
@@ -109,19 +116,20 @@ int main(int argc, char **argv) {
   if (type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
         server_json, index_prefix, cluster_assignment_file, m, my_partition_id,
-							     num_partitions, num_search_threads, use_mem_index, use_tags);
+        num_partitions, num_search_threads, use_mem_index, use_tags,
+							     batch_size);
     run_server(std::move(server));
   } else if (type == "int8") {
     auto server = 
       std::make_unique<StateSendServer<int8_t>>(server_json, index_prefix, cluster_assignment_file,
                             m, my_partition_id, num_partitions,
-                            num_search_threads, use_mem_index, use_tags);
+						num_search_threads, use_mem_index, use_tags, batch_size);
     run_server(std::move(server));
   } else if (type == "float") {
-    auto server = 
-      std::make_unique<StateSendServer<float>>(server_json, index_prefix, cluster_assignment_file,
-                           m, my_partition_id, num_partitions,
-                           num_search_threads, use_mem_index, use_tags);
+    auto server = std::make_unique<StateSendServer<float>>(
+        server_json, index_prefix, cluster_assignment_file, m, my_partition_id,
+        num_partitions, num_search_threads, use_mem_index, use_tags,
+							   batch_size);
     run_server(std::move(server));
   }
 

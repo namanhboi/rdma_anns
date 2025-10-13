@@ -14,11 +14,14 @@ set (CPP_FILES
   aux_utils.cpp
   search_thread.cpp
   types.cpp
+  query_buf.cpp
+  index.cpp
 )
 
 add_library(ssd_state_send SHARED
   ${CPP_FILES}
 )
+find_package(OpenMP REQUIRED)
 
 target_compile_features(ssd_state_send PRIVATE cxx_std_20)
 target_include_directories(ssd_state_send PUBLIC ${COMMON_INCLUDE_DIR})
@@ -29,7 +32,7 @@ target_compile_options(ssd_state_send PRIVATE
 target_link_directories(ssd_state_send PUBLIC
 	${PROJECT_SOURCE_DIR}/extern/liburing/src
 )
-target_link_libraries(ssd_state_send uring communicator)
+target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX)
 
 if(BALANCE_ALL)
     target_compile_definitions(ssd_state_send PRIVATE BALANCE_ALL)
