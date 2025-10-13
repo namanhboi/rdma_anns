@@ -5,8 +5,10 @@
 #pragma once
 #include "neighbor.h"
 #include "query_buf.h"
+#include "timer.h"
 #include "tsl/robin_set.h"
 #include "utils.h"
+#include <chrono>
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -31,17 +33,61 @@ enum class SearchExecutionState {
   TOP_CAND_NODE_ON_SERVER
 };
 
+struct QueryStats {
+  double total_us = 0; // total time to process query in micros
+  double n_4k = 0;     // # of 4kB reads
+  double n_ios = 0;    // total # of IOs issued
+  double io_us = 0;    // total time spent in IO/waiting for its turn
+  double head_us = 0;  // total time spent in in-memory index
+  double cpu_us = 0;   // total time spent in CPU
+  double n_cmps = 0;   // # cmps
+  double n_hops = 0;   // # search hops
+
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
+  static std::shared_ptr<QueryStats> deserialize(const char *buffer);
+};
+inline double get_percentile_stats(
+    std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
+    float percentile,
+    const std::function<double(const std::shared_ptr<QueryStats> &)>
+        &member_fn) {
+  std::vector<double> vals(len);
+  for (uint64_t i = 0; i < len; i++) {
+    vals[i] = member_fn(stats[i]);
+  }
+
+  std::sort(
+      vals.begin(), vals.end(),
+      [](const double &left, const double &right) { return left < right; });
+
+  auto retval = vals[(uint64_t)(percentile * ((float)len))];
+  vals.clear();
+  return retval;
+}
+
+inline double
+get_mean_stats(std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
+               const std::function<double(const std::shared_ptr<QueryStats> &)>
+                   &member_fn) {
+  double avg = 0;
+  for (uint64_t i = 0; i < len; i++) {
+    avg += member_fn(stats[i]);
+  }
+  return avg / ((double)len);
+}
+
 struct search_result_t {
   uint64_t query_id;
   uint64_t num_res;
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
+  std::shared_ptr<QueryStats> stats = nullptr;
 
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
 };
-
 
 /**
    includes both full embeddings and pq representation of query. Client uses
@@ -57,6 +103,7 @@ template <typename T> struct QueryEmbedding {
   uint64_t beam_width;
   uint32_t dim;
   uint32_t num_chunks;
+  bool record_stats;
   T query[kMaxVectorDim];
   float pq_dists[32768];
 
@@ -71,8 +118,7 @@ template <typename T> struct QueryEmbedding {
       const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
 
   static size_t get_serialize_size_queries(
-					   const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
-
+      const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
 };
 
 template <typename T, typename TagT = uint32_t>
@@ -106,6 +152,13 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // all the partition/server ids that it has been through
   std::vector<uint8_t> partition_history;
+
+  // stats
+  pipeann::Timer query_timer, io_timer, cpu_timer;
+  std::shared_ptr<QueryStats> stats = nullptr;
+
+  // std::chrono::steady_clock::time_point start_time;
+  // std::chrono::steady_clock::time_point end_time;
 
   // client information to notify of completion
   ClientType client_type;
@@ -152,12 +205,8 @@ struct alignas(SECTOR_LEN) SearchState {
   static size_t
   get_serialize_size_states(const std::vector<SearchState *> &states);
 
-
   /**
      sort the full retset then create searchrseult
    */
   search_result_t get_search_result();
-  
-  
 };
-

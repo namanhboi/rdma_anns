@@ -14,7 +14,11 @@ void SSDPartitionIndex<T, TagT>::state_compute_dists(SearchState<T, TagT> *state
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
-  LOG(INFO) << "Full retset size " << state->full_retset.size()
+  LOG(INFO) << " query id " << state->query_id
+  << " k search " << state->k_search
+  << " l search " << state->l_search 
+  << " beam width " << state->beam_width
+  << " Full retset size " << state->full_retset.size()
   << " retset size: " << state->retset.size()
   << " visited size: " << state->visited.size()
   << " frontier size: " << state->frontier.size()
@@ -80,7 +84,7 @@ void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> 
 template <typename T, typename TagT>
 SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchState<T, TagT> *state) {
   auto nk = state->cur_list_size;
-
+  state->stats->n_hops++;
   for (auto &frontier_nhood : state->frontier_nhoods) {
     auto [id, loc, sector_buf] = frontier_nhood;
     char *node_disk_buf = this->offset_to_loc(sector_buf, loc);
@@ -100,9 +104,14 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
     state->full_retset.push_back(n);
 
     unsigned *node_nbrs = (node_buf + 1);
+    state->cpu_timer.reset();
     // compute node_nbrs <-> query dist in PQ space
     state_compute_dists(state, node_nbrs, nnbrs, state->dist_scratch);
-
+    if (state->stats != nullptr) {
+      state->stats->n_cmps += (double) nnbrs;
+      state->stats->cpu_us += (double) state->cpu_timer.elapsed();
+    }
+    state->cpu_timer.reset();
     // process prefetch-ed nhood
     for (uint64_t m = 0; m < nnbrs; ++m) {
       unsigned id = node_nbrs[m];
@@ -112,6 +121,9 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
         state->visited.insert(id);
         state->cmps++;
         float dist = state->dist_scratch[m];
+        if (state->stats != nullptr) {
+          state->stats->n_cmps++;
+        }
         if (dist >= state->retset[state->cur_list_size - 1].distance &&
             (state->cur_list_size == state->l_search))
           continue;
@@ -128,6 +140,9 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
         if (r < nk)
           nk = r;
       }
+    }
+    if (state->stats != nullptr) {
+      state->stats->cpu_us += (double)state->cpu_timer.elapsed();
     }
   }
 

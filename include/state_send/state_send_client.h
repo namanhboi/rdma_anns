@@ -10,7 +10,7 @@ private:
       query_send_time;
   libcuckoo::cuckoohash_map<uint64_t, std::chrono::steady_clock::time_point>
       query_result_time;
-  std::atomic<uint64_t> num_results_received;
+  std::atomic<uint64_t> num_results_received={0};
 
   libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<search_result_t>> results;
 
@@ -21,7 +21,7 @@ private:
   std::atomic<uint64_t> current_round_robin_peer_index{0};
 
   std::atomic<uint64_t>
-      query_id; // the search thread gets the query id via this
+      query_id={0}; // the search thread gets the query id via this
 
 private:
   class ClientThread {
@@ -48,7 +48,7 @@ private:
   std::vector<std::unique_ptr<ClientThread>> client_threads;
   int num_client_threads;
 
-  std::atomic<uint64_t> current_client_thread_id;
+  std::atomic<uint64_t> current_client_thread_id={0};
 
 private:
   uint64_t dim;
@@ -65,11 +65,10 @@ public:
   void start_client_threads();
 
   uint64_t search(const T *query_emb, const uint64_t k_search, const uint64_t mem_l,
-              const uint64_t l_search, const uint64_t beam_width);
+		  const uint64_t l_search, const uint64_t beam_width, bool record_stats);
 
   void wait_results(const uint64_t num_results);
   std::shared_ptr<search_result_t> get_result(const uint64_t query_id);
-  double get_query_latency_milli(const uint64_t query_id);
 
   std::chrono::steady_clock::time_point
   get_query_send_time(const uint64_t query_id);
@@ -82,5 +81,5 @@ public:
     logs the time received and also save the result for comparison later
    */
   void receive_result_handler(const char *buffer, size_t size);
-
 };
+

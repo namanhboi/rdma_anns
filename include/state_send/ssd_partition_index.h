@@ -169,6 +169,12 @@ private:
     void join();
     void signal_stop();
   };
+
+  // used for balance_batch
+  static constexpr uint64_t max_batch_size = 128;
+  uint64_t batch_size = 0;
+  bool record_stats;
+
   class SearchThread {
     SSDPartitionIndex *parent;
     std::thread real_thread;
@@ -178,8 +184,7 @@ private:
     void *ctx = nullptr;
 
 
-    static constexpr uint64_t max_batch_size = 128;
-    uint64_t batch_size = 0;
+
 
     moodycamel::ConcurrentQueue<SearchState<T, TagT> *> state_queue;
 
@@ -200,7 +205,7 @@ private:
        will run the search, won't contain a queue/have any way of directly
        issueing a query. Instead, wait on io requests
      */
-    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id, uint64_t batch_size = 24);
+    SearchThread(SSDPartitionIndex *parent, uint64_t thread_id);
     void push_state(SearchState<T, TagT> *new_state);
     void start();
     void signal_stop();
@@ -237,7 +242,7 @@ public:
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
                     bool tags = false, Parameters *parameters = nullptr,
-                    bool is_local = true);
+                    bool is_local = true, uint64_t batch_size = 8);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -462,7 +467,7 @@ public:
       const uint32_t mem_L, const uint64_t l_search, TagT *res_tags,
       float *res_dists, const uint64_t beam_width,
 			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
-  
+
   // void search_ssd_index(const T *query_emb, const uint64_t k_search,
                         // const uint32_t mem_L, const uint64_t l_search,
                         // const uint64_t beam_width, const uint64_t peer_id);

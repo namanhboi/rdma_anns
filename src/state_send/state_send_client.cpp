@@ -10,11 +10,14 @@ StateSendClient<T>::ClientThread::ClientThread(uint64_t id,
 
 template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
   std::vector<std::shared_ptr<QueryEmbedding<T>>> batch_of_queries;
-  constexpr int max_batch_size = 16;
-  batch_of_queries.reserve(max_batch_size);
+  constexpr int max_batch_size = 1;
+  batch_of_queries.reserve(max_batch_size + 1);
+  std::cout << "main loop started for client thread " << std::endl;
   while (running) {
+    batch_of_queries.resize(max_batch_size + 1);
     size_t num_dequeued = concurrent_query_queue.wait_dequeue_bulk(
-        batch_of_queries.begin(), max_batch_size);
+								   batch_of_queries.begin(), max_batch_size);
+    batch_of_queries.resize(num_dequeued);
     assert(num_dequeued == batch_of_queries.size());
     // check for poison pill
     for (auto i = 0; i < num_dequeued; i++) {
@@ -44,31 +47,30 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
     uint32_t server_peer_id =
         parent->current_round_robin_peer_index.fetch_add(1) %
         parent->other_peer_ids.size();
-
+    for (const auto&query: batch_of_queries) {
+      parent->query_send_time.insert_or_assign(
+					       query->query_id, std::chrono::steady_clock::now());
+    }
     parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                        r);
-    
-
-    batch_of_queries.clear();
   }
 }
 
 template <typename T>
 void StateSendClient<T>::ClientThread::push_query(
-    std::shared_ptr<QueryEmbedding<T>> query) {
-  parent->query_send_time.insert_or_assign(query->query_id, std::chrono::steady_clock::now());
+						  std::shared_ptr<QueryEmbedding<T>> query) {
+
+  // std::cout << "pushed query " << query->query_id << std::endl;
   concurrent_query_queue.enqueue(query);
 }
 
 template <typename T>
 uint64_t StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
                                 const uint64_t mem_l, const uint64_t l_search,
-                                const uint64_t beam_width) {
-  std::shared_ptr<SearchState<T>> state = std::make_shared<SearchState<T>>();
+                                    const uint64_t beam_width, bool record_stats) {
   uint64_t query_id = this->query_id.fetch_add(1);
   std::shared_ptr<QueryEmbedding<T>> query =
       std::make_shared<QueryEmbedding<T>>();
-
   query->query_id = query_id;
   query->client_peer_id = my_id;
   query->mem_l = mem_l;
@@ -77,6 +79,7 @@ uint64_t StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   query->beam_width = beam_width;
   query->dim = this->dim;
   query->num_chunks = 0;
+  query->record_stats = record_stats;
   std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
   uint64_t next_client_thread_id =
       current_client_thread_id.fetch_add(1) % num_client_threads;
@@ -85,8 +88,8 @@ uint64_t StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
 }
 
 template <typename T> void StateSendClient<T>::ClientThread::start() {
-  real_thread = std::thread(&StateSendClient<T>::ClientThread::main_loop, this);
   running = true;
+  real_thread = std::thread(&StateSendClient<T>::ClientThread::main_loop, this);
 }
 
 template <typename T> void StateSendClient<T>::ClientThread::signal_stop() {
@@ -123,6 +126,7 @@ template <typename T> void StateSendClient<T>::start_result_thread() {
 }
 
 template <typename T> void StateSendClient<T>::start_client_threads() {
+  std::cout << "starting " <<  client_threads.size() << " threads" << std::endl;
   for (auto &client_thread : client_threads) {
     client_thread->start();
   }
@@ -141,25 +145,16 @@ template <typename T> void StateSendClient<T>::start_client_threads() {
 template <typename T>
 void StateSendClient<T>::wait_results(const uint64_t num_results) {
   while (num_results_received != num_results) {
+    // std::cout << num_results_received << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
+  num_results_received = 0;
 }
 
 template <typename T>
 std::shared_ptr<search_result_t> StateSendClient<T>::get_result(const uint64_t query_id) {
   return results.find(query_id);
 }
-
-template <typename T>
-double StateSendClient<T>::get_query_latency_milli(const uint64_t query_id) {
-  auto sent = query_send_time.find(query_id);
-  auto received = query_result_time.find(query_id);
-  std::chrono::microseconds elapsed = std::chrono::duration_cast<std::chrono::microseconds>(received - sent);
-
-  double lat = static_cast<double>(elapsed.count()) / 1000.0;
-  return lat;
-}
-
 
 template <typename T>
 std::chrono::steady_clock::time_point
@@ -182,8 +177,13 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
   assert(msg_type == MessageType::RESULT);
   offset += sizeof(msg_type);
 
+  // uint64_t query_id;
+  // std::memcpy(&msg_type, buffer, sizeof(msg_type));
+
+  
   std::shared_ptr<search_result_t> res =
     search_result_t::deserialize(buffer + offset);
+  // LOG(INFO) << " query id " << res->query_id << " num result " << res ->num_res;
   query_result_time.insert_or_assign(res->query_id,
                                      std::chrono::steady_clock::now());
   results.insert_or_assign(res->query_id, res);
