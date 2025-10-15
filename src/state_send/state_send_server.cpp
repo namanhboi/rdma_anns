@@ -117,6 +117,12 @@ int main(int argc, char **argv) {
   } else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);
+  }
+
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    if (use_tags == false) {
+      throw std::invalid_argument("use_tags must be true if we are doing scatter gather");
+    }
 
   }
   

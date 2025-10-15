@@ -1,5 +1,6 @@
 #include "query_buf.h"
 #include "ssd_partition_index.h"
+#include "types.h"
 #include <array>
 #include <chrono>
 #include <stdexcept>
@@ -168,7 +169,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     if (req->search_state == nullptr) {
       std::cerr << "poison pill detected" << std::endl;
       // this is a poison pill to shutdown the thread
-      delete req;
       break;
     }
     // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
@@ -194,6 +194,9 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       }
       this->parent->notify_client(state);
       number_concurrent_queries--;
+      if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+        parent->query_emb_map.erase(state->query_id);
+      }
       delete state;
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";

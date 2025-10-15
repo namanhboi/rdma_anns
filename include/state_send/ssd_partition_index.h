@@ -77,11 +77,11 @@ constexpr int max_requests = 1000;
   either sending them to other servers or send to client
  */
 template <typename T, typename TagT = uint32_t> class SSDPartitionIndex {
-public:
+
   // concurernt hashmap
   libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<QueryEmbedding<T>>>
       query_emb_map;
-
+public:
   /**
      state of a beam search execution
    */
@@ -111,7 +111,9 @@ public:
      */
     SearchExecutionState state_explore_frontier(SearchState<T, TagT> *state);
 
-    bool state_search_ends(SearchState<T, TagT> *state);
+  bool state_search_ends(SearchState<T, TagT> *state);
+
+  void apply_tags_to_result(search_result_t &result);
 
 
     // static void write_serialize_query(const T *query_emb,

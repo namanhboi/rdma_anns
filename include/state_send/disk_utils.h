@@ -1,0 +1,46 @@
+#pragma once
+
+#include <string>
+#include <cstdint>
+#include "utils.h"
+
+/**
+   from the basefile, randomly assign each embedding to a cluster from 0 -
+   (num_clusters - 1) to create the tag files for each cluster. The indices in
+   the tag files indexes into the base file to get embeddings for each cluster.
+
+   The tag files are index_path_prefi + "_cluster{id}.tags". If the tag files
+   already exists then don't create new ones
+
+return true if new files are written, false if files already exists
+
+ */
+template<typename T, typename TagT=uint32_t>
+void create_random_cluster_tag_files(const std::string &base_file,
+                                     const std::string &index_path_prefix,
+                                     uint32_t num_clusters);
+
+
+/**
+   check that num_clusters tag files exists . Then
+   from each tag file and the basefile, create the base files for the clusters.
+   base files name: index_path_prefix + "_cluster{id}.bin"
+   If files already exists then don't need to recreate
+   
+*/
+template<typename T, typename TagT=uint32_t>
+void create_random_cluster_base_files(const std::string &base_file,
+                                      const std::string &index_path_prefix,
+                                      uint32_t num_clusters);
+
+/**
+   create disk index files from the base files, must check that they exist. If
+   the disk index files arealdy exists then don't need to recreate
+*/
+template <typename T, typename TagT = uint32_t>
+void create_random_cluster_disk_indices(const std::string &index_path_prefix,
+                                        uint32_t num_clusters,
+                                        const char *indexBuildParameters,
+                                        pipeann::Metric _compareMetric,
+                                        bool single_file_index);
+

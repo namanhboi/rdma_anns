@@ -316,6 +316,17 @@ void SSDPartitionIndex<T, TagT>::load_tags(const std::string &tag_file_name,
   LOG(INFO) << "Loaded " << tags.size() << " tags";
 }
 
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::apply_tags_to_result(search_result_t &result) {
+  if (!enable_tags)
+    return;
+
+  for (auto i = 0; i < result.num_res; i++) {
+    result.node_id[i] = id2tag(result.node_id[i]);
+  }
+}
+
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::compute_pq_dists(const uint32_t src,
                                                   const uint32_t *ids,
@@ -341,6 +352,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_local(
     SearchState<T, TagT> *search_state) {
   assert(is_local);
   search_result_t result = search_state->get_search_result();
+  apply_tags_to_result(result);
   // auto &full_retset = search_state->full_retset;
   // std::sort(full_retset.begin(), full_retset.end(),
   // [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
@@ -469,6 +481,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
   // << std::endl;
   Region r;
   search_result_t result = search_state->get_search_result();
+  apply_tags_to_result(result);
   size_t region_size =
       sizeof(MessageType::RESULT) + result.get_serialize_size();
   r.length = region_size;

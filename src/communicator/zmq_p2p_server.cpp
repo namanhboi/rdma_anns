@@ -14,7 +14,12 @@ int main(int argc, char **argv) {
   ZMQP2PCommunicator server(my_id, config_file);
   std::atomic<int> num_received{0};
   server.register_receive_handler(
-				  [&num_received](const char *data, size_t len) { num_received++; });
+      [&num_received](const char *data, size_t len) {
+        num_received++;
+        if (num_received % 10000 == 0) {
+	  std::cout << "received: " << num_received << std::endl;
+        }
+      });
   std::cout << "number of peers " << server.get_num_peers() << std::endl;
   server.start_recv_thread();
   for (size_t i = 0; i < num_msg; i++) {
@@ -27,7 +32,11 @@ int main(int argc, char **argv) {
       }
     }
   }
-  std::this_thread::sleep_for(std::chrono::seconds(10));
-  std::cout << num_received << std::endl;
+  std::string shutdown;
+  
+  while (shutdown != "q") {
+    std::cin >> shutdown;
+  }
+  server.stop_recv_thread();
 }
 

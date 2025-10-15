@@ -80,7 +80,7 @@ target_compile_options(state_send_client PRIVATE
 
 add_executable(create_scatter_gather_indices create_scatter_gather_indices.cpp)
 target_link_libraries(create_scatter_gather_indices ssd_state_send)
-target_compile_options(state_send_client PRIVATE
+target_compile_options(create_scatter_gather_indices PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall-fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )

@@ -1,0 +1,14 @@
+{
+  "client_peer_id" : 2,
+  "num_client_thread": 1,
+  "dim": 128,
+  "query_bin" : "/home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin",
+  "truthset_bin":  "/home/nam/big-ann-benchmarks/data/bigann/bigann-10M",
+  "Lvec" : [10, 20, 30, 40, 50, 100,200, 1000], 
+  "beam_width" : 1,
+  "K" : 10,
+  "mem_L" : 10,
+  "data_type" : "uint8",
+  "record_stats": true,
+  "dist_search_mode": "SCATTER_GATHER"
+}
