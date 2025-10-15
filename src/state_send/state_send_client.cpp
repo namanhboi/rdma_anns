@@ -57,6 +57,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
                                          r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
+
       for (const auto &query : batch_of_queries) {
         parent->query_send_time.insert_or_assign(
             query->query_id, std::chrono::steady_clock::now());
@@ -64,6 +65,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
         if (i == parent->other_peer_ids.size() - 1) {
           // don't need to make an additional copy of r
+	  // std::cout << "sending query" <<std::endl;
           parent->communicator->send_to_peer(parent->other_peer_ids[i], r);
         } else {
           Region r_copy;
@@ -275,6 +277,7 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
       throw std::runtime_error("partition history size not 1: " +
                                std::to_string(res->partition_history.size()));
     }
+    // LOG(INFO) << "result received ";
     // sub_query_result_time.insert_or_assign(res->query_id,
     // std::chrono::steady_clock::now());
     sub_query_result_time.upsert(
@@ -288,7 +291,7 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
         },
         std::vector<std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
           {res->partition_history[0], std::chrono::steady_clock::now()}});
-    size_t num_res = 0;
+    size_t num_res = 1;
     sub_query_results.upsert(
         res->query_id,
         [res, &num_res](
@@ -300,7 +303,9 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
         },
         std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
           {res->partition_history[0], res}});
+
     if (num_res == other_peer_ids.size()) {
+      // LOG(INFO) << "result done";
       std::shared_ptr<search_result_t> combined_res =
         combine_results(sub_query_results.find(res->query_id));
       results.insert_or_assign(combined_res->query_id, combined_res);
