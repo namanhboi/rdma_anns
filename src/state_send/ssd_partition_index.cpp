@@ -10,12 +10,14 @@ template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::Metric m, uint8_t partition_id, uint32_t num_partitions,
     uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
-    std::unique_ptr<P2PCommunicator> &communicator, bool tags,
-    Parameters *params, bool is_local, uint64_t batch_size)
-    : reader(fileReader), is_local(is_local), communicator(communicator),
+    std::unique_ptr<P2PCommunicator> &communicator,
+    DistributedSearchMode dist_search_mode, bool tags,
+    pipeann::Parameters *params, uint64_t batch_size)
+    : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
-      server_state_prod_token(global_state_queue) {
-  if (is_local) {
+      server_state_prod_token(global_state_queue),
+      dist_search_mode(dist_search_mode) {
+  if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
   }
 
@@ -26,6 +28,13 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   this->batch_size = batch_size;
   this->my_partition_id = partition_id;
   this->num_partitions = num_partitions;
+  if (num_partitions > 1) {
+    if (dist_search_mode != DistributedSearchMode::STATE_SEND) {
+      throw std::invalid_argument(
+          "dist search mode doesn't make sense with num_partitions, if "
+          "num_partitions > 1 then dist search mode must be STATE SEND");
+    }
+  }
   if (num_search_threads > MAX_SEARCH_THREADS) {
     throw std::invalid_argument("num search threads > MAX_SEARCH_THREADS");
   }
@@ -533,18 +542,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     }
   } else {
     throw std::runtime_error(
-        "Right now message types other than queries are not handled");
+			     "Right now message types other than queries are not handled");
   }
-
-  // std::vector<SearchState<T, TagT> *> states =
-  //   SearchState<T, TagT>::deserialize_states(buffer, size);
-  // for (auto &state : states) {
-  //   // will prob need to look at what other initializations we have to do
-  //   state->partition_history.push_back(this->my_partition_id);
-  //   uint64_t thread_id = current_search_thread_id.fetch_add(1);
-  //   thread_id = thread_id % num_search_threads;
-  //   search_threads[thread_id]->push_state(state);
-  // }
 }
 
 template class SSDPartitionIndex<float, uint32_t>;

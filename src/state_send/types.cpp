@@ -82,8 +82,15 @@ std::shared_ptr<QueryStats> QueryStats::deserialize(const char *buffer) {
    - cmps
  */
 template <typename T, typename TagT>
-size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
+size_t SearchState<T, TagT>::write_serialize(char *buffer, bool with_embedding) const {
   size_t offset = 0;
+
+  write_data(buffer, reinterpret_cast<const char *>(&with_embedding),
+             sizeof(with_embedding), offset);
+  if (with_embedding) {
+    offset += this->query_emb->write_serialize(buffer + offset);
+  }
+
   size_t size_full_retset = full_retset.size();
   write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
              sizeof(size_full_retset), offset);
@@ -166,8 +173,13 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
 }
 
 template <typename T, typename TagT>
-size_t SearchState<T, TagT>::get_serialize_size() const {
+size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
   size_t num_bytes = 0;
+  num_bytes += sizeof(with_embedding);
+  if (with_embedding) {
+    num_bytes += query_emb->get_serialize_size();
+  }
+  
   num_bytes += sizeof(full_retset.size());
   for (const auto &res : full_retset) {
     num_bytes += sizeof(res.id);
@@ -214,6 +226,15 @@ template <typename T, typename TagT>
 SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   SearchState *state = new SearchState;
   size_t offset = 0;
+
+
+  bool has_embedding;
+  std::memcpy(&has_embedding, buffer + offset, sizeof(has_embedding));
+  offset += sizeof(has_embedding);
+  if (has_embedding) {
+    state->query_emb = QueryEmbedding<T>::deserialize(buffer + offset);
+    offset += state->query_emb->get_serialize_size();
+  }
 
   // --- full_retset ---
   size_t size_full_retset;
@@ -353,13 +374,13 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
 
 template <typename T, typename TagT>
 size_t SearchState<T, TagT>::write_serialize_states(
-    char *buffer, const std::vector<SearchState *> &states) {
+						    char *buffer, const std::vector<std::pair<SearchState *, bool>> &states) {
   size_t offset = 0;
   size_t num_states = states.size();
   write_data(buffer, reinterpret_cast<const char *>(&num_states),
              sizeof(num_states), offset);
-  for (const auto &state : states) {
-    offset += state->write_serialize(buffer + offset);
+  for (const auto &[state, with_embedding] : states) {
+    offset += state->write_serialize(buffer + offset, with_embedding);
   }
   return offset;
 }
@@ -367,6 +388,7 @@ size_t SearchState<T, TagT>::write_serialize_states(
 template <typename T, typename TagT>
 search_result_t SearchState<T, TagT>::get_search_result() {
   search_result_t result;
+  result.partition_history = this->partition_history;
   auto &full_retset = this->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
             [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
@@ -376,7 +398,6 @@ search_result_t SearchState<T, TagT>::get_search_result() {
   result.query_id = query_id;
   // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
              // sizeof(this->query_id), offset);
-
 
   uint64_t num_res = 0;
   // static uint32_t res_id[256];
@@ -399,10 +420,10 @@ search_result_t SearchState<T, TagT>::get_search_result() {
 
 template <typename T, typename TagT>
 size_t SearchState<T, TagT>::get_serialize_size_states(
-    const std::vector<SearchState *> &states) {
+    const std::vector<std::pair<SearchState *, bool>> &states) {
   size_t num_bytes = sizeof(states.size());
-  for (const auto &state : states) {
-    num_bytes += state->get_serialize_size();
+  for (const auto &[state, with_embedding] : states) {
+    num_bytes += state->get_serialize_size(with_embedding);
   }
   return num_bytes;
 }
@@ -420,7 +441,7 @@ SearchState<T, TagT>::deserialize_states(const char *buffer, size_t size) {
   states.reserve(num_states);
   for (size_t i = 0; i < num_states; i++) {
     auto *state = SearchState::deserialize(buffer + offset);
-    offset += state->get_serialize_size();
+    offset += state->get_serialize_size(state->query_emb != nullptr);
     states.push_back(state);
   }
   return states;
@@ -440,6 +461,15 @@ search_result_t::deserialize(const char *buffer) {
 
   std::memcpy(res->distance, buffer + offset, sizeof(float) * res->num_res);
   offset += sizeof(float) * res->num_res;
+
+  size_t num_partitions;
+  std::memcpy(&num_partitions, buffer + offset, sizeof(size_t));
+  offset += sizeof(num_partitions);
+
+  res->partition_history.resize(num_partitions);
+  
+  std::memcpy(res->partition_history.data(), buffer + offset, sizeof(uint8_t) * num_partitions);
+  offset += sizeof(uint8_t) * num_partitions;
 
   bool record_stats;
   std::memcpy(&record_stats, buffer + offset, sizeof(record_stats));
@@ -462,6 +492,12 @@ size_t search_result_t::write_serialize(char *buffer) const {
              sizeof(uint32_t) * num_res, offset);
   write_data(buffer, reinterpret_cast<const char *>(this->distance),
              sizeof(float) * num_res, offset);
+  size_t num_partitions = this->partition_history.size();
+  write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
+             sizeof(num_partitions), offset);
+  write_data(buffer, reinterpret_cast<const char *>(partition_history.data()),
+             sizeof(uint8_t) * num_partitions, offset);
+  
   bool record_stats = (stats != nullptr);
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
@@ -474,7 +510,8 @@ size_t search_result_t::write_serialize(char *buffer) const {
 size_t search_result_t::get_serialize_size() const {
   size_t num_bytes = 0;
   num_bytes += sizeof(query_id) + sizeof(num_res) + sizeof(uint32_t) * num_res +
-               sizeof(float) * num_res + sizeof(bool);
+               sizeof(float) * num_res + sizeof(size_t) +
+               sizeof(uint8_t) * partition_history.size() + sizeof(bool);
   if (stats != nullptr) {
     num_bytes+= stats->get_serialize_size();
   }

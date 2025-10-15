@@ -20,12 +20,25 @@ static constexpr int maxKSearch = 256;
 
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 
+
+enum class DistributedSearchMode : uint32_t {
+  SCATTER_GATHER = 0,
+  STATE_SEND = 1,
+  LOCAL = 2
+};
+
+
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 
 // message type for the server, it then uses the correct
 // deserialize_states/queries method to get the batch of states/queries. I say
 // batch but most of the time its 1
-enum class MessageType : uint32_t { QUERIES, STATES, RESULT };
+enum class MessageType : uint32_t {
+  QUERIES,
+  STATES,
+  RESULT
+};
+
 
 enum class SearchExecutionState {
   FINISHED,
@@ -82,6 +95,7 @@ struct search_result_t {
   uint64_t num_res;
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
+  std::vector<uint8_t> partition_history;
   std::shared_ptr<QueryStats> stats = nullptr;
 
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
@@ -195,18 +209,19 @@ struct alignas(SECTOR_LEN) SearchState {
        - beamwidth
        - cmps
    */
-  size_t write_serialize(char *buffer) const;
-  size_t get_serialize_size() const;
+  size_t write_serialize(char *buffer, bool with_embedding) const;
+  size_t get_serialize_size(bool with_embedding) const;
 
   static size_t
   write_serialize_states(char *buffer,
-                         const std::vector<SearchState *> &states);
+                         const std::vector<std::pair<SearchState *, bool>> &states);
 
   static size_t
-  get_serialize_size_states(const std::vector<SearchState *> &states);
+  get_serialize_size_states(const std::vector<std::pair<SearchState *, bool>> &states);
 
   /**
      sort the full retset then create searchrseult
    */
   search_result_t get_search_result();
 };
+

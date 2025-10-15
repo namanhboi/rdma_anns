@@ -845,7 +845,6 @@ Clusters
 parse_cluster_assignment_bin_file(const std::string& cluster_assignment_bin_file);
 
 
-
 /**
    for each cluster, write all the nodes that belong to it in a file:
    cluster_i_nodes.bin

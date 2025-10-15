@@ -1,5 +1,6 @@
 #include "communicator.h"
 #include "ssd_partition_index.h"
+#include "types.h"
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
@@ -15,13 +16,13 @@ public:
   // of partition 1
   // need to set is_local = false since this is doing some communication via
   // tcp/rdma
-  StateSendServer(const std::string &server_json,
+  StateSendServer(const std::string &communicator_json,
                   const std::string &index_prefix,
                   const std::string &cluster_assignment_file, pipeann::Metric m,
                   uint8_t my_partition_id, uint32_t num_partitions,
-                  uint32_t num_search_threads, bool use_mem_index, bool tags, uint64_t batch_size) {
+                  uint32_t num_search_threads, bool use_mem_index, DistributedSearchMode dist_search_mode,bool tags, uint64_t batch_size) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
-        static_cast<uint64_t>(my_partition_id), server_json);
+        static_cast<uint64_t>(my_partition_id), communicator_json);
     reader = std::make_shared<LinuxAlignedFileReader>();
     const char* cluster_file_ptr;
     if (cluster_assignment_file != "") {
@@ -29,7 +30,7 @@ public:
     }
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
         m, my_partition_id, num_partitions, num_search_threads, reader,
-								 communicator, tags, nullptr, false, batch_size);
+								 communicator, dist_search_mode, tags, nullptr, batch_size);
     int res =
       ssd_partition_index->load(index_prefix.c_str(), true, cluster_file_ptr);
     if (res != 0) {
@@ -74,7 +75,7 @@ void run_server(std::unique_ptr<StateSendServer<T>> server) {
 }
 
 /**
-   index json file should contain:
+   server json file should contain:
    - type: uint8_t, etc
    - num paritions?
    - index prefix
@@ -83,12 +84,14 @@ void run_server(std::unique_ptr<StateSendServer<T>> server) {
    - use tags
    - metric
    - my_id
+
+   commmunicator json contains the addresses of all p2p nodes
 */
 int main(int argc, char **argv) {
-  std::string index_json(argv[1]);
-  std::string server_json(argv[2]);
+  std::string server_json(argv[1]);
+  std::string communicator_json(argv[2]);
 
-  std::ifstream f(index_json);
+  std::ifstream f(server_json);
   json data = json::parse(f);
   std::string type = data["type"].get<std::string>();
   std::string index_prefix = data["index_prefix"].get<std::string>();
@@ -101,11 +104,22 @@ int main(int argc, char **argv) {
   uint32_t num_partitions = data["num_partitions"].get<uint32_t>();
   uint8_t my_partition_id = data["my_partition_id"].get<uint8_t>();
   uint64_t batch_size = data["batch_size"].get<uint64_t>();
+  std::string dist_search_mode_str = data["dist_search_mode"].get<std::string>();
+  DistributedSearchMode dist_search_mode;
 
   if (type != "uint8" && type != "int8" && type != "float") {
     throw std::invalid_argument("data type doesn't make sense");
   }
+  if (dist_search_mode_str == "STATE_SEND") {
+    dist_search_mode = DistributedSearchMode::STATE_SEND;
+  } else if (dist_search_mode_str == "SCATTER_GATHER") {
+    dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
+  } else {
+    throw std::invalid_argument("Dist search mode has weird value " +
+                                dist_search_mode_str);
 
+  }
+  
   pipeann::Metric m =
       metric == "cosine" ? pipeann::Metric::COSINE : pipeann::Metric::L2;
   if (metric != "l2" && m == pipeann::Metric::L2) {
@@ -115,21 +129,21 @@ int main(int argc, char **argv) {
 
   if (type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
-        server_json, index_prefix, cluster_assignment_file, m, my_partition_id,
-        num_partitions, num_search_threads, use_mem_index, use_tags,
-							     batch_size);
+        communicator_json, index_prefix, cluster_assignment_file, m, my_partition_id,
+        num_partitions, num_search_threads, use_mem_index, dist_search_mode,
+							     use_tags, batch_size);
     run_server(std::move(server));
   } else if (type == "int8") {
     auto server = 
-      std::make_unique<StateSendServer<int8_t>>(server_json, index_prefix, cluster_assignment_file,
+      std::make_unique<StateSendServer<int8_t>>(communicator_json, index_prefix, cluster_assignment_file,
                             m, my_partition_id, num_partitions,
-						num_search_threads, use_mem_index, use_tags, batch_size);
+						num_search_threads, use_mem_index, dist_search_mode,  use_tags, batch_size);
     run_server(std::move(server));
   } else if (type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
-        server_json, index_prefix, cluster_assignment_file, m, my_partition_id,
-        num_partitions, num_search_threads, use_mem_index, use_tags,
-							   batch_size);
+        communicator_json, index_prefix, cluster_assignment_file, m, my_partition_id,
+        num_partitions, num_search_threads, use_mem_index, dist_search_mode,
+							   use_tags, batch_size);
     run_server(std::move(server));
   }
 

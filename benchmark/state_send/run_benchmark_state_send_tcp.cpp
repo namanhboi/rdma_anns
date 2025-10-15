@@ -22,17 +22,28 @@ int search_disk_index(const std::string &query_json,
   uint64_t K = query_data["K"].get<uint64_t>();
   uint64_t mem_L = query_data["mem_L"].get<uint64_t>();
   bool record_stats = query_data["record_stats"].get<bool>();
+  std::string dist_search_mode_str = query_data["dist_search_mode"].get<std::string>();
+  DistributedSearchMode dist_search_mode;
 
   if (beam_width != 1) {
     throw std::invalid_argument("beam_width should be 1, other sizes not yet impl");
-  }  
+  }
+  if (dist_search_mode_str == "STATE_SEND") {
+    dist_search_mode = DistributedSearchMode::STATE_SEND;
+  } else if (dist_search_mode_str == "SCATTER_GATHER") {
+    dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
+  } else {
+    throw std::invalid_argument("Dist search mode has weird value " +
+                                dist_search_mode_str);
+  }
+
   std::vector<std::vector<uint32_t>> query_result_ids(Lvec.size());
   std::vector<std::vector<uint32_t>> query_result_tags(Lvec.size());
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
 
   StateSendClient<T> client(client_peer_id, communicator_json,
-                            num_client_thread, dim);
+                            num_client_thread, dist_search_mode, dim);
   client.start_result_thread();
   client.start_client_threads();
   
@@ -207,22 +218,20 @@ int search_disk_index(const std::string &query_json,
 }
 
 int main(int argc, char **argv) {
-  std::string query_json(argv[1]);
+  std::string client_json(argv[1]);
   std::string communicator_json(argv[2]);
 
-
-  std::ifstream query_ifstream(query_json);
+  std::ifstream query_ifstream(client_json);
   json query_data = json::parse(query_ifstream);
   std::string data_type = query_data["data_type"].get<std::string>();
   if (data_type == "uint8") {
-    search_disk_index<uint8_t>(query_json, communicator_json);
+    search_disk_index<uint8_t>(client_json, communicator_json);
   } else if (data_type == "int8") {
-    search_disk_index<int8_t>(query_json, communicator_json);
+    search_disk_index<int8_t>(client_json, communicator_json);
   } else if (data_type == "float") {
-    search_disk_index<float>(query_json, communicator_json);
+    search_disk_index<float>(client_json, communicator_json);
   } else {
     throw std::invalid_argument(
 				"data type in json file is not uint8, int8, float " + data_type);
   }
-  
 }

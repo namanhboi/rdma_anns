@@ -4,6 +4,7 @@
 #include "linux_aligned_file_reader.h"
 #include "percentile_stats.h"
 #include "ssd_partition_index.h"
+#include "types.h"
 #include <chrono>
 #include <iomanip>
 #include <memory_resource>
@@ -94,7 +95,8 @@ template <typename T> int search_disk_index(int argc, char **argv) {
   uint32_t num_partitions = 1;
   std::unique_ptr<P2PCommunicator> null_com;
   std::unique_ptr<SSDPartitionIndex<T>> _pFlashIndex(new SSDPartitionIndex<T>(
-									      m, 0, num_partitions, num_threads, reader, null_com, tags_flag));
+      m, 0, num_partitions, num_threads, reader, null_com,
+									      DistributedSearchMode::LOCAL, tags_flag));
 
   int res = _pFlashIndex->load(index_prefix_path.c_str(), true);
 

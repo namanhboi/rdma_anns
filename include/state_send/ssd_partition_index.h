@@ -195,8 +195,9 @@ public:
                     uint32_t num_partitions, uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
-                    bool tags = false, Parameters *parameters = nullptr,
-                    bool is_local = true, uint64_t batch_size = 8);
+                    DistributedSearchMode dist_search_mode,
+                    bool tags = false, pipeann::Parameters *parameters = nullptr,
+                    uint64_t batch_size = 8);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -272,8 +273,6 @@ public:
     }
   }
 
-  // used for tagging which we don't need?. Disk sector resolution already
-  // handled by loc
   libcuckoo::cuckoohash_map<uint32_t, TagT> tags;
   TagT id2tag(uint32_t id) {
 #ifdef NO_MAPPING
@@ -388,8 +387,9 @@ private:
 
 
   std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;
+
 private:
-  bool is_local;
+  DistributedSearchMode dist_search_mode;
   // section is for commmunication
   std::unique_ptr<P2PCommunicator> &communicator;
   

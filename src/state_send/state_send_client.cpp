@@ -1,6 +1,7 @@
 #include "state_send_client.h"
 #include "types.h"
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 
 template <typename T>
@@ -16,7 +17,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
   while (running) {
     batch_of_queries.resize(max_batch_size + 1);
     size_t num_dequeued = concurrent_query_queue.wait_dequeue_bulk(
-								   batch_of_queries.begin(), max_batch_size);
+        batch_of_queries.begin(), max_batch_size);
     batch_of_queries.resize(num_dequeued);
     assert(num_dequeued == batch_of_queries.size());
     // check for poison pill
@@ -44,30 +45,53 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 
     QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
                                                batch_of_queries);
-    uint32_t server_peer_id =
-        parent->current_round_robin_peer_index.fetch_add(1) %
-        parent->other_peer_ids.size();
-    for (const auto&query: batch_of_queries) {
-      parent->query_send_time.insert_or_assign(
-					       query->query_id, std::chrono::steady_clock::now());
+    if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+      uint32_t server_peer_id =
+          parent->current_round_robin_peer_index.fetch_add(1) %
+          parent->other_peer_ids.size();
+      for (const auto &query : batch_of_queries) {
+        parent->query_send_time.insert_or_assign(
+            query->query_id, std::chrono::steady_clock::now());
+      }
+      parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
+                                         r);
+    } else if (parent->dist_search_mode ==
+               DistributedSearchMode::SCATTER_GATHER) {
+      for (const auto &query : batch_of_queries) {
+        parent->query_send_time.insert_or_assign(
+            query->query_id, std::chrono::steady_clock::now());
+      }
+      for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
+        if (i == parent->other_peer_ids.size() - 1) {
+          // don't need to make an additional copy of r
+          parent->communicator->send_to_peer(parent->other_peer_ids[i], r);
+        } else {
+          Region r_copy;
+          r_copy.length = r.length;
+          r_copy.context = r.context;
+          r_copy.lkey = r.lkey;
+          r_copy.addr = new char[r_copy.length];
+          std::memcpy(r_copy.addr, r.addr, r.length);
+          parent->communicator->send_to_peer(parent->other_peer_ids[i], r_copy);
+        }
+      }
     }
-    parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
-                                       r);
   }
 }
 
 template <typename T>
 void StateSendClient<T>::ClientThread::push_query(
-						  std::shared_ptr<QueryEmbedding<T>> query) {
+    std::shared_ptr<QueryEmbedding<T>> query) {
 
   // std::cout << "pushed query " << query->query_id << std::endl;
   concurrent_query_queue.enqueue(query);
 }
 
 template <typename T>
-uint64_t StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
-                                const uint64_t mem_l, const uint64_t l_search,
-                                    const uint64_t beam_width, bool record_stats) {
+uint64_t
+StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
+                           const uint64_t mem_l, const uint64_t l_search,
+                           const uint64_t beam_width, bool record_stats) {
   uint64_t query_id = this->query_id.fetch_add(1);
   std::shared_ptr<QueryEmbedding<T>> query =
       std::make_shared<QueryEmbedding<T>>();
@@ -102,12 +126,14 @@ template <typename T> void StateSendClient<T>::ClientThread::join() {
     real_thread.join();
 }
 
-
 template <typename T>
 StateSendClient<T>::StateSendClient(const uint64_t id,
                                     const std::string &communicator_json,
-                                    int num_client_threads, uint64_t dim)
-    : my_id(id), num_client_threads(num_client_threads), dim(dim) {
+                                    int num_client_threads,
+                                    DistributedSearchMode dist_search_mode,
+                                    uint64_t dim)
+    : my_id(id), num_client_threads(num_client_threads), dim(dim),
+      dist_search_mode(dist_search_mode) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, communicator_json);
   std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
@@ -126,7 +152,7 @@ template <typename T> void StateSendClient<T>::start_result_thread() {
 }
 
 template <typename T> void StateSendClient<T>::start_client_threads() {
-  std::cout << "starting " <<  client_threads.size() << " threads" << std::endl;
+  std::cout << "starting " << client_threads.size() << " threads" << std::endl;
   for (auto &client_thread : client_threads) {
     client_thread->start();
   }
@@ -152,7 +178,8 @@ void StateSendClient<T>::wait_results(const uint64_t num_results) {
 }
 
 template <typename T>
-std::shared_ptr<search_result_t> StateSendClient<T>::get_result(const uint64_t query_id) {
+std::shared_ptr<search_result_t>
+StateSendClient<T>::get_result(const uint64_t query_id) {
   return results.find(query_id);
 }
 
@@ -168,6 +195,66 @@ StateSendClient<T>::get_query_result_time(const uint64_t query_id) {
   return query_result_time.find(query_id);
 }
 
+std::shared_ptr<search_result_t> combine_results(
+    const std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
+        &vec_res) {
+  std::shared_ptr<search_result_t> combined_res =
+    std::make_shared<search_result_t>();
+  combined_res->query_id = vec_res[0].second->query_id;
+  // dumb heristic but this is the only way to know K?
+  uint64_t max_num_res = 0;
+  std::vector<std::pair<uint32_t, float>> node_id_dist;
+  for (const auto &[cluster_id, res] : vec_res) {
+    for (auto i = 0; i < res->num_res; i++) {
+      node_id_dist.emplace_back(res->node_id[i], res->distance[i]);
+    }
+    max_num_res = std::max(max_num_res, res->num_res);
+
+  }
+  std::sort(
+            node_id_dist.begin(), node_id_dist.end(),
+            [](auto &left, auto &right) { return left.second <
+						 right.second; });
+  combined_res->num_res = max_num_res;
+  for (auto i = 0; i < max_num_res; i++) {
+
+    combined_res->node_id[i] = node_id_dist[i].first;
+    combined_res->distance[i] = node_id_dist[i].second;
+  }
+  // need to combine stats as well, for now lets just do the mean of each
+  // category
+  combined_res->stats = std::make_shared<QueryStats>();
+  size_t count = 0;
+
+  for (const auto &[cluster_id, res] : vec_res) {
+    if (res->stats != nullptr) {
+      count++;
+      combined_res->stats->total_us += res->stats->total_us;
+      combined_res->stats->n_4k += res->stats->n_4k;
+      combined_res->stats->n_ios += res->stats->n_ios;
+      combined_res->stats->io_us += res->stats->io_us;
+      combined_res->stats->head_us += res->stats->head_us;
+      combined_res->stats->cpu_us += res->stats->cpu_us;
+      combined_res->stats->n_cmps += res->stats->n_cmps;
+      combined_res->stats->n_hops += res->stats->n_hops;
+    }
+  }
+
+  if (count > 0) {
+    combined_res->stats->total_us /= count;
+    combined_res->stats->n_4k /= count;
+    combined_res->stats->n_ios /= count;
+    combined_res->stats->io_us /= count;
+    combined_res->stats->head_us /= count;
+    combined_res->stats->cpu_us /= count;
+    combined_res->stats->n_cmps /= count;
+    combined_res->stats->n_hops /= count;
+  }  
+  return combined_res;
+}
+
+
+
 template <typename T>
 void StateSendClient<T>::receive_result_handler(const char *buffer,
                                                 size_t size) {
@@ -180,14 +267,56 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
   // uint64_t query_id;
   // std::memcpy(&msg_type, buffer, sizeof(msg_type));
 
-  
   std::shared_ptr<search_result_t> res =
-    search_result_t::deserialize(buffer + offset);
-  // LOG(INFO) << " query id " << res->query_id << " num result " << res ->num_res;
-  query_result_time.insert_or_assign(res->query_id,
-                                     std::chrono::steady_clock::now());
-  results.insert_or_assign(res->query_id, res);
-  num_results_received.fetch_add(1);
+      search_result_t::deserialize(buffer + offset);
+
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    if (res->partition_history.size() != 1) {
+      throw std::runtime_error("partition history size not 1: " +
+                               std::to_string(res->partition_history.size()));
+    }
+    // sub_query_result_time.insert_or_assign(res->query_id,
+    // std::chrono::steady_clock::now());
+    sub_query_result_time.upsert(
+        res->query_id,
+        [res](std::vector<
+              std::pair<uint8_t, std::chrono::steady_clock::time_point>> &vec) {
+          vec.push_back(
+              {res->partition_history[0], std::chrono::steady_clock::now()});
+       
+          return false;
+        },
+        std::vector<std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
+          {res->partition_history[0], std::chrono::steady_clock::now()}});
+    size_t num_res = 0;
+    sub_query_results.upsert(
+        res->query_id,
+        [res, &num_res](
+            std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
+                &vec) {
+          vec.push_back({res->partition_history[0], res});
+          num_res = vec.size();
+          return false;
+        },
+        std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
+          {res->partition_history[0], res}});
+    if (num_res == other_peer_ids.size()) {
+      std::shared_ptr<search_result_t> combined_res =
+        combine_results(sub_query_results.find(res->query_id));
+      results.insert_or_assign(combined_res->query_id, combined_res);
+      
+      query_result_time.insert_or_assign(res->query_id,
+                                         std::chrono::steady_clock::now());
+      num_results_received.fetch_add(1);
+    }
+  } else if (dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    results.insert_or_assign(res->query_id, res);
+    query_result_time.insert_or_assign(res->query_id,
+                                       std::chrono::steady_clock::now());
+    num_results_received.fetch_add(1);
+  } else {
+    throw std::invalid_argument("Weird DistributedSearchMode value");
+  }
 }
 
 template <typename T> void StateSendClient<T>::shutdown() {
@@ -200,11 +329,7 @@ template <typename T> void StateSendClient<T>::shutdown() {
   }
 }
 
-
-template <typename T> StateSendClient<T>::~StateSendClient() {
-  shutdown();
-}
-
+template <typename T> StateSendClient<T>::~StateSendClient() { shutdown(); }
 
 template class StateSendClient<uint8_t>;
 template class StateSendClient<int8_t>;
