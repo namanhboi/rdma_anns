@@ -36,7 +36,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all() {
     if (req->search_state == nullptr) {
       std::cerr << "poison poll detected" << std::endl;
       // this is a poison pill to shutdown the thread
-      delete req;
       break;
     }
     // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
@@ -55,10 +54,11 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all() {
       }
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
-      parent->state_issue_next_io_batch(state, ctx);
+      bool read_issued = parent->state_issue_next_io_batch(state, ctx);
+      // assert(read_issued);
       if (state->frontier.empty()) {
         // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
-        this->parent->notify_client_local(state);
+        this->parent->notify_client(state);
       }
     } else {
       throw std::runtime_error("multiple partitions not yet implemented");
@@ -110,7 +110,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 
   while (running) {
     // LOG(INFO) <<"Concurrent queries " <<number_concurrent_queries;
-    assert(batch_size >= number_concurrent_queries);
+    assert(parent->batch_size >= number_concurrent_queries);
     uint64_t num_states_to_dequeue = parent->batch_size - number_concurrent_queries;
     // LOG(INFO) << "number of concurrent queries " << number_concurrent_queries;
     if (num_states_to_dequeue > 0) {
@@ -137,9 +137,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           allocated_states[i]->stats->n_ios++;
         }
 
-        // initialize the result set: either with in mem index or by just using the medoid
-        if (allocated_states[i]->retset.size() == 0) {
+        // initialize the result set: either with in mem index or by just using
+        // the medoid
+        // brand new state, must be sent from client
+        if (allocated_states[i]->cur_list_size == 0) {
           if (allocated_states[i]->mem_l > 0) {
+            // LOG(INFO) << "SEARCHING WITH MEM INDEX";
             assert(parent->mem_index_ != nullptr);
             std::vector<unsigned> mem_tags(allocated_states[i]->mem_l);
             std::vector<float> mem_dists(allocated_states[i]->mem_l);
@@ -151,14 +154,53 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 allocated_states[i], mem_tags.data(),
                 std::min((unsigned)allocated_states[i]->mem_l,
                          (unsigned)allocated_states[i]->l_search));
+            assert(allocated_states[i]->cur_list_size > 0);
           } else {
 	    uint32_t best_medoid = parent->medoids[0];
             parent->state_compute_and_add_to_retset(allocated_states[i],
                                                     &best_medoid, 1);
+            assert(allocated_states[i]->cur_list_size > 0);
+            
           }
+          if (parent->dist_search_mode !=
+              DistributedSearchMode::STATE_SEND) {
+            bool read_issued =
+              parent->state_issue_next_io_batch(allocated_states[i], ctx);
+            assert(read_issued);
+            number_concurrent_queries++;
+          } else {
+            uint8_t partition_assignment_top_cand =
+              parent->cluster_assignment[allocated_states[i]->frontier[0]];
+            if (partition_assignment_top_cand != parent->my_partition_id) {
+              parent->send_state(allocated_states[i]);
+              delete allocated_states[i];
+            } else {
+              bool read_issued =
+                parent->state_issue_next_io_batch(allocated_states[i], ctx);
+              assert(read_issued);
+              number_concurrent_queries++;
+            }
+          }
+        } else {
+          assert(parent->dist_search_mode == DistributedSearchMode::STATE_SEND);
+          // state that was sent, need to check that the top node in frontier is
+          // on this server
+          uint8_t partition_assignment_top_cand =
+            parent->state_top_cand_partition(allocated_states[i]);
+          if (partition_assignment_top_cand != parent->my_partition_id) {
+            throw std::runtime_error(
+                "Partition assigmnent of sent state is not the same as "
+                "server " +
+                std::to_string(partition_assignment_top_cand) + " " +
+                std::to_string(parent->my_partition_id));
+          }
+          assert(allocated_states[i]->frontier.size()> 0);
+          bool read_issued =
+            parent->state_issue_next_io_batch(allocated_states[i], ctx);
+          assert(read_issued);
+          number_concurrent_queries++;
         }
-        parent->state_issue_next_io_batch(allocated_states[i], ctx);
-        number_concurrent_queries++;
+
       }
     }
 
@@ -172,7 +214,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       break;
     }
     // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
-    // LOG(INFO) << "number of completions: " << ready;
+    // LOG(INFO) << "Read received: " << req->offset;
 
     SearchState<T, TagT> *state =
       reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
@@ -205,17 +247,22 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
         state->stats->n_ios++;
 	state->io_timer.reset();
       }
-      parent->state_issue_next_io_batch(state, ctx);
-    } else {
+      assert(state->frontier.size() != 0);
+      bool read_issued = parent->state_issue_next_io_batch(state, ctx);
+      assert(read_issued);
+    } else if (s == SearchExecutionState::TOP_CAND_NODE_OFF_SERVER) {
       assert(parent->num_partitions > 1);
+      parent->send_state(state);
+      delete state;
+      number_concurrent_queries--;
+      // need to send this bitch
+
       // TODO: serialize the state and send that bitch
       // complication: how to make it work both locally and distributed/
       // make the iothread unique ptr, if local then nullptr
     }    
   }
 }
-
-
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::join() {

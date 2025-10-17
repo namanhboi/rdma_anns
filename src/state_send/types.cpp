@@ -103,17 +103,18 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer, bool with_embedding) 
     write_data(buffer, reinterpret_cast<const char *>(&(res.flag)),
                sizeof(res.flag), offset);
   }
-  size_t size_retset = retset.size();
-  write_data(buffer, reinterpret_cast<const char *>(&size_retset),
-             sizeof(size_retset), offset);
-  for (const auto &res : retset) {
+  write_data(buffer, reinterpret_cast<const char *>(&cur_list_size),
+             sizeof(cur_list_size), offset);
+  for (auto i = 0; i < cur_list_size; i++) {
+    auto res = retset[i];
     write_data(buffer, reinterpret_cast<const char *>(&(res.id)),
                sizeof(res.id), offset);
     write_data(buffer, reinterpret_cast<const char *>(&(res.distance)),
                sizeof(res.distance), offset);
     write_data(buffer, reinterpret_cast<const char *>(&(res.flag)),
-               sizeof(res.flag), offset);
+               sizeof(res.flag), offset);    
   }
+
   size_t size_visited = visited.size();
   write_data(buffer, reinterpret_cast<const char *>(&size_visited),
              sizeof(size_visited), offset);
@@ -129,8 +130,7 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer, bool with_embedding) 
     write_data(buffer, reinterpret_cast<const char *>(&frontier_ele),
                sizeof(frontier_ele), offset);
   }
-  write_data(buffer, reinterpret_cast<const char *>(&cur_list_size),
-             sizeof(cur_list_size), offset);
+
   write_data(buffer, reinterpret_cast<const char *>(&cmps), sizeof(cmps),
              offset);
   write_data(buffer, reinterpret_cast<const char *>(&k), sizeof(k), offset);
@@ -186,11 +186,11 @@ size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
     num_bytes += sizeof(res.distance);
     num_bytes += sizeof(res.flag);
   }
-  num_bytes += sizeof(retset.size());
-  for (const auto &res : retset) {
-    num_bytes += sizeof(res.id);
-    num_bytes += sizeof(res.distance);
-    num_bytes += sizeof(res.flag);
+  num_bytes += sizeof(cur_list_size);
+  for (uint32_t i = 0; i < cur_list_size; i++) {
+    num_bytes += sizeof(retset[i].id);
+    num_bytes += sizeof(retset[i].distance);
+    num_bytes += sizeof(retset[i].flag);
   }
   num_bytes += sizeof(visited.size());
   for (const auto &node_id : visited) {
@@ -200,7 +200,7 @@ size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
   for (const auto &frontier_ele : frontier) {
     num_bytes += sizeof(frontier_ele);
   }
-  num_bytes += sizeof(cur_list_size);
+
   num_bytes += sizeof(cmps);
   num_bytes += sizeof(k);
   num_bytes += sizeof(mem_l);  
@@ -234,6 +234,8 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   if (has_embedding) {
     state->query_emb = QueryEmbedding<T>::deserialize(buffer + offset);
     offset += state->query_emb->get_serialize_size();
+  } else {
+    state->query_emb = nullptr;
   }
 
   // --- full_retset ---
@@ -260,12 +262,12 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   }
 
   // --- retset ---
-  size_t size_retset;
-  std::memcpy(&size_retset, buffer + offset, sizeof(size_retset));
-  offset += sizeof(size_retset);
-  state->retset.reserve(size_retset);
+  std::memcpy(&state->cur_list_size, buffer + offset,
+              sizeof(state->cur_list_size));
+  offset += sizeof(state->cur_list_size);
+  state->retset.resize(4096);
 
-  for (size_t i = 0; i < size_retset; i++) {
+  for (size_t i = 0; i < state->cur_list_size; i++) {
     unsigned id;
     float distance;
     bool f;
@@ -279,7 +281,7 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
     std::memcpy(&f, buffer + offset, sizeof(f));
     offset += sizeof(f);
 
-    state->retset.emplace_back(id, distance, f);
+    state->retset[i] = {id, distance, f};
   }
 
   // --- visited ---
@@ -312,9 +314,7 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   }
 
   // --- misc fields ---
-  std::memcpy(&state->cur_list_size, buffer + offset,
-              sizeof(state->cur_list_size));
-  offset += sizeof(state->cur_list_size);
+
 
   std::memcpy(&state->cmps, buffer + offset, sizeof(state->cmps));
   offset += sizeof(state->cmps);

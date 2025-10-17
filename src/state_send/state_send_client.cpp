@@ -315,6 +315,7 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
       num_results_received.fetch_add(1);
     }
   } else if (dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    // LOG(INFO) << "result received " << res->query_id;
     results.insert_or_assign(res->query_id, res);
     query_result_time.insert_or_assign(res->query_id,
                                        std::chrono::steady_clock::now());

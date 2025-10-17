@@ -3,7 +3,7 @@
 #include <string>
 #include <cstdint>
 #include "utils.h"
-
+#include "omp.h"
 /**
    from the basefile, randomly assign each embedding to a cluster from 0 -
    (num_clusters - 1) to create the tag files for each cluster. The indices in
@@ -19,6 +19,12 @@ template<typename T, typename TagT=uint32_t>
 void create_random_cluster_tag_files(const std::string &base_file,
                                      const std::string &index_path_prefix,
                                      uint32_t num_clusters);
+
+
+template <typename T, typename TagT=uint32_t>
+void create_base_from_tag(const std::string &base_file,
+                          const std::string &tag_file,
+                          const std::string &output_base_file);
 
 
 /**
@@ -44,3 +50,53 @@ void create_random_cluster_disk_indices(const std::string &index_path_prefix,
                                         pipeann::Metric _compareMetric,
                                         bool single_file_index);
 
+
+
+/**
+   create a mem index file from disk index file, won't work properly with frozen points
+*/
+template <typename T, typename TagT = uint32_t>
+void write_graph_index_from_disk_index(const std::string &index_path_prefix,
+                                     const std::string &graph_path);
+
+template <typename T, typename TagT=uint32_t>
+void dumb_way(const std::string &index_path_prefix,
+              const std::string &graph_path);
+
+std::vector<std::vector<int>> load_graph_file(const std::string& graph_path);
+
+/**
+   loc files are used to find out what order a node was writtin in a cluster
+   disk index file for state send (global graph)
+*/
+void write_partitions_to_loc_files(const std::vector<std::vector<uint32_t>> &clusters,
+                                 const std::string &cluster_path_prefix);
+
+
+// void create_graph_from_tag(const std::string &graph_file,
+                           // const std::string &tag_file);
+
+
+
+template<typename T, typename TagT = uint32_t>
+void create_base_files_from_tags(const std::string &base_file,
+                                 const std::string &output_index_path_prefix,
+                                 int num_partitions);
+
+void create_graphs_from_tags(const std::string &source_graph_path,
+                             const std::string &output_index_path_prefix,
+                             int num_partitions);
+
+
+void create_and_write_partitions_to_loc_files(
+    const std::string &graph_path, const std::string &output_index_path_prefix,
+					      int num_partitions);
+
+
+template <typename T, typename TagT = uint32_t>
+void create_disk_indices(const std::string &output_index_path_prefix,
+                         int num_partitions);
+
+
+void create_partition_assignment_file(
+				      const std::string &output_index_path_prefix, int num_partitions);

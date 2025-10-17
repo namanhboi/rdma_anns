@@ -19,7 +19,7 @@ void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
   << " l search " << state->l_search 
   << " beam width " << state->beam_width
   << " Full retset size " << state->full_retset.size()
-  << " retset size: " << state->retset.size()
+  << " retset size: " << state->cur_list_size
   << " visited size: " << state->visited.size()
   << " frontier size: " << state->frontier.size()
   << " frontier nhood size: " << state->frontier_nhoods.size()
@@ -53,10 +53,11 @@ void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
     state->visited.insert(node_ids[i]);
   }
   state_update_frontier(state);
+  
 }
 
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx) {
+bool SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx) {
   // read nhoods of frontier ids
   if (!state->frontier.empty()) {
     for (uint64_t i = 0; i < state->frontier.size(); i++) {
@@ -68,8 +69,11 @@ void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> 
       state->frontier_nhoods.push_back(fnhood);
       state->frontier_read_reqs.emplace_back(IORequest(
 						       offset, this->size_per_io, sector_buf, 0, 0, nullptr, state));
+      // LOG(INFO) << "read offset is  " << offset;
     }
+
     this->reader->send_io(state->frontier_read_reqs, ctx, false);
+    return true;
   }
   // LOG(INFO) << "k, size of batch " << k << " " << frontier_read_reqs.size();
   // LOG(INFO) << "k, size of frontier " << k << " " << frontier.size();
@@ -79,6 +83,7 @@ void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> 
   // else {
   //   LOG(INFO) << "k, frontier[0] " << frontier[0];
   // }
+  return false;
 }
 
 template <typename T, typename TagT>
@@ -151,12 +156,13 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
   }else {
     state->k++;
   }
-  if (state_search_ends(state)) {
-    return SearchExecutionState::FINISHED;
-  }
+
   // updates frontier
   state_update_frontier(state);
 
+  if (state_search_ends(state)) {
+    return SearchExecutionState::FINISHED;
+  }
   if (state->frontier.empty()) {
     return SearchExecutionState::FINISHED;
   }
@@ -197,6 +203,16 @@ void SSDPartitionIndex<T, TagT>::state_update_frontier(
     marker++;
   }    
 }
+
+template <typename T, typename TagT>
+uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_partition(
+									    SearchState<T, TagT> *state) {
+  if (state->frontier.size() == 0) {
+    throw std::invalid_argument("State has frontier size 0");
+  }
+  return this->get_cluster_assignment(state->frontier[0]);
+}
+
 
 
 // Explicit instantiations for the SSDPartitionIndex specializations used by the program.

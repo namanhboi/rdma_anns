@@ -49,7 +49,6 @@ private:
     void main_loop();
     StateSendClient *parent;
     std::atomic<bool> running{false};
-
   public:
     ClientThread(uint64_t id, StateSendClient *parent);
     void push_query(std::shared_ptr<QueryEmbedding<T>> query);
@@ -63,6 +62,18 @@ private:
 
   std::atomic<uint64_t> current_client_thread_id={0};
 
+private:
+  // class ResultReceiveThread {
+  // private:
+  //   std::thread real_thread;
+  //   void main_loop();
+  //   std::atomic<bool> running{false};
+  // public:
+  //   ResultReceiveThread(StateSendClient *parent);
+  //   void start();
+  //   void signal_stop();
+  //   void join();
+  // };
 private:
   DistributedSearchMode dist_search_mode; 
   uint64_t dim;

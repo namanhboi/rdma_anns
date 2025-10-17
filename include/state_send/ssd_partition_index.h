@@ -101,7 +101,7 @@ public:
                                        const unsigned *node_ids,
                                        const uint64_t n_ids);
 
-  void state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx);
+  bool state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx);
   
     /**
        advances the state based on whatever is in frontier_nhoods, which is the
@@ -115,14 +115,17 @@ public:
 
   void apply_tags_to_result(search_result_t &result);
 
-
-    // static void write_serialize_query(const T *query_emb,
-    //                                   const uint64_t k_search,
-    //                                   const uint64_t mem_l,
-    //                                   const uint64_t l_search,
-    //                                   const uint64_t beam_width, char *buffer) {
-            
-    // }
+  // static void write_serialize_query(const T *query_emb,
+  //                                   const uint64_t k_search,
+  //                                   const uint64_t mem_l,
+  //                                   const uint64_t l_search,
+  //                                   const uint64_t beam_width, char *buffer)
+  //                                   {
+  // 
+  // }
+  
+  uint8_t state_top_cand_partition(SearchState<T, TagT> *state);
+   
 
 private:
   static constexpr uint64_t max_batch_size = 128;
@@ -331,6 +334,8 @@ private:
   // nnbrs of node `i`: *(unsigned*) (buf)
   // nbrs of node `i`: ((unsigned*)buf) + 1
   uint64_t max_node_len = 0, nnodes_per_sector = 0, max_degree = 0;
+
+  uint64_t global_graph_num_points = 0;
   // data info
   uint64_t num_points = 0;
   uint64_t init_num_pts = 0;
@@ -409,6 +414,13 @@ private:
   // if is_local then just write the thing, if not then send the result back with communicator
   void notify_client(SearchState<T, TagT> *search_state);
 
+private:
+  /**
+     serialize the data from state, can delete after function call. need to
+     check that the top candidate node is offserver first as precondition.
+   */
+  void send_state(SearchState<T, TagT> *search_state);
+  
 public:
   /**
    * will be registered to the communicator by the server cpp file.

@@ -36,8 +36,22 @@ using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 enum class MessageType : uint32_t {
   QUERIES,
   STATES,
-  RESULT
+  RESULT,
+
+  // sent by client to all servers during state send to tell them to
+  // deallocate the memory from query embedding
+  RESULT_ACK
+
 };
+/**
+   sent to a server to free data associated with query embedding during state
+   send
+ */
+constexpr int max_queries_in_ack = 512;
+struct ack {
+  uint32_t num_queries;
+  uint32_t query_ids[max_queries_in_ack];
+};  
 
 
 enum class SearchExecutionState {
@@ -103,6 +117,7 @@ struct search_result_t {
   size_t get_serialize_size() const;
 };
 
+
 /**
    includes both full embeddings and pq representation of query. Client uses
    this to send stuff to server. Server upon receving a query, makes a
@@ -146,8 +161,8 @@ struct alignas(SECTOR_LEN) SearchState {
 
   std::shared_ptr<QueryEmbedding<T>> query_emb;
 
-  uint64_t data_buf_idx;
-  uint64_t sector_idx;
+  uint64_t data_buf_idx = 0;
+  uint64_t sector_idx = 0;
 
   // search state.
   std::vector<pipeann::Neighbor> full_retset;
