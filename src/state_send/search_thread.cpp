@@ -141,6 +141,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
         // the medoid
         // brand new state, must be sent from client
         if (allocated_states[i]->cur_list_size == 0) {
+          assert(allocated_states[i]->partition_history.size() == 1);
           if (allocated_states[i]->mem_l > 0) {
             // LOG(INFO) << "SEARCHING WITH MEM INDEX";
             assert(parent->mem_index_ != nullptr);
@@ -155,12 +156,13 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 std::min((unsigned)allocated_states[i]->mem_l,
                          (unsigned)allocated_states[i]->l_search));
             assert(allocated_states[i]->cur_list_size > 0);
+            // parent->state_print_detailed(allocated_states[i]);
           } else {
 	    uint32_t best_medoid = parent->medoids[0];
             parent->state_compute_and_add_to_retset(allocated_states[i],
                                                     &best_medoid, 1);
             assert(allocated_states[i]->cur_list_size > 0);
-            
+            // parent->state_print_detailed(allocated_states[i]);
           }
           if (parent->dist_search_mode !=
               DistributedSearchMode::STATE_SEND) {
@@ -169,8 +171,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             assert(read_issued);
             number_concurrent_queries++;
           } else {
+
+            // uint8_t partition_assignment_top_cand =
+              // parent->cluster_assignment[allocated_states[i]->frontier[0]];
             uint8_t partition_assignment_top_cand =
-              parent->cluster_assignment[allocated_states[i]->frontier[0]];
+                parent->get_cluster_assignment(
+					       allocated_states[i]->frontier[0]);
             if (partition_assignment_top_cand != parent->my_partition_id) {
               parent->send_state(allocated_states[i]);
               delete allocated_states[i];
@@ -229,6 +235,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     //   }
     // }
     SearchExecutionState s = parent->state_explore_frontier(state);
+    // parent->state_print_detailed(state);
     if (s == SearchExecutionState::FINISHED) {
       // state->end_time = std::chrono::steady_clock::now();
       if (state->stats != nullptr) {

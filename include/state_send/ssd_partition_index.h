@@ -125,8 +125,11 @@ public:
   // }
   
   uint8_t state_top_cand_partition(SearchState<T, TagT> *state);
-   
 
+
+  void state_print_detailed(SearchState<T, TagT> *state);
+  void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
+  
 private:
   static constexpr uint64_t max_batch_size = 128;
   uint64_t batch_size = 0;
@@ -202,7 +205,7 @@ public:
                     std::unique_ptr<P2PCommunicator> &communicator,
                     DistributedSearchMode dist_search_mode,
                     bool tags = false, pipeann::Parameters *parameters = nullptr,
-                    uint64_t batch_size = 8);
+                    uint64_t batch_size = 8, bool enable_locs = true);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -265,6 +268,9 @@ public:
   // disk
   TagT id2loc(uint32_t id) {
     // num partition = 1 means that there is no mapping file
+    if (!enable_locs)
+      return id;
+    
     if (num_partitions == 1) {
       return id;
     }
@@ -321,6 +327,7 @@ public:
   uint64_t get_frozen_loc() { return this->frozen_location; }
 
   inline uint8_t get_cluster_assignment(uint32_t node_id) {
+    if (num_partitions == 1) return my_partition_id;
     return cluster_assignment[node_id];
   }
 
@@ -384,6 +391,7 @@ private:
 
   bool load_flag = false;   // already loaded.
   bool enable_tags = false; // support for tags and dynamic indexing
+  bool enable_locs = true; // support for loc files
 
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;

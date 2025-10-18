@@ -10,5 +10,5 @@
   "mem_L" : 10,
   "data_type" : "uint8",
   "record_stats": true,
-  "dist_search_mode": "SCATTER_GATHER"
+  "dist_search_mode": "STATE_SEND"
 }

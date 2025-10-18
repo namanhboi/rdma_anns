@@ -265,7 +265,6 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&state->cur_list_size, buffer + offset,
               sizeof(state->cur_list_size));
   offset += sizeof(state->cur_list_size);
-  state->retset.resize(4096);
 
   for (size_t i = 0; i < state->cur_list_size; i++) {
     unsigned id;
@@ -280,8 +279,10 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
 
     std::memcpy(&f, buffer + offset, sizeof(f));
     offset += sizeof(f);
-
-    state->retset[i] = {id, distance, f};
+    state->retset[i].id = id;
+    state->retset[i].distance = distance;
+    state->retset[i].flag = f;
+    // state->retset[i] = {id, distance, f};
   }
 
   // --- visited ---
@@ -389,6 +390,7 @@ template <typename T, typename TagT>
 search_result_t SearchState<T, TagT>::get_search_result() {
   search_result_t result;
   result.partition_history = this->partition_history;
+
   auto &full_retset = this->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
             [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
@@ -492,6 +494,7 @@ size_t search_result_t::write_serialize(char *buffer) const {
              sizeof(uint32_t) * num_res, offset);
   write_data(buffer, reinterpret_cast<const char *>(this->distance),
              sizeof(float) * num_res, offset);
+  
   size_t num_partitions = this->partition_history.size();
   write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
              sizeof(num_partitions), offset);
@@ -545,9 +548,6 @@ QueryEmbedding<T>::deserialize(const char *buffer) {
   offset += sizeof(query->record_stats);  
   std::memcpy(&query->query, buffer + offset, sizeof(T) * query->dim);
   offset += sizeof(T) * query->dim;
-  std::memcpy(&query->pq_dists, buffer + offset,
-              sizeof(float) * query->num_chunks);
-  offset += sizeof(float) * query->num_chunks;
   return query;
 }
 
@@ -593,8 +593,6 @@ size_t QueryEmbedding<T>::write_serialize(char *buffer) const {
              sizeof(record_stats), offset);  
   write_data(buffer, reinterpret_cast<const char *>(query), sizeof(T) * dim,
              offset);
-  write_data(buffer, reinterpret_cast<const char *>(pq_dists),
-             sizeof(float) * num_chunks, offset);
   return offset;
 }
 
@@ -602,7 +600,7 @@ template <typename T> size_t QueryEmbedding<T>::get_serialize_size() const {
   return sizeof(query_id) + sizeof(client_peer_id) + sizeof(mem_l) +
          sizeof(l_search) + sizeof(k_search) + sizeof(beam_width) +
          sizeof(dim) + sizeof(num_chunks) + sizeof(record_stats) +
-         sizeof(T) * dim + sizeof(float) * num_chunks;
+         sizeof(T) * dim;
 }
 
 template <typename T>

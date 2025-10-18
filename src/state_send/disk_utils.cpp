@@ -5,6 +5,7 @@
 #include "log.h"
 #include "query_buf.h"
 #include "utils.h"
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <stdexcept>
@@ -288,6 +289,50 @@ void write_partitions_to_loc_files(const std::vector<std::vector<uint32_t>> &par
     }
     partition_id++;
   }
+}
+
+
+std::vector<std::vector<uint32_t>>
+parse_partition_loc_files(const std::string &output_index_path_prefix, int num_partitions) {
+  std::vector<std::string> loc_files;
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string partition_loc_file = output_index_path_prefix + "_partition" +
+                                     std::to_string(i) + "_ids_uint32.bin";
+    if (!file_exists(partition_loc_file)) {
+      throw std::invalid_argument("loc file doesn't exist");
+    }
+    loc_files.push_back(partition_loc_file);
+  }
+  std::vector<std::vector<uint32_t>> partitions;
+  partitions.resize(num_partitions);
+  auto i = 0;
+  for (auto loc_file : loc_files) {
+    size_t num_pts, dim;
+    pipeann::load_bin(loc_file, partitions[i], num_pts, dim);
+    i++;
+  }
+  return partitions;
+}
+
+
+void write_partitions_to_txt_files(
+
+				   const std::string &output_index_path_prefix, int num_partitions) {
+  std::string partition_txt_file =
+    output_index_path_prefix + "_partitions" + ".txt";
+  if (file_exists(partition_txt_file)) {
+    LOG(INFO) << "partition txt file already exists" << partition_txt_file;
+    return;
+  }
+  auto partitions =
+    parse_partition_loc_files(output_index_path_prefix, num_partitions);
+  std::ofstream output(partition_txt_file);
+  for (const auto &partition : partitions) {
+    for (auto &i : partition) {
+      output << i << ",";
+    }
+    output << std::endl;
+  }  
 }
 
 

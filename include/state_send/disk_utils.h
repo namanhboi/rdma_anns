@@ -100,3 +100,7 @@ void create_disk_indices(const std::string &output_index_path_prefix,
 
 void create_partition_assignment_file(
 				      const std::string &output_index_path_prefix, int num_partitions);
+
+
+void write_partitions_to_txt_files(const std::string &output_index_path_prefix,
+                                   int num_partitions);

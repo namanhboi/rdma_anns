@@ -1,14 +1,16 @@
 {
-  "client_peer_id" : 2,
+  "client_peer_id" : 1,
   "num_client_thread": 1,
   "dim": 128,
   "query_bin" : "/home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin",
   "truthset_bin":  "/home/nam/big-ann-benchmarks/data/bigann/bigann-10M",
-  "Lvec" : [10, 15, 20, 25, 30, 35, 40, 50, 60, 80, 120, 200, 400], 
+  "Lvec" : [10], 
   "beam_width" : 1,
   "K" : 10,
   "mem_L" : 10,
   "data_type" : "uint8",
   "record_stats": true,
-  "dist_search_mode": "SCATTER_GATHER"
+  "dist_search_mode": "STATE_SEND",
+  "num_queries_to_send": 1,
+  "send_rate_per_second":1
 }

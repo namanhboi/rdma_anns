@@ -1,0 +1,14 @@
+ {
+  "type":"uint8",
+ "index_prefix":"/home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition1",
+   "cluster_assignment_file": "/home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition_assignment.bin",
+  "use_tags":false,
+   "use_mem_index":true,
+   "enable_locs":true,
+  "metric":"l2",
+  "num_partitions":2,
+   "my_partition_id":1,
+  "num_search_threads":4,
+   "batch_size": 8,
+   "dist_search_mode": "STATE_SEND"
+}

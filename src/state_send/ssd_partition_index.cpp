@@ -13,7 +13,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator,
     DistributedSearchMode dist_search_mode, bool tags,
-    pipeann::Parameters *params, uint64_t batch_size)
+					      pipeann::Parameters *params, uint64_t batch_size, bool enable_locs)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
@@ -42,6 +42,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   this->num_search_threads = num_search_threads;
   data_is_normalized = false;
   this->enable_tags = tags;
+  this->enable_locs = enable_locs;
   if (m == pipeann::Metric::COSINE) {
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "Cosine metric chosen for (normalized) float data."
@@ -241,38 +242,39 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   LOG(INFO) << "num partitions is " << num_partitions;
   if (num_partitions > 1) {
     // loading the id2loc file
-    std::string id2loc_file = iprefix + "_ids_uint32.bin";
-    if (!file_exists(id2loc_file)) {
-      throw std::invalid_argument(
-          "number of partitions is " + std::to_string(num_partitions) +
-          ", but the id2loc file doesn't exist: " + id2loc_file);
-    }
-    LOG(INFO) << "Load id2loc from existing file: " << id2loc_file;
-    std::vector<TagT> id2loc_v;
-    size_t id2loc_num, id2loc_dim;
-    pipeann::load_bin<TagT>(id2loc_file, id2loc_v, id2loc_num, id2loc_dim, 0);
-    if (id2loc_dim != 1) {
-      throw std::runtime_error(
-          "dim from id2loc file " + id2loc_file +
-          " had value not 1: " + std::to_string(id2loc_dim));
-    }
-    if (id2loc_num != num_points) {
-      throw std::runtime_error(
-          "num points from id2loc file " + id2loc_file + " had value" +
-          std::to_string(id2loc_num) +
-          " not equal to numpoints from index: " + std::to_string(num_points));
-    }
-    for (uint32_t i = 0; i < id2loc_num; i++) {
-      id2loc_.insert_or_assign(id2loc_v[i], i);
-    }
+    if (enable_locs) {
+      std::string id2loc_file = iprefix + "_ids_uint32.bin";
+      if (!file_exists(id2loc_file)) {
+	throw std::invalid_argument(
+				    "number of partitions is " + std::to_string(num_partitions) +
+				    ", but the id2loc file doesn't exist: " + id2loc_file);
+      }
+      LOG(INFO) << "Load id2loc from existing file: " << id2loc_file;
+      std::vector<TagT> id2loc_v;
+      size_t id2loc_num, id2loc_dim;
+      pipeann::load_bin<TagT>(id2loc_file, id2loc_v, id2loc_num, id2loc_dim, 0);
+      if (id2loc_dim != 1) {
+	throw std::runtime_error(
+				 "dim from id2loc file " + id2loc_file +
+				 " had value not 1: " + std::to_string(id2loc_dim));
+      }
+      if (id2loc_num != num_points) {
+	throw std::runtime_error(
+				 "num points from id2loc file " + id2loc_file + " had value" +
+				 std::to_string(id2loc_num) +
+				 " not equal to numpoints from index: " + std::to_string(num_points));
+      }
+      for (uint32_t i = 0; i < id2loc_num; i++) {
+	id2loc_.insert_or_assign(id2loc_v[i], i);
+      }
     LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
-
+    }
     std::string cluster_file(cluster_assignment_file);
     if (!file_exists(cluster_file)) {
       throw std::invalid_argument(
           "number of partitions is " + std::to_string(num_partitions) +
           ", but the cluster assignment bin file doesn't exist: " +
-          id2loc_file);
+          cluster_file);
     }
     size_t ca_num_pts, ca_dim;
     pipeann::load_bin<uint8_t>(cluster_assignment_file, cluster_assignment,
@@ -473,7 +475,7 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_tcp(
 						   SearchState<T, TagT> *search_state) {
-  LOG(INFO) << "finished query " << search_state->query_id;
+  // LOG(INFO) << "finished query " << search_state->query_id;
   // std::cout << "notify called for query " << search_state->query_id
   // << std::endl;
   Region r;
@@ -552,6 +554,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 #endif
     }
   } else if (msg_type == MessageType::STATES) {
+    // LOG(INFO) << "States received";
     std::vector<SearchState<T, TagT> *> states =
       SearchState<T, TagT>::deserialize_states(buffer + offset, size);
     for (auto state : states) {
@@ -563,10 +566,15 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
               "Query embedding map contains query_id already: " +
               std::to_string(state->query_id));
         }
+        pq_table.populate_chunk_distances(state->query_emb->query,
+                                          state->query_emb->pq_dists);
         query_emb_map.insert_or_assign(state->query_id, state->query_emb);
       } else {
         state->query_emb = query_emb_map.find(state->query_id);
       }
+      // LOG(INFO) << "=======================";
+      // this->state_print_detailed(state);
+      // LOG(INFO) << "=======================";      
     }
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
@@ -593,6 +601,7 @@ void SSDPartitionIndex<T, TagT>::send_state(
     /* v does not contain x */
     send_with_embedding = true;
   }
+  
   Region r;
   std::vector<std::pair<SearchState<T, TagT> *, bool>> single_state_vec = {
     {search_state, send_with_embedding}};
@@ -613,6 +622,34 @@ void SSDPartitionIndex<T, TagT>::send_state(
   // write_serialize(r.addr + offset, send_with_embedding);
   this->communicator->send_to_peer(receiver_partition_id, r);
 }
+
+
+
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::query_emb_print(
+						 std::shared_ptr<QueryEmbedding<T>> query_emb) {
+
+  LOG(INFO) << "@@@@@@@@@@@@@@@@@@@@@@@@@";
+  LOG(INFO) << "Query embedding  " << query_emb->query_id;
+  LOG(INFO) << "dim " << query_emb->dim;
+  std::stringstream query_str;
+  for (auto i = 0; i < query_emb->dim; i++) {
+    query_str << query_emb->query[i] << " ";
+  }
+  LOG(INFO) << "query " << query_str.str();
+
+  std::stringstream pq_dists_str;
+  LOG(INFO) << "num_chunks " << query_emb->num_chunks;
+  for (auto i = 0; i < query_emb->num_chunks; i++) {
+    pq_dists_str << query_emb->pq_dists[i] << " ";
+  }
+
+  LOG(INFO) << "@@@@@@@@@@@@@@@@@@@@@@@@@";
+    
+}
+
+
 
 
 

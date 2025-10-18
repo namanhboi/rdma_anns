@@ -136,6 +136,11 @@ template <typename T> struct QueryEmbedding {
   T query[kMaxVectorDim];
   float pq_dists[32768];
 
+  /**
+     we don't send pq dists because its big, initialize it upon receiving query
+     for the first time.
+   */
+
   static std::shared_ptr<QueryEmbedding> deserialize(const char *buffer);
   static std::vector<std::shared_ptr<QueryEmbedding>>
   deserialize_queries(const char *buffer, size_t size);
@@ -166,7 +171,7 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // search state.
   std::vector<pipeann::Neighbor> full_retset;
-  std::vector<pipeann::Neighbor> retset;
+  pipeann::Neighbor retset[1024];
   tsl::robin_set<uint64_t> visited;
 
   std::vector<unsigned> frontier;
@@ -174,9 +179,8 @@ struct alignas(SECTOR_LEN) SearchState {
   std::vector<fnhood_t> frontier_nhoods;
   std::vector<IORequest> frontier_read_reqs;
 
-  unsigned cur_list_size, cmps, k;
-  uint64_t mem_l = 0, l_search, k_search, beam_width;
-
+  unsigned cur_list_size = 0, cmps = 0, k = 0;
+  uint64_t mem_l = 0, l_search = 0, k_search = 0, beam_width = 0;
   uint64_t query_id;
 
   // all the partition/server ids that it has been through

@@ -1,0 +1,247 @@
+[search_state.cpp:277:INFO] State for query 0, hop 0
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 8762777
+[search_state.cpp:282:INFO] full_retset size: 0
+[search_state.cpp:283:INFO] full_retset:
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8762777,88604.7],[4023098,104067],[504487,105777],[6413751,102800],[6363629,105169],[4084234,108051],[8611631,114962],[3067642,101360],[4023759,110083],[4023207,109966]
+[search_state.cpp:287:INFO] visited size: 10
+[search_state.cpp:289:INFO] cmps: 0
+[search_state.cpp:290:INFO] k: 0
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 1
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 1429749
+[search_state.cpp:282:INFO] full_retset size: 1
+[search_state.cpp:283:INFO] full_retset: [8762777,91277]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8762777,88604.7],[1429749,94147.9],[5066506,96974.5],[9249288,98458.6],[4573805,100371],[3562434,100430],[3501379,102018],[4085065,102796],[4023098,104067],[504487,105777]
+[search_state.cpp:287:INFO] visited size: 42
+[search_state.cpp:289:INFO] cmps: 32
+[search_state.cpp:290:INFO] k: 1
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 2
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 5066506
+[search_state.cpp:282:INFO] full_retset size: 2
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8762777,88604.7],[1429749,94147.9],[5066506,96974.5],[9249288,98458.6],[1429551,100309],[4573805,100371],[3562434,100430],[3501379,102018],[6560478,102599],[4085065,102796]
+[search_state.cpp:287:INFO] visited size: 73
+[search_state.cpp:289:INFO] cmps: 63
+[search_state.cpp:290:INFO] k: 2
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 3
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 9249288
+[search_state.cpp:282:INFO] full_retset size: 3
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8762777,88604.7],[1429749,94147.9],[5066506,96974.5],[9249288,98458.6],[1429551,100309],[4573805,100371],[3562434,100430],[1134933,100448],[3501379,102018],[6560478,102599]
+[search_state.cpp:287:INFO] visited size: 105
+[search_state.cpp:289:INFO] cmps: 95
+[search_state.cpp:290:INFO] k: 3
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 4
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 9900967
+[search_state.cpp:282:INFO] full_retset size: 4
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [9900967,82954.3],[8762777,88604.7],[1272280,94124.9],[1429749,94147.9],[1044357,96730],[5066506,96974.5],[9249288,98458.6],[1784441,99072.9],[1429551,100309],[4573805,100371]
+[search_state.cpp:287:INFO] visited size: 135
+[search_state.cpp:289:INFO] cmps: 125
+[search_state.cpp:290:INFO] k: 0
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 5
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 1272280
+[search_state.cpp:282:INFO] full_retset size: 5
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [9900967,82954.3],[8762777,88604.7],[1272280,94124.9],[1429749,94147.9],[1044357,96730],[5066506,96974.5],[9249288,98458.6],[1784441,99072.9],[1429551,100309],[4573805,100371]
+[search_state.cpp:287:INFO] visited size: 166
+[search_state.cpp:289:INFO] cmps: 156
+[search_state.cpp:290:INFO] k: 1
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 6
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 504814
+[search_state.cpp:282:INFO] full_retset size: 6
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [504814,67954],[9900967,82954.3],[8762777,88604.7],[1272280,94124.9],[1429749,94147.9],[1044357,96730],[5066506,96974.5],[1638078,97489.8],[9249288,98458.6],[3824675,98713]
+[search_state.cpp:287:INFO] visited size: 197
+[search_state.cpp:289:INFO] cmps: 187
+[search_state.cpp:290:INFO] k: 0
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 7
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 900184
+[search_state.cpp:282:INFO] full_retset size: 7
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [504814,67954],[900184,75884.7],[9900967,82954.3],[5974352,86930],[5671941,87851.8],[8762777,88604.7],[6957286,91173.6],[5060445,93599.2],[567738,93996.3],[1272280,94124.9]
+[search_state.cpp:287:INFO] visited size: 228
+[search_state.cpp:289:INFO] cmps: 218
+[search_state.cpp:290:INFO] k: 1
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 8
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 8430679
+[search_state.cpp:282:INFO] full_retset size: 8
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[9900967,82954.3],[885651,86520.4],[5974352,86930],[5671941,87851.8],[8762777,88604.7],[1545094,90803.3],[6957286,91173.6]
+[search_state.cpp:287:INFO] visited size: 258
+[search_state.cpp:289:INFO] cmps: 248
+[search_state.cpp:290:INFO] k: 0
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 9
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 6796640
+[search_state.cpp:282:INFO] full_retset size: 9
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[9900967,82954.3],[6796640,84779.5],[885651,86520.4],[5974352,86930],[5671941,87851.8],[8762777,88604.7],[3002109,88869]
+[search_state.cpp:287:INFO] visited size: 288
+[search_state.cpp:289:INFO] cmps: 278
+[search_state.cpp:290:INFO] k: 1
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 10
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 885651
+[search_state.cpp:282:INFO] full_retset size: 10
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[9900967,82954.3],[6796640,84779.5],[885651,86520.4],[5974352,86930],[5671941,87851.8],[8762777,88604.7],[3002109,88869]
+[search_state.cpp:287:INFO] visited size: 319
+[search_state.cpp:289:INFO] cmps: 309
+[search_state.cpp:290:INFO] k: 2
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 11
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 5974352
+[search_state.cpp:282:INFO] full_retset size: 11
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[9900967,82954.3],[6796640,84779.5],[885651,86520.4],[5974352,86930],[5671941,87851.8],[8762777,88604.7],[3002109,88869]
+[search_state.cpp:287:INFO] visited size: 349
+[search_state.cpp:289:INFO] cmps: 339
+[search_state.cpp:290:INFO] k: 3
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 12
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 5968860
+[search_state.cpp:282:INFO] full_retset size: 12
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[9900967,82954.3],[6796640,84779.5],[5968871,85993.1],[885651,86520.4],[5974352,86930],[5671941,87851.8]
+[search_state.cpp:287:INFO] visited size: 380
+[search_state.cpp:289:INFO] cmps: 370
+[search_state.cpp:290:INFO] k: 3
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 13
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 9596430
+[search_state.cpp:282:INFO] full_retset size: 13
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[9596430,80389.2],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5],[5968871,85993.1],[885651,86520.4]
+[search_state.cpp:287:INFO] visited size: 411
+[search_state.cpp:289:INFO] cmps: 401
+[search_state.cpp:290:INFO] k: 4
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 14
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 5969221
+[search_state.cpp:282:INFO] full_retset size: 14
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167],[9596430,72534]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[9596430,80389.2],[5969221,81712.8],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5],[4084683,85041.1]
+[search_state.cpp:287:INFO] visited size: 437
+[search_state.cpp:289:INFO] cmps: 427
+[search_state.cpp:290:INFO] k: 5
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 15
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 7723442
+[search_state.cpp:282:INFO] full_retset size: 15
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167],[9596430,72534],[5969221,80611]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[9596430,80389.2],[5969221,81712.8],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5],[4084683,85041.1]
+[search_state.cpp:287:INFO] visited size: 467
+[search_state.cpp:289:INFO] cmps: 457
+[search_state.cpp:290:INFO] k: 6
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 16
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 4084683
+[search_state.cpp:282:INFO] full_retset size: 16
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167],[9596430,72534],[5969221,80611],[7723442,85775]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[9596430,80389.2],[5969221,81712.8],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5],[4084683,85041.1]
+[search_state.cpp:287:INFO] visited size: 495
+[search_state.cpp:289:INFO] cmps: 485
+[search_state.cpp:290:INFO] k: 7
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 17
+[search_state.cpp:278:INFO] frontier size 1
+[search_state.cpp:280:INFO] frontier: 5750591
+[search_state.cpp:282:INFO] full_retset size: 17
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167],[9596430,72534],[5969221,80611],[7723442,85775],[4084683,87259]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[5750591,79075.8],[9596430,80389.2],[5969221,81712.8],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5]
+[search_state.cpp:287:INFO] visited size: 524
+[search_state.cpp:289:INFO] cmps: 514
+[search_state.cpp:290:INFO] k: 4
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[search_state.cpp:277:INFO] State for query 0, hop 18
+[search_state.cpp:278:INFO] frontier size 0
+[search_state.cpp:282:INFO] full_retset size: 18
+[search_state.cpp:283:INFO] full_retset: [8762777,91277],[1429749,98488],[5066506,97799],[9249288,96758],[9900967,82954],[1272280,93646],[504814,61125],[900184,73660],[8430679,65136],[6796640,79036],[885651,83564],[5974352,83732],[5968860,79167],[9596430,72534],[5969221,80611],[7723442,85775],[4084683,87259],[5750591,80544]
+[search_state.cpp:284:INFO] cur_list_size: 10
+[search_state.cpp:285:INFO] retset: [8430679,65555.2],[504814,67954],[900184,75884.7],[5968860,77021.8],[5750591,79075.8],[9596430,80389.2],[5969221,81712.8],[9900967,82954.3],[7723442,83857.9],[6796640,84779.5]
+[search_state.cpp:287:INFO] visited size: 556
+[search_state.cpp:289:INFO] cmps: 546
+[search_state.cpp:290:INFO] k: 5
+[search_state.cpp:291:INFO] mem_l: 10
+[search_state.cpp:295:INFO] partition_history size: 1
+[search_state.cpp:296:INFO] partition_history: 0,
+[ssd_partition_index.cpp:478:INFO] finished query 0

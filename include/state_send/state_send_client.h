@@ -68,6 +68,8 @@ private:
   //   std::thread real_thread;
   //   void main_loop();
   //   std::atomic<bool> running{false};
+  //   moodycamel::BlockingConcurrentQueue<std::shared_ptr<search_result_t>>
+  //       result_queue;
   // public:
   //   ResultReceiveThread(StateSendClient *parent);
   //   void start();

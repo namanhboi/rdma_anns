@@ -3,8 +3,28 @@
 #include "state_send_client.h"
 #include "types.h"
 #include "utils.h"
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+
+
+
+// void write_results_csv(std::vector<std::shared_ptr<search_result_t>> results,
+//                        const std::string &output_file) {
+//   std::ofstream output(output_file);
+//   output << "query_id,full_retset" << std::endl;
+//   for (const auto &res : results) {
+//     output << res->query_id << ",";
+//     for (const auto &neighbor : res->full_retset) {
+//       output << "(" << neighbor.id << "," <<neighbor.distance << "," <<neighbor.flag << "),";
+//       // j[res->query_id].push_back(
+// 				 // {neighbor.id, neighbor.distance, neighbor.flag});
+//     }
+//     output << std::endl;
+//   }
+
+// }
+
 
 template <typename T>
 int search_disk_index(const std::string &query_json,
@@ -22,7 +42,19 @@ int search_disk_index(const std::string &query_json,
   uint64_t K = query_data["K"].get<uint64_t>();
   uint64_t mem_L = query_data["mem_L"].get<uint64_t>();
   bool record_stats = query_data["record_stats"].get<bool>();
-  std::string dist_search_mode_str = query_data["dist_search_mode"].get<std::string>();
+  std::string dist_search_mode_str =
+    query_data["dist_search_mode"].get<std::string>();
+  uint64_t send_rate_per_second = query_data.value<uint64_t>(
+							     "send_rate_per_second", std::numeric_limits<uint64_t>::max());
+  uint64_t microsecond_sleep_time = 0;
+  if (send_rate_per_second != std::numeric_limits<uint64_t>::max()) {
+    microsecond_sleep_time = 1 * 1000 * 1000 / send_rate_per_second;
+  }
+  
+  // uint64_t num_queries_to_send =
+  //   query_data["num_queries_to_send"].<uint64_t>();
+
+  
   DistributedSearchMode dist_search_mode;
 
   if (beam_width != 1) {
@@ -72,7 +104,8 @@ int search_disk_index(const std::string &query_json,
     }
     calc_recall_flag = true;
   }
-
+  uint64_t num_queries_to_send = query_data.value<uint64_t>(
+							    "num_queries_to_send", std::uint64_t(query_num));
 
   auto run_tests = [&](uint32_t test_id, bool output) {
     uint64_t L = Lvec[test_id];
@@ -86,13 +119,16 @@ int search_disk_index(const std::string &query_json,
 
 
     std::vector<uint64_t> query_ids;
-    for (int i = 0; i < (int64_t)query_num; i += 1) {
+    for (int i = 0; i < (int64_t)num_queries_to_send; i += 1) {
       uint64_t query_id =
         client.search(query + (i * query_dim), K, mem_L, L, beam_width, record_stats);
       query_ids.push_back(query_id);
-      // std::this_thread::sleep_for(std::chrono::microseconds(50));
+      if (microsecond_sleep_time != 0) {
+        std::this_thread::sleep_for(
+				    std::chrono::microseconds(microsecond_sleep_time));
+      }
     }
-    client.wait_results(query_num);
+    client.wait_results(num_queries_to_send);
 
     std::vector<std::shared_ptr<search_result_t>> results;
     std::vector<double> e2e_latencies;
@@ -130,35 +166,36 @@ int search_disk_index(const std::string &query_json,
                   sizeof(float) * K);
       i++;
     }
+    // write_results_csv(results, "result.csv");
     std::sort(e2e_latencies.begin(),e2e_latencies.end());
     std::chrono::duration<double> total_elapsed = last - first;
     // std::cout << "total time is " << (double) total_elapsed.count() << std::endl;
     float qps =
-        (float)((1.0 * (double)query_num) / (1.0 * (double)total_elapsed.count()));
+      (float)((1.0 * (double)num_queries_to_send) / (1.0 * (double)total_elapsed.count()));
 
     pipeann::convert_types<uint32_t, uint32_t>(
         query_result_tags_32.data(), query_result_tags[test_id].data(),
 					       (size_t)query_num, (size_t)K);
 
     float mean_latency = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+					       query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
     });
 
     float latency_999 = (float)get_percentile_stats(
-        query_stats, query_num, 0.999f,
+						    query_stats, num_queries_to_send, 0.999f,
         [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
         });
 
     float mean_hops = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+					    query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_hops : 0;
     });
     
 
     float mean_ios = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+        query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_ios : 0;
     });
 
@@ -174,7 +211,7 @@ int search_disk_index(const std::string &query_json,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-            (uint32_t)query_num, gt_ids, gt_dists, (uint32_t)gt_dim,
+						  (uint32_t)num_queries_to_send, gt_ids, gt_dists, (uint32_t)gt_dim,
 						  query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 

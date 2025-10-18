@@ -32,8 +32,6 @@ void SSDPartitionIndex<T, TagT>::state_reset(SearchState<T, TagT> *state) {
   state->data_buf_idx = 0;
   state->sector_idx = 0;
   state->visited.clear(); // does not deallocate memory.
-  state->retset.resize(4096);
-  state->retset.clear();
   state->full_retset.clear();
   state->cur_list_size = state->cmps = state->k = 0;
 }
@@ -64,7 +62,7 @@ bool SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(SearchState<T, TagT> 
       uint32_t loc = id2loc(state->frontier[i]);
       uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
       auto sector_buf = state->sectors + state->sector_idx * this->size_per_io;
-      fnhood_t fnhood = std::make_tuple(loc, loc, sector_buf);
+      fnhood_t fnhood = std::make_tuple(state->frontier[i], loc, sector_buf);
       state->sector_idx++;
       state->frontier_nhoods.push_back(fnhood);
       state->frontier_read_reqs.emplace_back(IORequest(
@@ -136,7 +134,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
         // variable search_L for deleted nodes.
         // Return position in sorted list where nn inserted.
 
-        auto r = InsertIntoPool(state->retset.data(), state->cur_list_size, nn);
+        auto r = InsertIntoPool(state->retset, state->cur_list_size, nn);
 
         if (state->cur_list_size < state->l_search) {
           state->cur_list_size++;
@@ -211,6 +209,91 @@ uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_partition(
     throw std::invalid_argument("State has frontier size 0");
   }
   return this->get_cluster_assignment(state->frontier[0]);
+}
+
+
+std::string
+neighbors_to_string(pipeann::Neighbor *neighbors, uint32_t num_neighbors) {
+  std::stringstream str;
+  for (auto i = 0; i < num_neighbors; i++) {
+    str << "[" << neighbors[i].id << "," << neighbors[i].distance << "]";
+    if (i != num_neighbors - 1)
+      str << ",";
+  }
+  return str.str();
+}
+
+
+template <typename T, typename TagT>
+std::string state_visited_to_string(SearchState<T, TagT> *state) {
+  std::vector<uint32_t> node_ids;
+  for (const auto &node_id : state->visited) {
+    node_ids.push_back(node_id);
+    // write_data(buffer, reinterpret_cast<const char *>(&node_id),
+    // sizeof(node_id), offset);
+  }
+  std::sort(node_ids.begin(), node_ids.end());
+  std::stringstream str;
+  for (const auto &node_id : node_ids) {
+    str << node_id << ",";
+  }
+  return str.str();
+}
+
+template <typename T, typename TagT>
+std::string state_partition_history_to_string(SearchState<T, TagT> *state) {
+  std::stringstream str;
+  for (auto p : state->partition_history) {
+    str<< static_cast<int>(p) <<",";
+  }
+  return str.str();
+}
+
+// template <typename T, typename TagT>
+// std::string state_frontier_nhoods_to_string(SearchState<T, TagT> *state) {
+//   std::vector<uint32_t> node_ids;
+//   for (const auto &node_id : state->visited) {
+//     node_ids.push_back(node_id);
+//     // write_data(buffer, reinterpret_cast<const char *>(&node_id),
+//     // sizeof(node_id), offset);
+//   }
+//   std::sort(node_ids.begin(), node_ids.end());
+//   std::stringstream str;
+//   for (const auto &node_id : node_ids) {
+//     str << node_id << ",";
+//   }
+//   return str.str();
+// }
+
+
+
+
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::state_print_detailed(
+						      SearchState<T, TagT> *state) {
+  LOG(INFO) << "State for query " << state->query_id << ", hop " << state->stats->n_hops;
+  LOG(INFO) << "frontier size " << state->frontier.size();
+  if (state->frontier.size() == 1) {
+    LOG(INFO) << "frontier: " << state->frontier[0];
+  }
+  LOG(INFO) << "full_retset size: " << state->full_retset.size();
+  LOG(INFO) << "full_retset: " << neighbors_to_string(state->full_retset.data(), state->full_retset.size());
+  LOG(INFO) << "cur_list_size: " << state->cur_list_size;
+  LOG(INFO) << "retset: "
+  << neighbors_to_string(state->retset, state->cur_list_size);
+  LOG(INFO) << "visited size: " << state->visited.size();
+  // LOG(INFO) << "visited: " << state_visited_to_string(state);
+  LOG(INFO) << "cmps: " << state->cmps;
+  LOG(INFO) << "k: " << state->k;
+  LOG(INFO) << "mem_l: " << state->mem_l;
+  // LOG(INFO) << "l_search: " << state->l_search;
+  // LOG(INFO) << "k_search: " << state->k_search;
+  // LOG(INFO) << "beam_width: " << state->beam_width;
+  LOG(INFO) << "partition_history size: " << state->partition_history.size();
+  LOG(INFO) << "partition_history: "
+  << state_partition_history_to_string(state);
+  // LOG(INFO) << "client_peer_id " <<state->client_peer_id;
 }
 
 
