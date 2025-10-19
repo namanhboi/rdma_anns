@@ -26,7 +26,7 @@ target_include_directories(ParlayANN INTERFACE
 target_link_libraries(ParlayANN INTERFACE Parlay)
 
 
-find_package(cascade CONFIG REQUIRED)
+# find_package(cascade CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS program_options)
 message(STATUS "Boost_FOUND: ${Boost_FOUND}")
 message(STATUS "Boost_VERSION: ${Boost_VERSION}")
