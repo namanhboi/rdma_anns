@@ -241,11 +241,11 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       if (state->stats != nullptr) {
         state->stats->total_us += (double)state->query_timer.elapsed();
       }
-      this->parent->notify_client(state);
-      number_concurrent_queries--;
       if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
         parent->query_emb_map.erase(state->query_id);
       }
+      this->parent->notify_client(state);
+      number_concurrent_queries--;
       // delete state;
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
