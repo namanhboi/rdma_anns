@@ -1,11 +1,11 @@
 #include "state_send_client.h"
 #include "types.h"
 #include <chrono>
+#include <memory>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <thread>
-#include <nlohmann/json.hpp>
-
-
+#include <unordered_set>
 
 template <typename T>
 StateSendClient<T>::ClientThread::ClientThread(uint64_t id,
@@ -68,7 +68,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
         if (i == parent->other_peer_ids.size() - 1) {
           // don't need to make an additional copy of r
-	  // std::cout << "sending query" <<std::endl;
+          // std::cout << "sending query" <<std::endl;
           parent->communicator->send_to_peer(parent->other_peer_ids[i], r);
         } else {
           Region r_copy;
@@ -150,10 +150,12 @@ StateSendClient<T>::StateSendClient(const uint64_t id,
   for (uint64_t i = 0; i < num_client_threads; i++) {
     client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
   }
+  result_thread = std::make_unique<ResultReceiveThread>(this);
 }
 
 template <typename T> void StateSendClient<T>::start_result_thread() {
   communicator->start_recv_thread();
+  result_thread->start();
 }
 
 template <typename T> void StateSendClient<T>::start_client_threads() {
@@ -204,7 +206,7 @@ std::shared_ptr<search_result_t> combine_results(
     const std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
         &vec_res) {
   std::shared_ptr<search_result_t> combined_res =
-    std::make_shared<search_result_t>();
+      std::make_shared<search_result_t>();
   combined_res->query_id = vec_res[0].second->query_id;
   // dumb heristic but this is the only way to know K?
   uint64_t max_num_res = 0;
@@ -214,12 +216,9 @@ std::shared_ptr<search_result_t> combine_results(
       node_id_dist.emplace_back(res->node_id[i], res->distance[i]);
     }
     max_num_res = std::max(max_num_res, res->num_res);
-
   }
-  std::sort(
-            node_id_dist.begin(), node_id_dist.end(),
-            [](auto &left, auto &right) { return left.second <
-						 right.second; });
+  std::sort(node_id_dist.begin(), node_id_dist.end(),
+            [](auto &left, auto &right) { return left.second < right.second; });
   combined_res->num_res = max_num_res;
   for (auto i = 0; i < max_num_res; i++) {
 
@@ -254,15 +253,14 @@ std::shared_ptr<search_result_t> combine_results(
     combined_res->stats->cpu_us /= count;
     combined_res->stats->n_cmps /= count;
     combined_res->stats->n_hops /= count;
-  }  
+  }
   return combined_res;
 }
-
-
 
 template <typename T>
 void StateSendClient<T>::receive_result_handler(const char *buffer,
                                                 size_t size) {
+  // LOG(INFO) << "bruh";
   size_t offset = 0;
   MessageType msg_type;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
@@ -273,63 +271,8 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
   // std::memcpy(&msg_type, buffer, sizeof(msg_type));
 
   std::shared_ptr<search_result_t> res =
-      search_result_t::deserialize(buffer + offset);
-
-  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
-    if (res->partition_history.size() != 1) {
-      throw std::runtime_error("partition history size not 1: " +
-                               std::to_string(res->partition_history.size()));
-    }
-    // LOG(INFO) << "result received ";
-    // sub_query_result_time.insert_or_assign(res->query_id,
-    // std::chrono::steady_clock::now());
-    sub_query_result_time.upsert(
-        res->query_id,
-        [res](std::vector<
-              std::pair<uint8_t, std::chrono::steady_clock::time_point>> &vec) {
-          vec.push_back(
-              {res->partition_history[0], std::chrono::steady_clock::now()});
-       
-          return false;
-        },
-        std::vector<std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
-          {res->partition_history[0], std::chrono::steady_clock::now()}});
-    size_t num_res = 1;
-    sub_query_results.upsert(
-        res->query_id,
-        [res, &num_res](
-            std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
-                &vec) {
-          vec.push_back({res->partition_history[0], res});
-          num_res = vec.size();
-          return false;
-        },
-        std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
-          {res->partition_history[0], res}});
-
-    if (num_res == other_peer_ids.size()) {
-      // LOG(INFO) << "result done";
-      std::shared_ptr<search_result_t> combined_res =
-        combine_results(sub_query_results.find(res->query_id));
-      results.insert_or_assign(combined_res->query_id, combined_res);
-      
-      query_result_time.insert_or_assign(res->query_id,
-                                         std::chrono::steady_clock::now());
-      num_results_received.fetch_add(1);
-    }
-  } else if (dist_search_mode == DistributedSearchMode::STATE_SEND) {
-    // LOG(INFO) << "result received " << res->query_id;
-    results.insert_or_assign(res->query_id, res);
-    // for (auto i = 0; i < res->num_res; i++) {
-      // LOG(INFO) << res->node_id[i];
-    // }
-    // LOG(INFO) << res->num_res;
-    query_result_time.insert_or_assign(res->query_id,
-                                       std::chrono::steady_clock::now());
-    num_results_received.fetch_add(1);
-  } else {
-    throw std::invalid_argument("Weird DistributedSearchMode value");
-  }
+    search_result_t::deserialize(buffer + offset);
+  this->result_queue.enqueue(res);
 }
 
 template <typename T> void StateSendClient<T>::shutdown() {
@@ -340,14 +283,122 @@ template <typename T> void StateSendClient<T>::shutdown() {
   for (auto &client_thread : client_threads) {
     client_thread->join();
   }
+  result_thread->signal_stop();
+  result_thread->join();
+}
+
+template <typename T>
+StateSendClient<T>::ResultReceiveThread::ResultReceiveThread(
+    StateSendClient *parent)
+: parent(parent) {}
+
+template <typename T> void StateSendClient<T>::ResultReceiveThread::start() {
+  running = true;
+  real_thread =
+      std::thread(&StateSendClient<T>::ResultReceiveThread::main_loop, this);
+}
+
+template <typename T> void StateSendClient<T>::ResultReceiveThread::join() {
+  if (real_thread.joinable()) {
+    real_thread.join();
+  }
+}
+
+template <typename T>
+void StateSendClient<T>::ResultReceiveThread::signal_stop() {
+  running = false;
+  parent->result_queue.enqueue(nullptr);
+}
+
+template <typename T>
+void StateSendClient<T>::send_acks(std::shared_ptr<search_result_t> result) {
+  std::unordered_set<uint8_t> server_peer_ids(
+					      result->partition_history.cbegin(), result->partition_history.cend());
+  for (const auto &server_peer_id : server_peer_ids) {
+    Region r;
+    MessageType msg_type = MessageType::RESULT_ACK;
+    ack a;
+    a.query_id = result->query_id;
+    r.length = sizeof(msg_type) + a.get_serialize_size();
+    r.addr = new char[r.length];
+    size_t offset = 0;
+    std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+    offset += sizeof(msg_type);
+    a.write_serialize(r.addr + offset);
+    communicator->send_to_peer(server_peer_id, r);
+  }
 }
 
 
+template <typename T>
+void StateSendClient<T>::ResultReceiveThread::main_loop() {
+  while (running) {
+    std::shared_ptr<search_result_t> res;
+    parent->result_queue.wait_dequeue(res);
+    // LOG(INFO) << "hello";
+    if (res == nullptr) {
+      assert(!running);
+      break;
+    }
+    if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+      if (res->partition_history.size() != 1) {
+        throw std::runtime_error("partition history size not 1: " +
+                                 std::to_string(res->partition_history.size()));
+      }
+      // LOG(INFO) << "result received ";
+      // sub_query_result_time.insert_or_assign(res->query_id,
+      // std::chrono::steady_clock::now());
+      parent->sub_query_result_time.upsert(
+          res->query_id,
+          [res](std::vector<std::pair<
+                    uint8_t, std::chrono::steady_clock::time_point>> &vec) {
+            vec.push_back(
+                {res->partition_history[0], std::chrono::steady_clock::now()});
 
+            return false;
+          },
+          std::vector<
+              std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
+              {res->partition_history[0], std::chrono::steady_clock::now()}});
+      size_t num_res = 1;
+      parent->sub_query_results.upsert(
+          res->query_id,
+          [res, &num_res](
+              std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
+                  &vec) {
+            vec.push_back({res->partition_history[0], res});
+            num_res = vec.size();
+            return false;
+          },
+          std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
+              {res->partition_history[0], res}});
 
+      if (num_res == parent->other_peer_ids.size()) {
+        // LOG(INFO) << "result done";
+        std::shared_ptr<search_result_t> combined_res =
+            combine_results(parent->sub_query_results.find(res->query_id));
+        parent->results.insert_or_assign(combined_res->query_id, combined_res);
 
-
-template <typename T> StateSendClient<T>::~StateSendClient() { shutdown(); }
+        parent->query_result_time.insert_or_assign(
+            res->query_id, std::chrono::steady_clock::now());
+        parent->num_results_received.fetch_add(1);
+      }
+    } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+      // LOG(INFO) << "result received " << res->query_id;
+      parent->results.insert_or_assign(res->query_id, res);
+      // for (auto i = 0; i < res->num_res; i++) {
+      // LOG(INFO) << res->node_id[i];
+      // }
+      // LOG(INFO) << res->num_res;
+      parent->query_result_time.insert_or_assign(
+          res->query_id, std::chrono::steady_clock::now());
+      parent->num_results_received.fetch_add(1);
+      parent->send_acks(res);
+    } else {
+      throw std::invalid_argument("Weird DistributedSearchMode value");
+    }
+  }
+}
 
 template class StateSendClient<uint8_t>;
 template class StateSendClient<int8_t>;

@@ -250,6 +250,7 @@ int search_disk_index(const std::string &query_json,
   for (uint32_t test_id = 0; test_id < Lvec.size(); test_id++) {
     run_tests(test_id, true);
   }
+  client.shutdown();
   
   return 0;
 }

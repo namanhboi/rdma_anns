@@ -1,5 +1,6 @@
 #include "blockingconcurrentqueue.h"
 #include "communicator.h"
+#include "concurrentqueue.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "types.h"
 
@@ -63,23 +64,30 @@ private:
   std::atomic<uint64_t> current_client_thread_id={0};
 
 private:
-  // class ResultReceiveThread {
-  // private:
-  //   std::thread real_thread;
-  //   void main_loop();
-  //   std::atomic<bool> running{false};
-  //   moodycamel::BlockingConcurrentQueue<std::shared_ptr<search_result_t>>
-  //       result_queue;
-  // public:
-  //   ResultReceiveThread(StateSendClient *parent);
-  //   void start();
-  //   void signal_stop();
-  //   void join();
-  // };
+  class ResultReceiveThread {
+  private:
+    
+    std::thread real_thread;
+    uint64_t my_thread_id;
+    void main_loop();
+    std::atomic<bool> running{false};
+
+    StateSendClient *parent;
+    // moodycamel::ConsumerToken ctok;
+  public:
+    ResultReceiveThread(StateSendClient *parent);
+    void start();
+    void signal_stop();
+    void join();
+  };
+  std::unique_ptr<ResultReceiveThread> result_thread;
 private:
   DistributedSearchMode dist_search_mode; 
   uint64_t dim;
-  void shutdown();
+
+  // moodycamel::ProducerToken ptok;
+  moodycamel::BlockingConcurrentQueue<std::shared_ptr<search_result_t>>
+      result_queue;
 public:
   StateSendClient(const uint64_t id, const std::string &communicator_json,
                   int num_client_thread, DistributedSearchMode dist_search_mode,
@@ -87,7 +95,6 @@ public:
   /**
      shuts down every thing correctly,
    */
-  ~StateSendClient();
 
   void start_result_thread();
   void start_client_threads();
@@ -109,5 +116,12 @@ public:
     logs the time received and also save the result for comparison later
    */
   void receive_result_handler(const char *buffer, size_t size);
+
+
+  void send_acks(std::shared_ptr<search_result_t> result);
+
+  void shutdown();
+
 };
+
 

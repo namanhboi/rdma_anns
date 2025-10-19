@@ -106,12 +106,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     throw std::runtime_error("ctx given by get_ctx is nullptr");
   }
   uint64_t number_concurrent_queries = 0;
-  std::array<SearchState<T, TagT> *, max_batch_size> allocated_states;
+  std::array<SearchState<T, TagT> *, max_queries_balance> allocated_states;
 
   while (running) {
     // LOG(INFO) <<"Concurrent queries " <<number_concurrent_queries;
-    assert(parent->batch_size >= number_concurrent_queries);
-    uint64_t num_states_to_dequeue = parent->batch_size - number_concurrent_queries;
+    assert(parent->num_queries_balance >= number_concurrent_queries);
+    uint64_t num_states_to_dequeue = parent->num_queries_balance - number_concurrent_queries;
     // LOG(INFO) << "number of concurrent queries " << number_concurrent_queries;
     if (num_states_to_dequeue > 0) {
 #ifdef PER_THREAD_QUEUE      

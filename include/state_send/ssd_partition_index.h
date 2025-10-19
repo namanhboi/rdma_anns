@@ -10,14 +10,17 @@
 #include "query_buf.h"
 #include "tsl/robin_set.h"
 #include "utils.h"
+#include <condition_variable>
 #include <cstdint>
 #include <immintrin.h>
 #include <set>
 #include <string>
+#include <variant>
 #include "communicator.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "types.h"
 #include "index.h"
+#include <unordered_set>
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -113,7 +116,7 @@ public:
 
   bool state_search_ends(SearchState<T, TagT> *state);
 
-  void apply_tags_to_result(search_result_t &result);
+  void apply_tags_to_result(std::shared_ptr<search_result_t> result);
 
   // static void write_serialize_query(const T *query_emb,
   //                                   const uint64_t k_search,
@@ -131,8 +134,8 @@ public:
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
   
 private:
-  static constexpr uint64_t max_batch_size = 128;
-  uint64_t batch_size = 0;
+  static constexpr uint64_t max_queries_balance = 128;
+  uint64_t num_queries_balance = 0;
   bool record_stats;
 
   class SearchThread {
@@ -179,6 +182,34 @@ private:
   uint32_t num_search_threads;
   std::atomic<int> current_search_thread_id = 0;
 
+private:
+  class BatchingThread {
+  private:
+    SSDPartitionIndex *parent;
+
+    std::thread real_thread;
+    std::atomic<bool> running = false;
+
+
+    std::unordered_map<uint64_t,
+                       std::unique_ptr<std::vector<SearchState<T, TagT> *>>>
+        msg_queue;
+    std::unordered_set<uint64_t> peer_client_ids;
+    std::condition_variable msg_queue_cv;
+    std::mutex msg_queue_mutex; // also manages is_peer_client
+    
+
+    void main_loop();
+  public:
+    BatchingThread(SSDPartitionIndex *parent);
+    void push_result_to_batch(SearchState<T, TagT> *state);
+    void push_state_to_batch(SearchState<T, TagT> *state);
+    void start();
+    void join();
+    void signal_stop();
+  };
+
+  std::unique_ptr<BatchingThread> batching_thread;
 public:
   /**
      starts all search and io threads
@@ -203,9 +234,10 @@ public:
                     uint32_t num_partitions, uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
-                    DistributedSearchMode dist_search_mode,
-                    bool tags = false, pipeann::Parameters *parameters = nullptr,
-                    uint64_t batch_size = 8, bool enable_locs = true);
+                    DistributedSearchMode dist_search_mode, bool tags = false,
+                    pipeann::Parameters *parameters = nullptr,
+                    uint64_t max_queries_balance = 8, bool enable_locs = true,
+                    bool use_batching = false, uint64_t max_batch_size = 0);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -403,6 +435,8 @@ private:
 
   std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;
 
+  bool use_batching = false;
+  uint64_t max_batch_size = 0;
 private:
   DistributedSearchMode dist_search_mode;
   // section is for commmunication

@@ -40,17 +40,29 @@ enum class MessageType : uint32_t {
 
   // sent by client to all servers during state send to tell them to
   // deallocate the memory from query embedding
-  RESULT_ACK
+  RESULT_ACK,
+
+
+  RESULTS,
+  RESULTS_ACK,
+
+
+  POISON // used to kill the batchig thread
+  
 
 };
 /**
    sent to a server to free data associated with query embedding during state
    send
  */
-constexpr int max_queries_in_ack = 512;
 struct ack {
-  uint32_t num_queries;
-  uint32_t query_ids[max_queries_in_ack];
+  uint64_t query_id;
+
+  size_t write_serialize(char *buffer) const;
+
+  size_t get_serialize_size() const;
+
+  static ack deserialize(const char *buffer);
 };  
 
 
@@ -106,6 +118,7 @@ get_mean_stats(std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
 
 struct search_result_t {
   uint64_t query_id;
+  uint64_t client_peer_id;
   uint64_t num_res;
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
@@ -115,7 +128,21 @@ struct search_result_t {
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
+
+
+  static size_t write_serialize_results(
+      char *buffer,
+
+					const std::vector<std::shared_ptr<search_result_t>> &results);
+
+  static size_t get_serialize_results_size(
+					   const std::vector<std::shared_ptr<search_result_t>> &results);
+
+  static std::vector<std::shared_ptr<search_result_t>>
+  deserialize_results(const char *buffer);
+  
 };
+
 
 
 /**
@@ -241,6 +268,9 @@ struct alignas(SECTOR_LEN) SearchState {
   /**
      sort the full retset then create searchrseult
    */
-  search_result_t get_search_result();
+  std::shared_ptr<search_result_t> get_search_result();
+
+  // void write_serialize_result(char *buffer) const;
+  // void get_serialize_result_size(char *buffer) const;
 };
 
