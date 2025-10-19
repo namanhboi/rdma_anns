@@ -183,6 +183,10 @@ private:
   std::atomic<int> current_search_thread_id = 0;
 
 private:
+  /**
+     handles commmunication with servers and clients, note that if you enqueue a
+     state, it will be deleted by btaching thread, don't double delete it yourself.
+   */
   class BatchingThread {
   private:
     SSDPartitionIndex *parent;
@@ -453,11 +457,13 @@ private:
   */
   void notify_client_local(SearchState<T, TagT> *search_state);
 
-  // if is_local then just write the thing, if not then send the result back with communicator
+  /**
+     STATE WILL BE DELETED
+   */
   void notify_client(SearchState<T, TagT> *search_state);
-
 private:
   /**
+     STATE WILL BE DELETED
      serialize the data from state, can delete after function call. need to
      check that the top candidate node is offserver first as precondition.
    */

@@ -24,6 +24,9 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
   }
+  
+  if (use_batching && max_batch_size == 0)
+    throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
   if (num_queries_balance > max_queries_balance) {
     throw std::invalid_argument("number of queries to balance too big " +
@@ -379,6 +382,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_local(
     }
   }
   search_state->completion_count->fetch_add(1);
+  delete search_state;
 }
 
 template <typename T, typename TagT>
@@ -449,9 +453,10 @@ template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
     search_threads[thread_id]->start();
   }
 
-
-  batching_thread = std::make_unique<BatchingThread>(this);
-  batching_thread->start();
+  if (use_batching) {
+    batching_thread = std::make_unique<BatchingThread>(this);
+    batching_thread->start();
+  }
 }
 
 template <typename T, typename TagT>
@@ -463,8 +468,10 @@ void SSDPartitionIndex<T, TagT>::shutdown() {
 
     search_threads[thread_id]->join();
   }
-  batching_thread->signal_stop();
-  batching_thread->join();
+  if (use_batching) {
+    batching_thread->signal_stop();
+    batching_thread->join();
+  }
   std::cout << "DONE WITH SHUTOWN" << std::endl;
 }
 
@@ -484,9 +491,10 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_tcp(
 						   SearchState<T, TagT> *search_state) {
-  // LOG(INFO) << "finished query " << search_state->query_id;
-  // std::cout << "notify called for query " << search_state->query_id
-  // << std::endl;
+  if (use_batching) {
+    batching_thread->push_result_to_batch(search_state);
+    return;
+  }
   Region r;
   std::shared_ptr<search_result_t> result = search_state->get_search_result();
   // LOG(INFO) << "enable tags" << enable_tags;
@@ -502,6 +510,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
   offset += sizeof(msg_type);
   result->write_serialize(r.addr + offset);
   this->communicator->send_to_peer(search_state->client_peer_id, r);
+  delete search_state;
 }
 
 
@@ -564,9 +573,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 #endif
     }
   } else if (msg_type == MessageType::STATES) {
-    // LOG(INFO) << "States received";
     std::vector<SearchState<T, TagT> *> states =
       SearchState<T, TagT>::deserialize_states(buffer + offset, size);
+    LOG(INFO) << "States received " << states.size();
     for (auto state : states) {
       assert(state->cur_list_size > 0);
       state->partition_history.push_back(my_partition_id);
@@ -601,7 +610,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::send_state(
-					    SearchState<T, TagT> *search_state){ 
+					    SearchState<T, TagT> *search_state) {
+  if (use_batching) {
+    batching_thread->push_state_to_batch(search_state);
+    return;
+  }
   uint8_t receiver_partition_id = this->get_cluster_assignment(search_state->frontier[0]);
   assert(receiver_partition_id != this->my_partition_id);
   bool send_with_embedding;
@@ -635,6 +648,7 @@ void SSDPartitionIndex<T, TagT>::send_state(
                                                single_state_vec);
   // write_serialize(r.addr + offset, send_with_embedding);
   this->communicator->send_to_peer(receiver_partition_id, r);
+  delete search_state;
 }
 
 
@@ -681,7 +695,9 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::signal_stop() {
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   running = false;
   assert(!msg_queue.contains(std::numeric_limits<uint64_t>::max()));
-  msg_queue.emplace(std::numeric_limits<uint64_t>::max(), nullptr);
+  auto empty_vec = std::make_unique<std::vector<SearchState<T, TagT> *>>();
+  empty_vec->push_back(nullptr);
+  msg_queue.emplace(std::numeric_limits<uint64_t>::max(), std::move(empty_vec));
   // real_thread =
   // std::thread(&SSDPartitionIndex<T, TagT>::BatchingThread::main_loop, this);
   msg_queue_cv.notify_all();
@@ -691,9 +707,6 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::join() {
   if (real_thread.joinable()) real_thread.join();
 }
-
-
-
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(

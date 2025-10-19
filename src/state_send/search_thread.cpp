@@ -179,7 +179,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 					       allocated_states[i]->frontier[0]);
             if (partition_assignment_top_cand != parent->my_partition_id) {
               parent->send_state(allocated_states[i]);
-              delete allocated_states[i];
+              // delete allocated_states[i];
             } else {
               bool read_issued =
                 parent->state_issue_next_io_batch(allocated_states[i], ctx);
@@ -246,7 +246,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
         parent->query_emb_map.erase(state->query_id);
       }
-      delete state;
+      // delete state;
     } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
       if (state->stats != nullptr) {
@@ -260,7 +260,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     } else if (s == SearchExecutionState::TOP_CAND_NODE_OFF_SERVER) {
       assert(parent->num_partitions > 1);
       parent->send_state(state);
-      delete state;
+      // delete state;
       number_concurrent_queries--;
       // need to send this bitch
 

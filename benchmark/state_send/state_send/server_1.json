@@ -10,5 +10,7 @@
    "my_partition_id":1,
   "num_search_threads":4,
    "num_queries_balance": 8,
-   "dist_search_mode": "STATE_SEND"
+   "dist_search_mode": "STATE_SEND",
+   "use_batching": true,
+   "max_batch_size": 10   
 }

@@ -266,13 +266,18 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   assert(msg_type == MessageType::RESULT);
   offset += sizeof(msg_type);
+  if (msg_type == MessageType::RESULT) {
 
+    std::shared_ptr<search_result_t> res =
+      search_result_t::deserialize(buffer + offset);
+    this->result_queue.enqueue(res);
+  } else if (msg_type == MessageType::RESULTS) {
+    auto results = search_result_t::deserialize_results(buffer + offset);
+    this->result_queue.enqueue_bulk(results.begin(), results.size());
+  }
   // uint64_t query_id;
   // std::memcpy(&msg_type, buffer, sizeof(msg_type));
 
-  std::shared_ptr<search_result_t> res =
-    search_result_t::deserialize(buffer + offset);
-  this->result_queue.enqueue(res);
 }
 
 template <typename T> void StateSendClient<T>::shutdown() {
