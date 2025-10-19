@@ -1,6 +1,4 @@
 #include "zmq_sender_ack.hpp"
-#include <derecho/core/detail/rpc_utils.hpp>
-
 
 int main(int argc, char **argv) {
   uint64_t my_id = std::stoull(argv[1]);
