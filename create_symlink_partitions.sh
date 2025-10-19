@@ -25,12 +25,12 @@ fi
 # Create symlinks
 echo "Creating symlinks from $SOURCE_FOLDER to $TARGET_FOLDER..."
 
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition0_mem_index"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition1_mem_index"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition0_mem_index.data"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition1_mem_index.data"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition0_mem_index.tags"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition1_mem_index.tags"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index.data"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index.data"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index.tags"
+ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index.tags"
 ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition0_pq_compressed.bin"
 ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition1_pq_compressed.bin"
 ln -s "$SOURCE_FOLDER/pipeann_10M_pq_pivots.bin" "$TARGET_FOLDER/pipeann_10M_partition0_pq_pivots.bin"
