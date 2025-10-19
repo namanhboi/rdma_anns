@@ -1,14 +1,21 @@
 #!/bin/bash
 
-# Check if both arguments are provided
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <source_folder> <target_folder>"
-    echo "Example: $0 ./ ./test_folder"
+# Check if all arguments are provided
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <source_folder> <target_folder> <num_partitions>"
+    echo "Example: $0 ./ ./test_folder 2"
     exit 1
 fi
 
 SOURCE_FOLDER="$1"
 TARGET_FOLDER="$2"
+NUM_PARTITIONS="$3"
+
+# Check if num_partitions is a positive integer
+if ! [[ "$NUM_PARTITIONS" =~ ^[0-9]+$ ]] || [ "$NUM_PARTITIONS" -lt 1 ]; then
+    echo "Error: Number of partitions must be a positive integer!"
+    exit 1
+fi
 
 # Check if source folder exists
 if [ ! -d "$SOURCE_FOLDER" ]; then
@@ -23,17 +30,14 @@ if [ ! -d "$TARGET_FOLDER" ]; then
 fi
 
 # Create symlinks
-echo "Creating symlinks from $SOURCE_FOLDER to $TARGET_FOLDER..."
+echo "Creating symlinks from $SOURCE_FOLDER to $TARGET_FOLDER for $NUM_PARTITIONS partitions..."
 
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index.data"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index.data"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition0_mem.index.tags"
-ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition1_mem.index.tags"
-ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition0_pq_compressed.bin"
-ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition1_pq_compressed.bin"
-ln -s "$SOURCE_FOLDER/pipeann_10M_pq_pivots.bin" "$TARGET_FOLDER/pipeann_10M_partition0_pq_pivots.bin"
-ln -s "$SOURCE_FOLDER/pipeann_10M_pq_pivots.bin" "$TARGET_FOLDER/pipeann_10M_partition1_pq_pivots.bin"
+for ((i=0; i<NUM_PARTITIONS; i++)); do
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index.data"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index.tags"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition${i}_pq_compressed.bin"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_pq_pivots.bin" "$TARGET_FOLDER/pipeann_10M_partition${i}_pq_pivots.bin"
+done
 
 echo "Symlinks created successfully!"
