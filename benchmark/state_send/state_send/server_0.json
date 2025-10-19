@@ -1,7 +1,7 @@
  {
    "type":"uint8",
-   "index_prefix":"/home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition0",
-   "cluster_assignment_file": "/home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition_assignment.bin",
+   "index_prefix":"~/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition0",
+   "cluster_assignment_file": "~/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M_partition_assignment.bin",
    "use_tags":false,
    "enable_locs":true,
    "use_mem_index":true,
