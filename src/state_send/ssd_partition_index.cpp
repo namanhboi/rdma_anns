@@ -575,7 +575,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   } else if (msg_type == MessageType::STATES) {
     std::vector<SearchState<T, TagT> *> states =
       SearchState<T, TagT>::deserialize_states(buffer + offset, size);
-    LOG(INFO) << "States received " << states.size();
+    // LOG(INFO) << "States received " << states.size();
     for (auto state : states) {
       assert(state->cur_list_size > 0);
       state->partition_history.push_back(my_partition_id);
