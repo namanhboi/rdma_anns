@@ -8,7 +8,7 @@
   "metric":"l2",
   "num_partitions":1,
    "my_partition_id":1,
-  "num_search_threads":4,
+  "num_search_threads":48,
    "num_queries_balance": 8,
    "dist_search_mode": "SCATTER_GATHER"
 }
