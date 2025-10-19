@@ -38,6 +38,7 @@ sudo apt-get install libzmq3-dev
 
 ```
 git clone https://github.com/zeromq/libzmq/
+cd libzmq
 ./autogen.sh
 ./configure --prefix=/usr/local --enable-drafts
 make -j

@@ -1,0 +1,92 @@
+* Installation guide for cloudlab machines
+
+#+BEGIN_SRC
+
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt-get install -y autoconf automake libtool pkg-config
+sudo apt install make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
+
+
+mkdir ~/workspace
+
+cd ~/workspace
+sudo apt install libssl-dev
+wget https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0.tar.gz
+tar -xvzf cmake-3.31.0.tar.gz
+cd cmake-3.31.0
+./bootstrap
+make -j32
+sudo make install
+
+
+
+cd ~/workspace
+git clone https://github.com/zeromq/libzmq/
+cd libzmq
+./autogen.sh
+./configure --prefix=/usr/local --enable-drafts
+make -j
+sudo make install
+sudo ldconfig
+
+
+cd ~/workspace
+git clone https://github.com/cmuparlay/parlaylib
+cd parlaylib
+mkdir build && cd build
+cmake ..
+sudo cmake --build . --target install
+
+
+
+sudo apt-get install nlohmann-json3-dev
+
+
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF
+sudo cmake --build build/ -j --target install
+
+
+
+
+
+
+cd ~/workspace
+git clone git@github.com:namanhboi/rdma_anns.git
+cd ~/workspace/rdma_anns
+git submodule update --init --recursive --remote
+
+
+
+cd ~/workspace/rdma_anns/extern/liburing
+./configure
+make -j
+
+
+
+
+cd ~/workspace/rdma_anns/extern/gp-ann
+git submodule update --init --recursive
+sudo apt-get install libsparsehash-dev
+
+cd ~/workspace/rdma_anns
+cmake -S. -B build_debug -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=DEBUG
+
+
+cmake --build build_debug/ -j
+
+cd ~/
+git clone https://github.com/harsha-simhadri/big-ann-benchmarks
+cd ~/big-ann-benchmarks
+sudo apt install -y python3-pip
+pip install -r requirements_py3.10.txt
+python create_dataset.py --dataset bigann-10M
+#+END_SRC
+
+
+
+
+* Making clusters
