@@ -141,9 +141,12 @@ void create_random_cluster_disk_indices(const std::string &index_path_prefix,
   }
   for (uint32_t i = 0; i < num_clusters; i++) {
     std::string index_path = index_path_prefix + "_cluster" + std::to_string(i);
-    pipeann::build_disk_index<T, TagT>(
-        base_files[i].c_str(), index_path.c_str(), indexBuildParameters,
-        _compareMetric, single_file_index, nullptr, true);
+    
+    if (!file_exists(index_path + "_disk.index")) {
+      pipeann::build_disk_index<T, TagT>(
+          base_files[i].c_str(), index_path.c_str(), indexBuildParameters,
+					 _compareMetric, single_file_index, nullptr, true);
+    }
   }
 }
 
