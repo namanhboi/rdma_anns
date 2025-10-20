@@ -100,3 +100,11 @@ target_compile_options(create_state_send_indices PRIVATE
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
 
+
+add_executable(build_disk_index build_disk_index.cpp)
+target_link_libraries(build_disk_index ssd_state_send)
+target_compile_options(build_disk_index PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
