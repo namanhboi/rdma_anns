@@ -1,0 +1,8 @@
+{
+  "address_list":[
+    "tcp://localhost:6666",
+    "tcp://localhost:6667",
+    "tcp://localhost:6668",
+    "tcp://localhost:6669"
+  ]
+}
