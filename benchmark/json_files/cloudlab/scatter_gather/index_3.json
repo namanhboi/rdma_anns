@@ -1,6 +1,6 @@
  {
    "type":"uint8",
-   "index_prefix":"/users/namanh/big-ann-benchmarks/data/bigann/clusters/pipeann_10M_cluster",
+   "index_prefix":"/users/namanh/big-ann-benchmarks/data/bigann/clusters_3/pipeann_10M_cluster",
    "cluster_assignment_file": "",
    "use_tags":true,
    "enable_locs":false,
