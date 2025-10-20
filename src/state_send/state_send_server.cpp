@@ -75,26 +75,20 @@ void run_server(std::unique_ptr<StateSendServer<T>> server) {
 }
 
 /**
-   server json file should contain:
-   - type: uint8_t, etc
-   - num paritions?
-   - index prefix
-   - cluster assignment file
-   - num search threads
-   - use tags
-   - metric
-   - my_id
-
+   server id: both the partition id for index prefix and also the peer id in communicator json
+   index json contains the parameters for the index, note that index_prefix is just the partial prefix, and the final index prefix will be: index_prefix + server_id
    commmunicator json contains the addresses of all p2p nodes
 */
 int main(int argc, char **argv) {
-  std::string server_json(argv[1]);
-  std::string communicator_json(argv[2]);
+  uint64_t server_id = std::stoull(argv[1]);
+  std::string index_json(argv[2]);
+  std::string communicator_json(argv[3]);
 
-  std::ifstream f(server_json);
+  std::ifstream f(index_json);
   json data = json::parse(f);
   std::string type = data["type"].get<std::string>();
   std::string index_prefix = data["index_prefix"].get<std::string>();
+  index_prefix += std::to_string(server_id);
   std::string cluster_assignment_file =
       data["cluster_assignment_file"].get<std::string>();
   uint32_t num_search_threads = data["num_search_threads"].get<uint32_t>();
@@ -103,7 +97,6 @@ int main(int argc, char **argv) {
   bool use_mem_index = data["use_mem_index"].get<bool>();
   std::string metric = data["metric"].get<std::string>();
   uint32_t num_partitions = data["num_partitions"].get<uint32_t>();
-  uint8_t my_partition_id = data["my_partition_id"].get<uint8_t>();
   uint64_t num_queries_balance = data["num_queries_balance"].get<uint64_t>();
   // uint64_t max_batch_size = data["max_batch_size"].get<uint64_t>();
   std::string dist_search_mode_str =
@@ -112,7 +105,7 @@ int main(int argc, char **argv) {
   // uint64_t max_batch_size = data["max_batch_size"].get<bool>();
   bool use_batching = data.value<bool>("use_batching", false);
   uint64_t max_batch_size = data.value<uint64_t>("max_batch_size", 0);
-         
+
   DistributedSearchMode dist_search_mode;
 
   if (type != "uint8" && type != "int8" && type != "float") {
@@ -144,19 +137,19 @@ int main(int argc, char **argv) {
   if (type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
         communicator_json, index_prefix, cluster_assignment_file, m,
-        my_partition_id, num_partitions, num_search_threads, use_mem_index,
+        server_id, num_partitions, num_search_threads, use_mem_index,
 							     dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   } else if (type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
         communicator_json, index_prefix, cluster_assignment_file, m,
-        my_partition_id, num_partitions, num_search_threads, use_mem_index,
+        server_id, num_partitions, num_search_threads, use_mem_index,
 							    dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   } else if (type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
         communicator_json, index_prefix, cluster_assignment_file, m,
-        my_partition_id, num_partitions, num_search_threads, use_mem_index,
+        server_id, num_partitions, num_search_threads, use_mem_index,
 							   dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   }

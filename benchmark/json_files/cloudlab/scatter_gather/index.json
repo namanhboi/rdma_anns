@@ -1,0 +1,14 @@
+ {
+   "type":"uint8",
+   "index_prefix":"/users/namanh/big-ann-benchmarks/data/bigann/clusters/pipeann_10M_cluster",
+   "cluster_assignment_file": "",
+   "use_tags":true,
+   "enable_locs":false,
+  "use_mem_index":true,
+   "metric":"l2",
+   "num_partitions":1,
+   "num_search_threads":4,
+   "num_queries_balance": 8, 
+   "dist_search_mode": "SCATTER_GATHER"
+ }
+
