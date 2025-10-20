@@ -5,7 +5,7 @@
 sudo apt update -y
 sudo apt upgrade -y
 sudo apt-get install -y autoconf automake libtool pkg-config
-sudo apt install make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
+sudo apt install -y make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
 
 
 mkdir ~/workspace
@@ -73,7 +73,7 @@ git submodule update --init --recursive
 sudo apt-get install libsparsehash-dev
 
 cd ~/workspace/rdma_anns
-cmake -S. -B build_debug -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=DEBUG
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
 
 
 cmake --build build_debug/ -j
