@@ -28,7 +28,6 @@ void create_indices(const std::string &base_file,
    ./create_state_send_indices uint8 /home/nam/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_10000000 /home/nam/big-ann-benchmarks/data/bigann/pipeann_10M l2 2 /home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M
 
 
-
 ./build/tests/search_memory_index uint8 10000000 /home/nam/big-ann-benchmarks/data/bigann/pipeann_10M_graph 0 0 /home/nam/big-ann-benchmarks/data/bigann/query.public.10K.u8bin /home/nam/big-ann-benchmarks/data/bigann/bigann-10M 10 bruh 8 l2 /home/nam/big-ann-benchmarks/data/bigann/global_graph_partixtions/pipeann_10M
 */
 

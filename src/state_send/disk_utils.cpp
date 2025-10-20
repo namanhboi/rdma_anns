@@ -8,8 +8,14 @@
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include "graph_partitioning_utils.h"
+#include "partition_and_pq.h"
+
+
+
+
 
 template <typename T, typename TagT>
 void create_random_cluster_tag_files(const std::string &base_file,
@@ -140,6 +146,152 @@ void create_random_cluster_disk_indices(const std::string &index_path_prefix,
         _compareMetric, single_file_index, nullptr, true);
   }
 }
+
+template <typename T, typename TagT>
+void create_cluster_random_slices(const std::string &base_file,
+                                  const std::string &index_path_prefix,
+                                  uint32_t num_clusters) {
+  std::vector<std::string> slice_files_prefix;
+  std::vector<std::string> cluster_base_files;
+  for (auto i = 0; i < num_clusters; i++) {
+    std::string cluster_base_file =
+        index_path_prefix + "_cluster" + std::to_string(i) + ".bin";
+    if (!file_exists(cluster_base_file)) {
+      throw std::runtime_error("base file doesn't exist " + cluster_base_file);
+    }
+    cluster_base_files.push_back(cluster_base_file);
+
+    std::stringstream slice;
+    slice << index_path_prefix << "_cluster" << i << "_SAMPLE_RATE_"
+    << MEM_INDEX_SAMPLING_RATE;
+    slice_files_prefix.push_back(slice.str());
+  }
+  for (auto i = 0; i < num_clusters; i++) {
+    std::string slice_file = slice_files_prefix[i] + "_data.bin";
+    if (!file_exists(slice_file)) {
+      gen_random_slice<T>(cluster_base_files[i], slice_files_prefix[i],
+                          MEM_INDEX_SAMPLING_RATE);
+    }
+  }
+  // for (auto &slice_file_prefix : slice_files_prefix) {
+    // if (!file_exists(slice_file_prefix + "_data.bin")) {
+      // gen_random_slice<T>(base_file, slice_file_prefix, MEM_INDEX_SAMPLING_RATE);
+    // }
+    // }
+}
+
+
+template<typename T>
+int build_in_memory_index(const std::string &data_path, const std::string &tags_file, const unsigned R,
+                          const unsigned L, const float alpha, const std::string &save_path, const unsigned num_threads,
+                          bool dynamic_index, bool single_file_index, pipeann::Metric distMetric) {
+  pipeann::Parameters paras;
+  paras.Set<unsigned>("R", R);
+  paras.Set<unsigned>("L", L);
+  paras.Set<unsigned>("C", 750);  // maximum candidate set size during pruning procedure
+  paras.Set<float>("alpha", alpha);
+  paras.Set<bool>("saturate_graph", 0);
+  paras.Set<unsigned>("num_threads", num_threads);
+
+  uint64_t data_num, data_dim;
+  pipeann::get_bin_metadata(data_path, data_num, data_dim);
+  std::cout << "Building in-memory index with parameters: data_file: " << data_path << "tags file: " << tags_file
+            << " R: " << R << " L: " << L << " alpha: " << alpha << " index_path: " << save_path
+            << " #threads: " << num_threads
+            << ", using distance metric: " << (distMetric == pipeann::Metric::COSINE ? "cosine " : "l2 ");
+
+  typedef uint32_t TagT;
+
+  pipeann::Index<T, TagT> index(distMetric, data_dim, data_num, dynamic_index, single_file_index,
+                                true);  // enable_tags forced to true!
+  if (dynamic_index) {
+    std::vector<TagT> tags(data_num);
+    std::iota(tags.begin(), tags.end(), 0);
+
+    auto s = std::chrono::high_resolution_clock::now();
+    index.build(data_path.c_str(), data_num, paras, tags);
+    std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now() - s;
+
+    std::cout << "Indexing time: " << diff.count() << "\n";
+  } else {
+    std::ifstream reader;
+    std::cout << "Opening bin file " << tags_file << "... " << std::endl;
+    reader.open(tags_file, std::ios::binary);
+    reader.seekg(2 * sizeof(uint32_t), std::ios::beg);
+    uint32_t tags_size = data_num * data_dim;
+    std::vector<TagT> tags(data_num);
+    reader.read((char *) tags.data(), tags_size * sizeof(uint32_t));
+    reader.close();
+    std::cout << "First tag is " << tags[0] << std::endl;
+
+    auto s = std::chrono::high_resolution_clock::now();
+    index.build(data_path.c_str(), data_num, paras, tags);
+    std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now() - s;
+
+    std::cout << "Indexing time: " << diff.count() << "\n";
+  }
+  index.save(save_path.c_str());
+
+  return 0;
+}
+
+
+
+/**
+
+build/tests/build_memory_index uint8 ${INDEX_PREFIX}_SAMPLE_RATE_0.01_data.bin
+${INDEX_PREFIX}_SAMPLE_RATE_0.01_ids.bin ${INDEX_PREFIX}_mem.index 0 0 32 64 1.2
+24 l2
+
+*/
+
+template <typename T, typename TagT>
+void create_cluster_in_mem_indices(const std::string &base_file,
+                                   const std::string &index_path_prefix,
+                                   uint32_t num_clusters,
+                                   const char *indexBuildParameters,
+                                   pipeann::Metric metric) {
+  // need to create the sample data
+  std::vector<std::string> slice_files_bin;
+  std::vector<std::string> slice_files_tag;
+  for (auto i = 0; i < num_clusters; i++) {
+    std::stringstream slice_prefix;
+    slice_prefix << index_path_prefix << "_cluster" << i << "_SAMPLE_RATE_"
+    << MEM_INDEX_SAMPLING_RATE;
+
+    std::string slice_bin = slice_prefix.str() + "_data.bin";
+    std::string slice_tag = slice_prefix.str() + "_ids.bin";
+    if (!file_exists(slice_bin)) {
+      throw std::invalid_argument("slice bin doesn't exist " + slice_bin);
+    }
+    if (!file_exists(slice_tag)) {
+      throw std::invalid_argument("slice tag doesn't exist " + slice_bin);
+    }
+    slice_files_bin.push_back(slice_bin);
+    slice_files_tag.push_back(slice_tag);
+  }
+  uint32_t R, L, B, M, num_threads;
+  std::istringstream parser(indexBuildParameters);
+  parser >> R >> L >> B >> M >> num_threads;
+  LOG(INFO) << "FOR IN MEM INDEX, R, L ARE " << R << " " << L;
+  LOG(INFO) << "NUM THREAD " << num_threads;
+  for (auto i = 0; i < num_clusters; i++) {
+    std::string mem_index_path =
+      index_path_prefix + "_cluster" + std::to_string(i) + "_mem.index";
+    if (!file_exists(mem_index_path)) {
+      std::string slice_bin = slice_files_bin[i];
+      std::string slice_tag = slice_files_tag[i];
+      build_in_memory_index<T>(slice_bin, slice_tag, R, L, MEM_INDEX_ALPHA,
+                               mem_index_path, num_threads, false, false,
+                               metric);
+    }
+  }
+}
+
+
+
+
+
 
 template <typename T, typename TagT>
 void dumb_way(const std::string &index_path_prefix,
@@ -649,4 +801,44 @@ create_disk_indices<uint8_t>(const std::string &output_index_path_prefix,
 template void
 create_disk_indices<int8_t>(const std::string &output_index_path_prefix,
                             int num_partitions);
+
+
+template
+void create_cluster_random_slices<float>(const std::string &base_file,
+                                         const std::string &index_path_prefix,
+                                         uint32_t num_clusters);
+
+template void
+create_cluster_random_slices<uint8_t>(const std::string &base_file,
+                                      const std::string &index_path_prefix,
+                                      uint32_t num_clusters);
+
+template void
+create_cluster_random_slices<int8_t>(const std::string &base_file,
+                                     const std::string &index_path_prefix,
+                                     uint32_t num_clusters);
+
+
+template
+void create_cluster_in_mem_indices<float>(const std::string &base_file,
+                                   const std::string &index_path_prefix,
+                                   uint32_t num_clusters,
+                                   const char *indexBuildParameters,
+                                   pipeann::Metric metric);
+
+template
+void create_cluster_in_mem_indices<uint8_t>(const std::string &base_file,
+                                   const std::string &index_path_prefix,
+                                   uint32_t num_clusters,
+                                   const char *indexBuildParameters,
+                                   pipeann::Metric metric);
+
+template
+void create_cluster_in_mem_indices<int8_t>(const std::string &base_file,
+                                   const std::string &index_path_prefix,
+                                   uint32_t num_clusters,
+                                   const char *indexBuildParameters,
+                                   pipeann::Metric metric);
+
+
 

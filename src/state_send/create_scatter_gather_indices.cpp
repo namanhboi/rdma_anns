@@ -13,6 +13,11 @@
   // return pipeann::build_disk_index<T>(dataFilePath, indexFilePath, indexBuildParameters, m, singleFile);
 // }
 
+
+
+// build/tests/utils/gen_random_slice uint8 ${DATA_PATH} ${INDEX_PREFIX}_SAMPLE_RATE_0.01 0.01
+
+
 template <typename T>
 void create_indices(const std::string &base_file,
                     const std::string &index_path_prefix, uint32_t num_clusters,
@@ -22,14 +27,20 @@ void create_indices(const std::string &base_file,
                                      num_clusters);
   create_random_cluster_base_files<T>(base_file, index_path_prefix,
                                       num_clusters);
+
   create_random_cluster_disk_indices<T>(index_path_prefix, num_clusters,
                                         indexBuildParameters, _compareMetric,
                                         single_file_index);
+  create_cluster_random_slices<T>(base_file, index_path_prefix,
+                                        num_clusters);
+
+  create_cluster_in_mem_indices<T>(base_file, index_path_prefix, num_clusters,
+                                   indexBuildParameters, _compareMetric);
 }
 
 /**
    export DATA_PATH=/home/nam/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_10000000
-   export INDEX_PREFIX=/home/nam/big-ann-benchmarks/data/bigann/clusters/pipeann_10M
+   export INDEX_PREFIX=/home/nam/big-ann-benchmarks/data/bigann/tes/pipeann_10M
    ./create_scatter_gather_indices uint8 ${DATA_PATH} ${INDEX_PREFIX} 32 64 0.15 20 16 l2 0 2
 */
 int main(int argc, char **argv) {

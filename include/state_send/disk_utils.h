@@ -4,6 +4,11 @@
 #include <cstdint>
 #include "utils.h"
 #include "omp.h"
+
+
+constexpr double MEM_INDEX_SAMPLING_RATE = 0.01;
+constexpr float MEM_INDEX_ALPHA = 1.2;
+
 /**
    from the basefile, randomly assign each embedding to a cluster from 0 -
    (num_clusters - 1) to create the tag files for each cluster. The indices in
@@ -51,6 +56,17 @@ void create_random_cluster_disk_indices(const std::string &index_path_prefix,
                                         bool single_file_index);
 
 
+template <typename T, typename TagT = uint32_t>
+void create_cluster_random_slices(const std::string &base_file,
+                                  const std::string &index_path_prefix,
+                                  uint32_t num_clusters);
+
+template <typename T, typename TagT = uint32_t>
+void create_cluster_in_mem_indices(const std::string &base_file,
+                                   const std::string &index_path_prefix,
+                                   uint32_t num_clusters,
+                                   const char *indexBuildParameters,
+                                   pipeann::Metric metric);
 
 /**
    create a mem index file from disk index file, won't work properly with frozen points
