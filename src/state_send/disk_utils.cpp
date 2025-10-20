@@ -273,7 +273,8 @@ void create_cluster_in_mem_indices(const std::string &base_file,
     slice_files_bin.push_back(slice_bin);
     slice_files_tag.push_back(slice_tag);
   }
-  uint32_t R, L, B, M, num_threads;
+  uint32_t R, L, num_threads;
+  float B, M;
   std::istringstream parser(indexBuildParameters);
   parser >> R >> L >> B >> M >> num_threads;
   LOG(INFO) << "FOR IN MEM INDEX, R, L ARE " << R << " " << L;
