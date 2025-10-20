@@ -33,9 +33,9 @@ fi
 echo "Creating symlinks from $SOURCE_FOLDER to $TARGET_FOLDER for $NUM_PARTITIONS partitions..."
 
 for ((i=0; i<NUM_PARTITIONS; i++)); do
-    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index"
-    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index.data"
-    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem_index.tags"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem.index"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.data" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem.index.data"
+    ln -s "$SOURCE_FOLDER/pipeann_10M_mem.index.tags" "$TARGET_FOLDER/pipeann_10M_partition${i}_mem.index.tags"
     ln -s "$SOURCE_FOLDER/pipeann_10M_pq_compressed.bin" "$TARGET_FOLDER/pipeann_10M_partition${i}_pq_compressed.bin"
     ln -s "$SOURCE_FOLDER/pipeann_10M_pq_pivots.bin" "$TARGET_FOLDER/pipeann_10M_partition${i}_pq_pivots.bin"
 done
