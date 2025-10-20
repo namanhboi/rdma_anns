@@ -27,12 +27,11 @@
 
 
 template <typename T>
-int search_disk_index(const std::string &query_json,
+int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
                       const std::string &communicator_json) {
   std::ifstream query_ifstream(query_json);
   json query_data = json::parse(query_ifstream);
 
-  uint64_t client_peer_id = query_data["client_peer_id"].get<uint64_t>();
   int num_client_thread = query_data["num_client_thread"].get<int>();
   uint64_t dim = query_data["dim"].get<uint64_t>();
   std::string query_bin(query_data["query_bin"].get<std::string>());
@@ -256,18 +255,19 @@ int search_disk_index(const std::string &query_json,
 }
 
 int main(int argc, char **argv) {
-  std::string client_json(argv[1]);
-  std::string communicator_json(argv[2]);
+  uint64_t client_peer_id = std::stoull(argv[1]);
+  std::string client_json(argv[2]);
+  std::string communicator_json(argv[3]);
 
   std::ifstream query_ifstream(client_json);
   json query_data = json::parse(query_ifstream);
   std::string data_type = query_data["data_type"].get<std::string>();
   if (data_type == "uint8") {
-    search_disk_index<uint8_t>(client_json, communicator_json);
+    search_disk_index<uint8_t>(client_peer_id, client_json, communicator_json);
   } else if (data_type == "int8") {
-    search_disk_index<int8_t>(client_json, communicator_json);
+    search_disk_index<int8_t>(client_peer_id, client_json, communicator_json);
   } else if (data_type == "float") {
-    search_disk_index<float>(client_json, communicator_json);
+    search_disk_index<float>(client_peer_id, client_json, communicator_json);
   } else {
     throw std::invalid_argument(
 				"data type in json file is not uint8, int8, float " + data_type);
