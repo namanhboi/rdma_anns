@@ -1,9 +1,17 @@
 #include "communicator.h"
 #include "ssd_partition_index.h"
 #include "types.h"
+#include <chrono>
+#include <concepts>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <ratio>
 #include <stdexcept>
+
+#include <csignal>
+#include <thread>
+std::atomic<bool> should_kill_server = false;
+
 
 template <typename T> class StateSendServer {
 private:
@@ -66,13 +74,20 @@ template <typename T>
 void run_server(std::unique_ptr<StateSendServer<T>> server) {
   server->start();
   std::cout <<"started server" <<std::endl;
-  std::string shutdown;
   
-  while (shutdown != "q") {
-    std::cin >> shutdown;
+  while (should_kill_server == false) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   server->signal_stop();
 }
+
+
+
+void sigint_handler(int signal) {
+  if (signal == SIGINT)
+    should_kill_server = true;
+}
+
 
 /**
    server id: both the partition id for index prefix and also the peer id in communicator json
@@ -80,6 +95,8 @@ void run_server(std::unique_ptr<StateSendServer<T>> server) {
    commmunicator json contains the addresses of all p2p nodes
 */
 int main(int argc, char **argv) {
+  std::signal(SIGINT, sigint_handler);
+  
   uint64_t server_id = std::stoull(argv[1]);
   std::string index_json(argv[2]);
   std::string communicator_json(argv[3]);
@@ -107,6 +124,7 @@ int main(int argc, char **argv) {
   uint64_t max_batch_size = data.value<uint64_t>("max_batch_size", 0);
 
   DistributedSearchMode dist_search_mode;
+
 
   if (type != "uint8" && type != "int8" && type != "float") {
     throw std::invalid_argument("data type doesn't make sense");

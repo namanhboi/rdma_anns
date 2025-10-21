@@ -1,8 +1,10 @@
 #include "disk_utils.h"
 #include "aux_utils.h"
 #include "cached_io.h"
+#include "graph_partitioning_utils.h"
 #include "index.h"
 #include "log.h"
+#include "partition_and_pq.h"
 #include "query_buf.h"
 #include "utils.h"
 #include <cstdint>
@@ -10,12 +12,8 @@
 #include <random>
 #include <sstream>
 #include <stdexcept>
-#include "graph_partitioning_utils.h"
-#include "partition_and_pq.h"
 
-
-
-
+#define NUM_KMEANS_DUPLICATE 15
 
 template <typename T, typename TagT>
 void create_random_cluster_tag_files(const std::string &base_file,
@@ -141,11 +139,11 @@ void create_random_cluster_disk_indices(const std::string &index_path_prefix,
   }
   for (uint32_t i = 0; i < num_clusters; i++) {
     std::string index_path = index_path_prefix + "_cluster" + std::to_string(i);
-    
+
     if (!file_exists(index_path + "_disk.index")) {
       pipeann::build_disk_index<T, TagT>(
           base_files[i].c_str(), index_path.c_str(), indexBuildParameters,
-					 _compareMetric, single_file_index, tag_files[i].c_str(), true);
+          _compareMetric, single_file_index, tag_files[i].c_str(), true);
     }
   }
 }
@@ -166,7 +164,7 @@ void create_cluster_random_slices(const std::string &base_file,
 
     std::stringstream slice;
     slice << index_path_prefix << "_cluster" << i << "_SAMPLE_RATE_"
-    << MEM_INDEX_SAMPLING_RATE;
+          << MEM_INDEX_SAMPLING_RATE;
     slice_files_prefix.push_back(slice.str());
   }
   for (auto i = 0; i < num_clusters; i++) {
@@ -177,43 +175,50 @@ void create_cluster_random_slices(const std::string &base_file,
     }
   }
   // for (auto &slice_file_prefix : slice_files_prefix) {
-    // if (!file_exists(slice_file_prefix + "_data.bin")) {
-      // gen_random_slice<T>(base_file, slice_file_prefix, MEM_INDEX_SAMPLING_RATE);
-    // }
-    // }
+  // if (!file_exists(slice_file_prefix + "_data.bin")) {
+  // gen_random_slice<T>(base_file, slice_file_prefix, MEM_INDEX_SAMPLING_RATE);
+  // }
+  // }
 }
 
-
-template<typename T>
-int build_in_memory_index(const std::string &data_path, const std::string &tags_file, const unsigned R,
-                          const unsigned L, const float alpha, const std::string &save_path, const unsigned num_threads,
-                          bool dynamic_index, bool single_file_index, pipeann::Metric distMetric) {
+template <typename T>
+int build_in_memory_index(const std::string &data_path,
+                          const std::string &tags_file, const unsigned R,
+                          const unsigned L, const float alpha,
+                          const std::string &save_path,
+                          const unsigned num_threads, bool dynamic_index,
+                          bool single_file_index, pipeann::Metric distMetric) {
   pipeann::Parameters paras;
   paras.Set<unsigned>("R", R);
   paras.Set<unsigned>("L", L);
-  paras.Set<unsigned>("C", 750);  // maximum candidate set size during pruning procedure
+  paras.Set<unsigned>(
+      "C", 750); // maximum candidate set size during pruning procedure
   paras.Set<float>("alpha", alpha);
   paras.Set<bool>("saturate_graph", 0);
   paras.Set<unsigned>("num_threads", num_threads);
 
   uint64_t data_num, data_dim;
   pipeann::get_bin_metadata(data_path, data_num, data_dim);
-  std::cout << "Building in-memory index with parameters: data_file: " << data_path << "tags file: " << tags_file
-            << " R: " << R << " L: " << L << " alpha: " << alpha << " index_path: " << save_path
-            << " #threads: " << num_threads
-            << ", using distance metric: " << (distMetric == pipeann::Metric::COSINE ? "cosine " : "l2 ");
+  std::cout << "Building in-memory index with parameters: data_file: "
+            << data_path << "tags file: " << tags_file << " R: " << R
+            << " L: " << L << " alpha: " << alpha
+            << " index_path: " << save_path << " #threads: " << num_threads
+            << ", using distance metric: "
+            << (distMetric == pipeann::Metric::COSINE ? "cosine " : "l2 ");
 
   typedef uint32_t TagT;
 
-  pipeann::Index<T, TagT> index(distMetric, data_dim, data_num, dynamic_index, single_file_index,
-                                true);  // enable_tags forced to true!
+  pipeann::Index<T, TagT> index(distMetric, data_dim, data_num, dynamic_index,
+                                single_file_index,
+                                true); // enable_tags forced to true!
   if (dynamic_index) {
     std::vector<TagT> tags(data_num);
     std::iota(tags.begin(), tags.end(), 0);
 
     auto s = std::chrono::high_resolution_clock::now();
     index.build(data_path.c_str(), data_num, paras, tags);
-    std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now() - s;
+    std::chrono::duration<double> diff =
+        std::chrono::high_resolution_clock::now() - s;
 
     std::cout << "Indexing time: " << diff.count() << "\n";
   } else {
@@ -223,13 +228,14 @@ int build_in_memory_index(const std::string &data_path, const std::string &tags_
     reader.seekg(2 * sizeof(uint32_t), std::ios::beg);
     uint32_t tags_size = data_num * data_dim;
     std::vector<TagT> tags(data_num);
-    reader.read((char *) tags.data(), tags_size * sizeof(uint32_t));
+    reader.read((char *)tags.data(), tags_size * sizeof(uint32_t));
     reader.close();
     std::cout << "First tag is " << tags[0] << std::endl;
 
     auto s = std::chrono::high_resolution_clock::now();
     index.build(data_path.c_str(), data_num, paras, tags);
-    std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now() - s;
+    std::chrono::duration<double> diff =
+        std::chrono::high_resolution_clock::now() - s;
 
     std::cout << "Indexing time: " << diff.count() << "\n";
   }
@@ -237,8 +243,6 @@ int build_in_memory_index(const std::string &data_path, const std::string &tags_
 
   return 0;
 }
-
-
 
 /**
 
@@ -260,7 +264,7 @@ void create_cluster_in_mem_indices(const std::string &base_file,
   for (auto i = 0; i < num_clusters; i++) {
     std::stringstream slice_prefix;
     slice_prefix << index_path_prefix << "_cluster" << i << "_SAMPLE_RATE_"
-    << MEM_INDEX_SAMPLING_RATE;
+                 << MEM_INDEX_SAMPLING_RATE;
 
     std::string slice_bin = slice_prefix.str() + "_data.bin";
     std::string slice_tag = slice_prefix.str() + "_ids.bin";
@@ -281,7 +285,7 @@ void create_cluster_in_mem_indices(const std::string &base_file,
   LOG(INFO) << "NUM THREAD " << num_threads;
   for (auto i = 0; i < num_clusters; i++) {
     std::string mem_index_path =
-      index_path_prefix + "_cluster" + std::to_string(i) + "_mem.index";
+        index_path_prefix + "_cluster" + std::to_string(i) + "_mem.index";
     if (!file_exists(mem_index_path)) {
       std::string slice_bin = slice_files_bin[i];
       std::string slice_tag = slice_files_tag[i];
@@ -291,11 +295,6 @@ void create_cluster_in_mem_indices(const std::string &base_file,
     }
   }
 }
-
-
-
-
-
 
 template <typename T, typename TagT>
 void dumb_way(const std::string &index_path_prefix,
@@ -307,12 +306,11 @@ void dumb_way(const std::string &index_path_prefix,
   index.save_data(graph_path + ".data");
 }
 
-
 // need to check that the file doesn't already exists?
 template <typename T, typename TagT>
 void write_graph_index_from_disk_index(const std::string &index_path_prefix,
-                                     const std::string &graph_path) {
-  
+                                       const std::string &graph_path) {
+
   // only load V and E.
   std::ifstream in(index_path_prefix + "_disk.index", std::ios::binary);
   uint32_t nr, nc;
@@ -338,7 +336,6 @@ void write_graph_index_from_disk_index(const std::string &index_path_prefix,
 
   uint64_t data_dim = disk_ndims;
 
-
   std::ofstream mem_index_writer;
   mem_index_writer.open(graph_path, std::ios::binary);
   mem_index_writer.seekp(0, mem_index_writer.beg);
@@ -351,7 +348,6 @@ void write_graph_index_from_disk_index(const std::string &index_path_prefix,
   mem_index_writer.write((char *)&max_points, sizeof(max_points));
   mem_index_writer.write((char *)&num_frozen_points, sizeof(num_frozen_points));
 
-  
   // std::vector<std::vector<uint32_t>> graph;
   // graph.resize(disk_nnodes);
 
@@ -378,7 +374,7 @@ void write_graph_index_from_disk_index(const std::string &index_path_prefix,
       auto node_rbuf = page_rbuf + (nnodes_per_sector == 0
                                         ? 0
                                         : ((uint64_t)loc % nnodes_per_sector) *
-                                          max_node_len);
+                                              max_node_len);
       pipeann::DiskNode<T> node(id, (T *)node_rbuf,
                                 (unsigned *)(node_rbuf + data_dim * sizeof(T)));
       mem_index_writer.write((char *)&node.nnbrs, sizeof(node.nnbrs));
@@ -405,7 +401,7 @@ std::vector<std::vector<int>> load_graph_file(const std::string &graph_path) {
   uint32_t max_degree, num_points;
   uint64_t num_frozen_points;
 
-  graph_reader.read((char*) &file_size, sizeof(file_size));
+  graph_reader.read((char *)&file_size, sizeof(file_size));
   graph_reader.read((char *)&max_degree, sizeof(max_degree));
   graph_reader.read((char *)&num_points, sizeof(num_points));
   graph_reader.read((char *)&num_frozen_points, sizeof(num_frozen_points));
@@ -428,28 +424,28 @@ std::vector<std::vector<int>> load_graph_file(const std::string &graph_path) {
   return graph;
 }
 
-
-void write_partitions_to_loc_files(const std::vector<std::vector<uint32_t>> &partitions,
-                                 const std::string &output_index_path_prefix) {
-  int partition_id  =0;
+void write_partitions_to_loc_files(
+    const std::vector<std::vector<uint32_t>> &partitions,
+    const std::string &output_index_path_prefix) {
+  int partition_id = 0;
   for (const auto &partition : partitions) {
     std::string partition_loc_file = output_index_path_prefix + "_partition" +
                                      std::to_string(partition_id) +
-                                   "_ids_uint32.bin";
+                                     "_ids_uint32.bin";
     if (!file_exists(partition_loc_file)) {
       pipeann::save_bin<const uint32_t>(partition_loc_file, partition.data(),
                                         partition.size(), 1);
     } else {
       LOG(INFO) << "partition loc file already exists for partition"
-      << partition_id;
+                << partition_id;
     }
     partition_id++;
   }
 }
 
-
 std::vector<std::vector<uint32_t>>
-parse_partition_loc_files(const std::string &output_index_path_prefix, int num_partitions) {
+parse_partition_loc_files(const std::string &output_index_path_prefix,
+                          int num_partitions) {
   std::vector<std::string> loc_files;
   for (auto i = 0; i < num_partitions; i++) {
     std::string partition_loc_file = output_index_path_prefix + "_partition" +
@@ -470,31 +466,29 @@ parse_partition_loc_files(const std::string &output_index_path_prefix, int num_p
   return partitions;
 }
 
-
 void write_partitions_to_txt_files(
 
-				   const std::string &output_index_path_prefix, int num_partitions) {
+    const std::string &output_index_path_prefix, int num_partitions) {
   std::string partition_txt_file =
-    output_index_path_prefix + "_partitions" + ".txt";
+      output_index_path_prefix + "_partitions" + ".txt";
   if (file_exists(partition_txt_file)) {
     LOG(INFO) << "partition txt file already exists" << partition_txt_file;
     return;
   }
   auto partitions =
-    parse_partition_loc_files(output_index_path_prefix, num_partitions);
+      parse_partition_loc_files(output_index_path_prefix, num_partitions);
   std::ofstream output(partition_txt_file);
   for (const auto &partition : partitions) {
     for (auto &i : partition) {
       output << i << ",";
     }
     output << std::endl;
-  }  
+  }
 }
-
 
 void create_and_write_partitions_to_loc_files(
     const std::string &graph_path, const std::string &output_index_path_prefix,
-					      int num_partitions) {
+    int num_partitions) {
   if (!file_exists(graph_path)) {
     throw std::invalid_argument("graph doesn't exist " + graph_path);
   }
@@ -502,8 +496,7 @@ void create_and_write_partitions_to_loc_files(
   bool should_partition = false;
   for (auto i = 0; i < num_partitions; i++) {
     std::string partition_loc_file = output_index_path_prefix + "_partition" +
-                                     std::to_string(i) +
-                                     "_ids_uint32.bin";
+                                     std::to_string(i) + "_ids_uint32.bin";
     if (!file_exists(partition_loc_file)) {
       should_partition = true;
       break;
@@ -514,10 +507,9 @@ void create_and_write_partitions_to_loc_files(
 
   std::vector<std::vector<int>> graph = load_graph_file(graph_path);
   std::vector<std::vector<uint32_t>> partitions =
-    get_partitions_from_adjgraph(graph, num_partitions);
+      get_partitions_from_adjgraph(graph, num_partitions);
   write_partitions_to_loc_files(partitions, output_index_path_prefix);
 }
-
 
 void create_graph_from_tag(const std::string &source_graph_path,
                            const std::string &tag_file,
@@ -529,18 +521,15 @@ void create_graph_from_tag(const std::string &source_graph_path,
   uint32_t max_degree, num_points;
   uint64_t num_frozen_points;
 
-  graph_reader.read((char*) &file_size, sizeof(file_size));
+  graph_reader.read((char *)&file_size, sizeof(file_size));
   graph_reader.read((char *)&max_degree, sizeof(max_degree));
   graph_reader.read((char *)&num_points, sizeof(num_points));
   graph_reader.read((char *)&num_frozen_points, sizeof(num_frozen_points));
-
-
 
   size_t num_pts, dim;
   std::vector<uint32_t> ids;
   pipeann::load_bin<uint32_t>(tag_file, ids, num_pts, dim);
   uint32_t ids_cnt = 0;
-
 
   std::ofstream graph_writer(output_graph_path, std::ios::binary);
   graph_writer.seekp(0, graph_writer.beg);
@@ -560,13 +549,12 @@ void create_graph_from_tag(const std::string &source_graph_path,
     }
     uint32_t nnbrs;
     graph_reader.read((char *)&nnbrs, sizeof(nnbrs));
-    if ( i == ids[ids_cnt]) {
+    if (i == ids[ids_cnt]) {
       uint32_t *nbrs = new uint32_t[nnbrs];
       graph_reader.read((char *)nbrs, sizeof(uint32_t) * nnbrs);
 
-
-      graph_writer.write((char*) &nnbrs, sizeof(uint32_t));
-      graph_writer.write((char*) nbrs, sizeof(uint32_t) * nnbrs);
+      graph_writer.write((char *)&nnbrs, sizeof(uint32_t));
+      graph_writer.write((char *)nbrs, sizeof(uint32_t) * nnbrs);
       ids_cnt++;
       output_max_degree = std::max(output_max_degree, nnbrs);
       delete[] nbrs;
@@ -580,7 +568,6 @@ void create_graph_from_tag(const std::string &source_graph_path,
   graph_writer.write((char *)&output_max_degree, sizeof(output_max_degree));
 }
 
-
 void create_graphs_from_tags(const std::string &source_graph_path,
                              const std::string &output_index_path_prefix,
                              int num_partitions) {
@@ -590,21 +577,21 @@ void create_graphs_from_tags(const std::string &source_graph_path,
                            std::to_string(i) + "_ids_uint32.bin";
     if (!file_exists(tag_file)) {
       throw std::runtime_error(
-			       "Tag file doesn't exist, can't create graph file " + tag_file);
+          "Tag file doesn't exist, can't create graph file " + tag_file);
     }
     tag_files.push_back(tag_file);
   }
   for (auto i = 0; i < num_partitions; i++) {
     std::string graph_file =
-      output_index_path_prefix + "_partition" + std::to_string(i) + "_graph";
+        output_index_path_prefix + "_partition" + std::to_string(i) + "_graph";
     if (!file_exists(graph_file)) {
       create_graph_from_tag(source_graph_path, tag_files[i], graph_file);
     } else {
-      LOG(INFO)<< "graph file already exists " << graph_file;
+      LOG(INFO) << "graph file already exists " << graph_file;
     }
   }
 }
-template<typename T, typename TagT>
+template <typename T, typename TagT>
 void create_base_files_from_tags(const std::string &base_file,
                                  const std::string &output_index_path_prefix,
                                  int num_partitions) {
@@ -620,15 +607,15 @@ void create_base_files_from_tags(const std::string &base_file,
 
   for (auto i = 0; i < num_partitions; i++) {
     std::string partition_base_file =
-      output_index_path_prefix + "_partition" + std::to_string(i) + ".bin";
+        output_index_path_prefix + "_partition" + std::to_string(i) + ".bin";
     if (!file_exists(partition_base_file)) {
-      create_base_from_tag<T, TagT>(base_file, loc_files[i], partition_base_file);
+      create_base_from_tag<T, TagT>(base_file, loc_files[i],
+                                    partition_base_file);
     } else {
       LOG(INFO) << "base file already exists " << partition_base_file;
     }
   }
 }
-
 
 template <typename T, typename TagT>
 void create_disk_indices(const std::string &output_index_path_prefix,
@@ -637,9 +624,9 @@ void create_disk_indices(const std::string &output_index_path_prefix,
   std::vector<std::string> graph_files;
   for (int i = 0; i < num_partitions; i++) {
     std::string partition_base_file =
-      output_index_path_prefix + "_partition" + std::to_string(i) + ".bin";
+        output_index_path_prefix + "_partition" + std::to_string(i) + ".bin";
     std::string partition_graph_file =
-      output_index_path_prefix + "_partition" + std::to_string(i) + "_graph";
+        output_index_path_prefix + "_partition" + std::to_string(i) + "_graph";
     if (!file_exists(partition_base_file)) {
       throw std::runtime_error("base file doesn't exist " +
                                partition_base_file);
@@ -660,11 +647,11 @@ void create_disk_indices(const std::string &output_index_path_prefix,
     } else {
       LOG(INFO) << "Disk index already exists " << disk_index;
     }
-
   }
 }
 
-void create_partition_assignment_file(const std::string &output_index_path_prefix, int num_partitions) {
+void create_partition_assignment_file(
+    const std::string &output_index_path_prefix, int num_partitions) {
   std::vector<std::string> loc_files;
   for (auto i = 0; i < num_partitions; i++) {
     std::string loc_file = output_index_path_prefix + "_partition" +
@@ -676,13 +663,12 @@ void create_partition_assignment_file(const std::string &output_index_path_prefi
   }
 
   std::string partition_assignment_file =
-    output_index_path_prefix + "_partition_assignment.bin";
+      output_index_path_prefix + "_partition_assignment.bin";
   if (file_exists(partition_assignment_file)) {
     LOG(INFO) << "partition_assignment_file already exists "
-    << partition_assignment_file;
+              << partition_assignment_file;
     return;
   }
-  
 
   std::vector<std::vector<uint32_t>> locs;
   locs.resize(num_partitions);
@@ -706,11 +692,70 @@ void create_partition_assignment_file(const std::string &output_index_path_prefi
     }
   }
 
-
   pipeann::save_bin<uint8_t>(partition_assignment_file, partition_map.data(),
                              num_points, 1);
 }
 
+template <typename T>
+void create_pq_data(const std::string &base_path,
+                    const std::string &index_path_prefix,
+                    const size_t num_pq_chunks, pipeann::Metric metric) {
+  std::string pq_pivots_path = index_path_prefix + "_pq_pivots.bin";
+  std::string pq_compressed_vectors_path =
+      index_path_prefix + "_pq_compressed.bin";
+  std::string normalized_file_path = base_path;
+  if (metric == pipeann::Metric::COSINE) {
+    if (std::is_floating_point<T>::value) {
+      LOG(INFO) << "Cosine metric chosen. Normalizing vectors and "
+                   "changing distance to L2 to boost accuracy.";
+
+      normalized_file_path = base_path + "_data.normalized.bin";
+      pipeann::normalize_data_file(base_path, normalized_file_path);
+      metric = pipeann::Metric::L2;
+    } else {
+      LOG(ERROR) << "WARNING: Cannot normalize integral data types."
+                 << " Using cosine distance with integer data types may "
+                    "result in poor recall."
+                 << " Consider using L2 distance with integral data types.";
+    }
+  }
+
+  size_t points_num, dim;
+  pipeann::get_bin_metadata(normalized_file_path, points_num, dim);
+
+  auto training_set_size =
+      pipeann::PQ_TRAINING_SET_FRACTION * points_num >
+              pipeann::MAX_PQ_TRAINING_SET_SIZE
+          ? pipeann::MAX_PQ_TRAINING_SET_SIZE
+          : (uint32_t)std::round(pipeann::PQ_TRAINING_SET_FRACTION *
+                                 points_num);
+  training_set_size = (training_set_size == 0) ? 1 : training_set_size;
+  LOG(INFO) << "(Normalized, if required) file : " << normalized_file_path
+            << " has: " << points_num
+            << " points. Changing training set size to " << training_set_size
+            << " points";
+
+  size_t train_size, train_dim;
+  float *train_data; // maximum: 256000 * dim * data_size, 1GB for 1024-dim
+                     // float vector.
+  double p_val = ((double)training_set_size / (double)points_num);
+  // generates random sample and sets it to train_data and updates train_size
+  gen_random_slice<T>(normalized_file_path, p_val, train_data, train_size,
+                      train_dim);
+
+  LOG(INFO) << "Generating PQ pivots with training data of size: " << train_size
+            << " num PQ chunks: " << num_pq_chunks;
+  generate_pq_pivots(train_data, train_size, (uint32_t)dim, 256,
+                     (uint32_t)num_pq_chunks, NUM_KMEANS_DUPLICATE,
+                     pq_pivots_path);
+  auto end = std::chrono::high_resolution_clock::now();
+
+  generate_pq_data_from_pivots<T>(normalized_file_path, 256,
+                                  (uint32_t)num_pq_chunks, pq_pivots_path,
+                                  pq_compressed_vectors_path); // 64MB.
+  delete[] train_data;
+  train_data = nullptr;
+}
 
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,
@@ -756,18 +801,16 @@ template void create_random_cluster_disk_indices<uint8_t>(
     const char *indexBuildParameters, pipeann::Metric _compareMetric,
     bool single_file_index);
 
-
 template void
 write_graph_index_from_disk_index<float>(const std::string &index_path_prefix,
                                          const std::string &mem_index_path);
 template void
 write_graph_index_from_disk_index<uint8_t>(const std::string &index_path_prefix,
-                                         const std::string &mem_index_path);
+                                           const std::string &mem_index_path);
 
 template void
 write_graph_index_from_disk_index<int8_t>(const std::string &index_path_prefix,
                                           const std::string &mem_index_path);
-
 
 template void dumb_way<float>(const std::string &index_path_prefix,
                               const std::string &graph_path);
@@ -776,23 +819,21 @@ template void dumb_way<uint8_t>(const std::string &index_path_prefix,
                                 const std::string &graph_path);
 
 template void dumb_way<int8_t>(const std::string &index_path_prefix,
-                              const std::string &graph_path);
+                               const std::string &graph_path);
 
+template void
+create_base_files_from_tags<float>(const std::string &base_file,
+                                   const std::string &output_index_path_prefix,
+                                   int num_partitions);
 
-template void create_base_files_from_tags<float>(const std::string &base_file,
-                                 const std::string &output_index_path_prefix,
-                                 int num_partitions);
+template void create_base_files_from_tags<uint8_t>(
+    const std::string &base_file, const std::string &output_index_path_prefix,
+    int num_partitions);
 
-
-template void create_base_files_from_tags<uint8_t>(const std::string &base_file,
-                                 const std::string &output_index_path_prefix,
-                                 int num_partitions);
-
-
-template void create_base_files_from_tags<int8_t>(const std::string &base_file,
-                                 const std::string &output_index_path_prefix,
-                                 int num_partitions);
-
+template void
+create_base_files_from_tags<int8_t>(const std::string &base_file,
+                                    const std::string &output_index_path_prefix,
+                                    int num_partitions);
 
 template void
 create_disk_indices<float>(const std::string &output_index_path_prefix,
@@ -806,11 +847,10 @@ template void
 create_disk_indices<int8_t>(const std::string &output_index_path_prefix,
                             int num_partitions);
 
-
-template
-void create_cluster_random_slices<float>(const std::string &base_file,
-                                         const std::string &index_path_prefix,
-                                         uint32_t num_clusters);
+template void
+create_cluster_random_slices<float>(const std::string &base_file,
+                                    const std::string &index_path_prefix,
+                                    uint32_t num_clusters);
 
 template void
 create_cluster_random_slices<uint8_t>(const std::string &base_file,
@@ -822,27 +862,31 @@ create_cluster_random_slices<int8_t>(const std::string &base_file,
                                      const std::string &index_path_prefix,
                                      uint32_t num_clusters);
 
+template void create_cluster_in_mem_indices<float>(
+    const std::string &base_file, const std::string &index_path_prefix,
+    uint32_t num_clusters, const char *indexBuildParameters,
+    pipeann::Metric metric);
 
-template
-void create_cluster_in_mem_indices<float>(const std::string &base_file,
-                                   const std::string &index_path_prefix,
-                                   uint32_t num_clusters,
-                                   const char *indexBuildParameters,
-                                   pipeann::Metric metric);
+template void create_cluster_in_mem_indices<uint8_t>(
+    const std::string &base_file, const std::string &index_path_prefix,
+    uint32_t num_clusters, const char *indexBuildParameters,
+    pipeann::Metric metric);
 
-template
-void create_cluster_in_mem_indices<uint8_t>(const std::string &base_file,
-                                   const std::string &index_path_prefix,
-                                   uint32_t num_clusters,
-                                   const char *indexBuildParameters,
-                                   pipeann::Metric metric);
-
-template
-void create_cluster_in_mem_indices<int8_t>(const std::string &base_file,
-                                   const std::string &index_path_prefix,
-                                   uint32_t num_clusters,
-                                   const char *indexBuildParameters,
-                                   pipeann::Metric metric);
+template void create_cluster_in_mem_indices<int8_t>(
+    const std::string &base_file, const std::string &index_path_prefix,
+    uint32_t num_clusters, const char *indexBuildParameters,
+    pipeann::Metric metric);
 
 
+template void create_pq_data<float>(const std::string &base_path,
+                                    const std::string &index_path_prefix,
+                                    const size_t num_pq_chunks,
+                                    pipeann::Metric metric);
 
+
+template void create_pq_data<uint8_t>(const std::string &base_path,
+                                    const std::string &index_path_prefix,
+                                    const size_t num_pq_chunks,
+                                    pipeann::Metric metric);
+
+template void create_pq_data<int8_t>(const std::string &base_path, const std::string &index_path_prefix, const size_t num_pq_chunks, pipeann::Metric metric);
