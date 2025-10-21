@@ -1,0 +1,196 @@
+* Installation guide for cloudlab machines
+
+#+BEGIN_SRC
+
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt-get install -y autoconf automake libtool pkg-config
+sudo apt install -y make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
+
+
+mkdir ~/workspace
+
+
+
+
+cd ~/workspace
+git clone https://github.com/zeromq/libzmq/
+cd libzmq
+./autogen.sh
+./configure --prefix=/usr/local --enable-drafts
+make -j
+sudo make install
+sudo ldconfig
+
+
+cd ~/workspace
+git clone https://github.com/cmuparlay/parlaylib
+cd parlaylib
+mkdir build && cd build
+cmake ..
+sudo cmake --build . --target install
+
+
+
+sudo apt-get install nlohmann-json3-dev
+
+
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF
+sudo cmake --build build/ -j --target install
+
+
+
+
+
+
+cd ~/workspace
+git clone git@github.com:namanhboi/rdma_anns.git
+cd ~/workspace/rdma_anns
+git submodule update --init --recursive --remote
+
+
+cd ~/workspace/rdma_anns/extern/liburing
+./configure
+make -j
+
+
+
+cd ~/workspace/rdma_anns/extern/gp-ann
+git submodule update --init --recursive
+sudo apt-get install libsparsehash-dev
+
+cd ~/workspace/rdma_anns
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
+
+
+cmake --build build/ -j
+
+cd ~/
+git clone https://github.com/harsha-simhadri/big-ann-benchmarks
+cd ~/big-ann-benchmarks
+sudo apt install -y python3-pip
+pip install -r requirements_py3.10.txt
+python create_dataset.py --dataset bigann-10M
+#+END_SRC
+
+
+cmake installation
+
+#+BEGIN_SRC
+cd ~/workspace
+sudo apt install libssl-dev
+wget https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0.tar.gz
+tar -xvzf cmake-3.31.0.tar.gz
+cd cmake-3.31.0
+./bootstrap
+make -j
+sudo make install
+
+#+END_SRC
+
+
+
+* Making clusters
+
+
+
+
+
+** Build main disk index
+
+
+building the 100m bigann index with 32 bytes per vector for pq.
+#+BEGIN_SRC
+cd ~/workspace/rdma_anns
+./build/src/state_send/build_disk_index uint8 /users/namanh/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_100000000 /users/namanh/big-ann-benchmarks/data/bigann/pipeann_100M 64 128 3.3 130 56 l2 0
+#+END_SRC
+
+
+#+BEGIN_SRC
+cd ~/workspace/rdma_anns
+./build/src/state_send/build_disk_index float /users/namanh/big-ann-benchmarks/data/deep1b/base.1B.fbin.crop_nb_100000000 /mydata/local/anngraphs/deep1b 64 128 3.3 130 56 l2 0
+#+END_SRC
+
+
+** Create indices for scatter and gather
+#+BEGIN_SRC
+
+cd ~/workspace/rdma_anns
+./build/src/state_send/create_scatter_gather_indices uint8 /mydata/local/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anngraphs/bigann/100M/pipeann_100M 32 64 1.5 128 153 l2 0 3
+#+END_SRC
+
+
+
+** Create indices for statesend
+#+BEGIN_SRC
+
+./build/src/state_send/create_state_send_indices uint8 /mydata/local/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anngraphs/bigann/100M/pipeann_100M l2 2 /mydata/local/anngraphs/bigann/100M/global_partitions_2/pipeann_100M 0
+
+
+#+END_SRC
+* Cloudlab setup
+
+** nfs
+#+BEGIN_SRC
+# Update package list
+sudo apt update
+
+# Install NFS server
+sudo apt install -y nfs-kernel-server
+
+# Verify it installed
+dpkg -l | grep nfs
+
+# Check if the service exists now
+sudo systemctl status nfs-kernel-server
+
+
+# Create the exports file
+sudo bash -c 'echo "/nfs *(rw,sync,no_subtree_check,no_root_squash)" > /etc/exports'
+
+# View it to confirm
+cat /etc/exports
+
+# Export the share
+sudo exportfs -ra
+
+# Start the service
+sudo systemctl start nfs-kernel-server
+sudo systemctl enable nfs-kernel-server
+
+# Verify it's running
+sudo systemctl status nfs-kernel-server
+
+# Check exports
+sudo exportfs -v
+#+END_SRC
+
+** client
+#+BEGIN_SRC
+cd /
+sudo mkdir /nfs
+
+# Try mounting again
+sudo mount -t nfs nfs:/nfs /nfs
+
+# Check if it worked
+df -h | grep nfs
+ls -la /nfs
+#+END_SRC
+
+** Expand local storage
+#+BEGIN_SRC
+sudo mkdir /mydata
+sudo /usr/local/etc/emulab/mkextrafs.pl -f /mydata
+sudo chown -R namanh:parlayann-PG0 /mydata
+mkdir
+#+END_SRC
+
+** Copy data from nfs
+
+#+BEGIN_SRC
+cp /nfs/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /nfs/anngraphs/bigann/100M/bigann-100M /nfs/anngraphs/bigann/100M/pipeann_100M_* /nfs/anngraphs/bigann/100M/query.public.10K.u8bin .
+#+END_SRC
