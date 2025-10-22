@@ -258,7 +258,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       bool read_issued = parent->state_issue_next_io_batch(state, ctx);
       assert(read_issued);
     } else if (s == SearchExecutionState::TOP_CAND_NODE_OFF_SERVER) {
-      assert(parent->num_partitions > 1);
       parent->send_state(state);
       // delete state;
       number_concurrent_queries--;

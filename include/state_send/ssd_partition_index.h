@@ -235,7 +235,7 @@ public:
      query and receive results via tcp.
    */
   SSDPartitionIndex(pipeann::Metric m, uint8_t partition_id,
-                    uint32_t num_partitions, uint32_t num_search_threads,
+                    uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
                     DistributedSearchMode dist_search_mode, bool tags = false,
@@ -303,13 +303,9 @@ public:
   // mapping from node id to actual index in order it was stored on
   // disk
   TagT id2loc(uint32_t id) {
-    // num partition = 1 means that there is no mapping file
     if (!enable_locs)
       return id;
     
-    if (num_partitions == 1) {
-      return id;
-    }
     uint32_t loc = 0;
     if (id2loc_.find(id, loc)) {
       return loc;
@@ -363,7 +359,8 @@ public:
   uint64_t get_frozen_loc() { return this->frozen_location; }
 
   inline uint8_t get_cluster_assignment(uint32_t node_id) {
-    if (num_partitions == 1) return my_partition_id;
+    if (dist_search_mode != DistributedSearchMode::STATE_SEND)
+      return my_partition_id;
     return cluster_assignment[node_id];
   }
 
@@ -388,7 +385,6 @@ private:
   uint64_t aligned_dim = 0;
   uint64_t size_per_io = 0;
 
-  uint32_t num_partitions;
 
   std::string _disk_index_file;
 

@@ -92,10 +92,9 @@ template <typename T> int search_disk_index(int argc, char **argv) {
   std::shared_ptr<AlignedFileReader> reader = nullptr;
   reader.reset(new LinuxAlignedFileReader());
 
-  uint32_t num_partitions = 1;
   std::unique_ptr<P2PCommunicator> null_com;
   std::unique_ptr<SSDPartitionIndex<T>> _pFlashIndex(new SSDPartitionIndex<T>(
-      m, 0, num_partitions, num_threads, reader, null_com,
+      m, 0, num_threads, reader, null_com,
 									      DistributedSearchMode::LOCAL, tags_flag));
 
   int res = _pFlashIndex->load(index_prefix_path.c_str(), true);

@@ -1,4 +1,5 @@
 * Installation guide for cloudlab machines
+** WITH SUDO 
 
 #+BEGIN_SRC
 
@@ -66,6 +67,7 @@ cd ~/workspace/rdma_anns
 cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
 
 
+
 cmake --build build/ -j
 
 cd ~/
@@ -88,6 +90,73 @@ cd cmake-3.31.0
 ./bootstrap
 make -j
 sudo make install
+
+#+END_SRC
+
+
+
+
+** Without sudo
+
+#+BEGIN_SRC
+wget https://pagure.io/libaio/archive/libaio-0.3.113/libaio-libaio-0.3.113.tar.gz
+tar -xzf libaio-libaio-0.3.113.tar.gz
+cd libaio-libaio-0.3.113
+make prefix=$HOME/.local install
+
+
+
+
+cd ~/workspace
+git clone https://github.com/zeromq/libzmq/
+cd libzmq
+./autogen.sh
+./configure --prefix=$HOME/.local --enable-drafts
+make -j
+sudo make install
+sudo ldconfig
+
+
+
+cd ~/workspace
+git clone https://github.com/nlohmann/json
+cd json
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local -DJSON_BuildTests=Off
+cmake --build . --target install
+
+
+
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build/ -j --target install
+
+
+cd ~/workspace/rdma_anns/extern/liburing
+./configure --prefix=$HOME/.local
+make -j$(nproc)
+make install
+
+
+
+
+
+
+
+
+cd $HOME/.local/intel-mkl/mkl/2025.2/include
+ln -s mkl_cblas.h cblas.h
+
+
+
+cd ~/workspace/rdma_anns
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE -DMKL_ROOT=$MKLROOT   -DCMAKE_CXX_FLAGS="-I$HOME/.local/intel-mkl/mkl/2025.2/include"
+
+
+cmake --build build -j
+
 
 #+END_SRC
 
@@ -194,3 +263,12 @@ mkdir
 #+BEGIN_SRC
 cp /nfs/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /nfs/anngraphs/bigann/100M/bigann-100M /nfs/anngraphs/bigann/100M/pipeann_100M_* /nfs/anngraphs/bigann/100M/query.public.10K.u8bin .
 #+END_SRC
+
+* Proxy jump for file transfer
+#+BEGIN_SRC
+scp -o ProxyJump=user@server1 user@server2:/path/to/bigfile user@server1:/path/to/destination
+#+END_SRC
+
+
+
+

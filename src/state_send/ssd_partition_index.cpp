@@ -10,8 +10,8 @@
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
-    pipeann::Metric m, uint8_t partition_id, uint32_t num_partitions,
-    uint32_t num_search_threads, std::shared_ptr<AlignedFileReader> &fileReader,
+    pipeann::Metric m, uint8_t partition_id, uint32_t num_search_threads,
+    std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator,
     DistributedSearchMode dist_search_mode, bool tags,
     pipeann::Parameters *params, uint64_t num_queries_balance, bool enable_locs,
@@ -24,7 +24,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
   }
-  
+
   if (use_batching && max_batch_size == 0)
     throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
@@ -34,14 +34,6 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   }
   this->num_queries_balance = num_queries_balance;
   this->my_partition_id = partition_id;
-  this->num_partitions = num_partitions;
-  if (num_partitions > 1) {
-    if (dist_search_mode != DistributedSearchMode::STATE_SEND) {
-      throw std::invalid_argument(
-          "dist search mode doesn't make sense with num_partitions, if "
-          "num_partitions > 1 then dist search mode must be STATE SEND");
-    }
-  }
   if (num_search_threads > MAX_SEARCH_THREADS) {
     throw std::invalid_argument("num search threads > MAX_SEARCH_THREADS");
   }
@@ -212,10 +204,11 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   pq_table.load_pq_centroid_bin(pq_table_bin.c_str(), nchunks_u64,
                                 pq_pivots_offset);
 
-  if (num_partitions == 1 && disk_nnodes != npts_u64) {
+  if (dist_search_mode == DistributedSearchMode::LOCAL &&
+      disk_nnodes != npts_u64) {
     LOG(INFO) << "Mismatch in #points for compressed data file and disk "
                  "index file: "
-    << disk_nnodes << " vs " << npts_u64;
+              << disk_nnodes << " vs " << npts_u64;
     throw std::invalid_argument(
         "Mismatch in #points for compressed data file and disk "
         "index file: " +
@@ -245,40 +238,41 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   num_medoids = 1;
   medoids = new uint32_t[1];
   medoids[0] = (uint32_t)(medoid_id_on_file);
-  LOG(INFO) << "num partitions is " << num_partitions;
-  if (num_partitions > 1) {
-    // loading the id2loc file
-    if (enable_locs) {
-      std::string id2loc_file = iprefix + "_ids_uint32.bin";
-      if (!file_exists(id2loc_file)) {
-	throw std::invalid_argument(
-				    "number of partitions is " + std::to_string(num_partitions) +
-				    ", but the id2loc file doesn't exist: " + id2loc_file);
-      }
-      LOG(INFO) << "Load id2loc from existing file: " << id2loc_file;
-      std::vector<TagT> id2loc_v;
-      size_t id2loc_num, id2loc_dim;
-      pipeann::load_bin<TagT>(id2loc_file, id2loc_v, id2loc_num, id2loc_dim, 0);
-      if (id2loc_dim != 1) {
-	throw std::runtime_error(
-				 "dim from id2loc file " + id2loc_file +
-				 " had value not 1: " + std::to_string(id2loc_dim));
-      }
-      if (id2loc_num != num_points) {
-	throw std::runtime_error(
-				 "num points from id2loc file " + id2loc_file + " had value" +
-				 std::to_string(id2loc_num) +
-				 " not equal to numpoints from index: " + std::to_string(num_points));
-      }
-      for (uint32_t i = 0; i < id2loc_num; i++) {
-	id2loc_.insert_or_assign(id2loc_v[i], i);
-      }
-    LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
+  // loading the id2loc file
+  if (enable_locs) {
+    std::string id2loc_file = iprefix + "_ids_uint32.bin";
+    if (!file_exists(id2loc_file)) {
+      throw std::invalid_argument(
+          "dist search mode is  " +
+          dist_search_mode_to_string(dist_search_mode) +
+          ", but the id2loc file doesn't exist: " + id2loc_file);
     }
+    LOG(INFO) << "Load id2loc from existing file: " << id2loc_file;
+    std::vector<TagT> id2loc_v;
+    size_t id2loc_num, id2loc_dim;
+    pipeann::load_bin<TagT>(id2loc_file, id2loc_v, id2loc_num, id2loc_dim, 0);
+    if (id2loc_dim != 1) {
+      throw std::runtime_error(
+          "dim from id2loc file " + id2loc_file +
+          " had value not 1: " + std::to_string(id2loc_dim));
+    }
+    if (id2loc_num != num_points) {
+      throw std::runtime_error(
+          "num points from id2loc file " + id2loc_file + " had value" +
+          std::to_string(id2loc_num) +
+          " not equal to numpoints from index: " + std::to_string(num_points));
+    }
+    for (uint32_t i = 0; i < id2loc_num; i++) {
+      id2loc_.insert_or_assign(id2loc_v[i], i);
+    }
+    LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
+  }
+  if (dist_search_mode == DistributedSearchMode::STATE_SEND) {
     std::string cluster_file(cluster_assignment_file);
     if (!file_exists(cluster_file)) {
       throw std::invalid_argument(
-          "number of partitions is " + std::to_string(num_partitions) +
+          "dist search omde is   " +
+          dist_search_mode_to_string(dist_search_mode) +
           ", but the cluster assignment bin file doesn't exist: " +
           cluster_file);
     }
@@ -322,9 +316,9 @@ void SSDPartitionIndex<T, TagT>::load_tags(const std::string &tag_file_name,
   LOG(INFO) << "Loaded " << tags.size() << " tags";
 }
 
-
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::apply_tags_to_result(std::shared_ptr<search_result_t> result) {
+void SSDPartitionIndex<T, TagT>::apply_tags_to_result(
+    std::shared_ptr<search_result_t> result) {
   if (!enable_tags)
     return;
 
@@ -444,7 +438,6 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
 #endif
 }
 
-
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
     search_threads.push_back(std::make_unique<SearchThread>(this, thread_id));
@@ -484,13 +477,13 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     exit(1);
   }
   mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(
-							     metric, query_dim, 0, false, false, true);
+      metric, query_dim, 0, false, false, true);
   mem_index_->load(mem_index_path.c_str());
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client_tcp(
-						   SearchState<T, TagT> *search_state) {
+    SearchState<T, TagT> *search_state) {
   if (use_batching) {
     batching_thread->push_result_to_batch(search_state);
     return;
@@ -513,7 +506,6 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
   delete search_state;
 }
 
-
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client(
     SearchState<T, TagT> *search_state) {
@@ -533,7 +525,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   offset += sizeof(msg_type);
   if (msg_type == MessageType::QUERIES) {
     std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
-      QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+        QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
     for (auto query : queries) {
       // std::cout << "received new query "<< query->query_id << std::endl;
       // assert(query->dim == this->dim);
@@ -574,7 +566,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     }
   } else if (msg_type == MessageType::STATES) {
     std::vector<SearchState<T, TagT> *> states =
-      SearchState<T, TagT>::deserialize_states(buffer + offset, size);
+        SearchState<T, TagT>::deserialize_states(buffer + offset, size);
     // LOG(INFO) << "States received " << states.size();
     for (auto state : states) {
       assert(state->cur_list_size > 0);
@@ -593,7 +585,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       }
       // LOG(INFO) << "=======================";
       // this->state_print_detailed(state);
-      // LOG(INFO) << "=======================";      
+      // LOG(INFO) << "=======================";
     }
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
@@ -603,19 +595,18 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     query_emb_map.erase(a.query_id);
   } else {
     throw std::runtime_error("Weird message type value");
-
   }
 }
 
-
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::send_state(
-					    SearchState<T, TagT> *search_state) {
+    SearchState<T, TagT> *search_state) {
   if (use_batching) {
     batching_thread->push_state_to_batch(search_state);
     return;
   }
-  uint8_t receiver_partition_id = this->get_cluster_assignment(search_state->frontier[0]);
+  uint8_t receiver_partition_id =
+      this->get_cluster_assignment(search_state->frontier[0]);
   assert(receiver_partition_id != this->my_partition_id);
   bool send_with_embedding;
 
@@ -628,10 +619,10 @@ void SSDPartitionIndex<T, TagT>::send_state(
     /* v does not contain x */
     send_with_embedding = true;
   }
-  
+
   Region r;
   std::vector<std::pair<SearchState<T, TagT> *, bool>> single_state_vec = {
-    {search_state, send_with_embedding}};
+      {search_state, send_with_embedding}};
   size_t region_size =
       sizeof(MessageType) +
       SearchState<T, TagT>::get_serialize_size_states(single_state_vec);
@@ -651,12 +642,9 @@ void SSDPartitionIndex<T, TagT>::send_state(
   delete search_state;
 }
 
-
-
-
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::query_emb_print(
-						 std::shared_ptr<QueryEmbedding<T>> query_emb) {
+    std::shared_ptr<QueryEmbedding<T>> query_emb) {
   LOG(INFO) << "@@@@@@@@@@@@@@@@@@@@@@@@@";
   LOG(INFO) << "Query embedding  " << query_emb->query_id;
   LOG(INFO) << "dim " << query_emb->dim;
@@ -673,21 +661,18 @@ void SSDPartitionIndex<T, TagT>::query_emb_print(
   }
 
   LOG(INFO) << "@@@@@@@@@@@@@@@@@@@@@@@@@";
-    
 }
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::BatchingThread::BatchingThread(
     SSDPartitionIndex<T, TagT> *parent)
-: parent(parent) {
-}
-
+    : parent(parent) {}
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::start() {
   running = true;
   real_thread =
-    std::thread(&SSDPartitionIndex<T, TagT>::BatchingThread::main_loop, this);
+      std::thread(&SSDPartitionIndex<T, TagT>::BatchingThread::main_loop, this);
 }
 
 template <typename T, typename TagT>
@@ -705,12 +690,13 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::signal_stop() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::join() {
-  if (real_thread.joinable()) real_thread.join();
+  if (real_thread.joinable())
+    real_thread.join();
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(
-								      SearchState<T, TagT> *state) {
+    SearchState<T, TagT> *state) {
   uint64_t recipient_peer_id = state->client_peer_id;
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   if (!peer_client_ids.contains(recipient_peer_id)) {
@@ -718,7 +704,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(
   }
   if (!msg_queue.contains(recipient_peer_id)) {
     msg_queue[recipient_peer_id] =
-      std::make_unique<std::vector<SearchState<T, TagT> *>>();
+        std::make_unique<std::vector<SearchState<T, TagT> *>>();
     msg_queue[recipient_peer_id]->reserve(parent->max_batch_size);
   }
   msg_queue[recipient_peer_id]->emplace_back(state);
@@ -727,18 +713,17 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
-								     SearchState<T, TagT> *state) {
+    SearchState<T, TagT> *state) {
   uint64_t recipient_peer_id = parent->state_top_cand_partition(state);
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   if (!msg_queue.contains(recipient_peer_id)) {
     msg_queue[recipient_peer_id] =
-      std::make_unique<std::vector<SearchState<T, TagT> *>>();
+        std::make_unique<std::vector<SearchState<T, TagT> *>>();
     msg_queue[recipient_peer_id]->reserve(parent->max_batch_size);
   }
   msg_queue[recipient_peer_id]->emplace_back(state);
   msg_queue_cv.notify_all();
 }
-
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
@@ -763,7 +748,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
                      static_cast<uint8_t>(server_peer_id)) ==
            state->partition_history.cend();
   };
-  
+
   while (running) {
     lock.lock();
     while (msg_queue_empty()) {
@@ -773,20 +758,18 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       assert(!running);
       break;
     }
-    
+
     if (!running)
       break;
 
     std::unordered_map<uint64_t,
                        std::unique_ptr<std::vector<SearchState<T, TagT> *>>>
-    states_to_send;
-
+        states_to_send;
 
     std::unordered_map<uint64_t,
                        std::unique_ptr<std::vector<SearchState<T, TagT> *>>>
-    results_to_send;
+        results_to_send;
 
-    
     for (auto &[peer_id, msgs] : msg_queue) {
       if (peer_client_ids.contains(peer_id)) {
         results_to_send[peer_id] = std::move(msgs);
@@ -794,7 +777,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         states_to_send[peer_id] = std::move(msgs);
       }
       msg_queue[peer_id] =
-        std::make_unique<std::vector<SearchState<T, TagT> *>>();
+          std::make_unique<std::vector<SearchState<T, TagT> *>>();
       msg_queue[peer_id]->reserve(parent->max_batch_size);
     }
     lock.unlock();
@@ -813,19 +796,19 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
           results.emplace_back(states->at(i)->get_search_result());
         }
 
-	r.length = sizeof(MessageType) +
+        r.length = sizeof(MessageType) +
                    search_result_t::get_serialize_results_size(results);
-	r.addr = new char[r.length];
-	size_t offset = 0;
-	MessageType msg_type = MessageType::RESULTS;
-	std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	search_result_t::write_serialize_results(r.addr + offset, results);
-	parent->communicator->send_to_peer(client_peer_id, r);
+        r.addr = new char[r.length];
+        size_t offset = 0;
+        MessageType msg_type = MessageType::RESULTS;
+        std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+        offset += sizeof(msg_type);
+        search_result_t::write_serialize_results(r.addr + offset, results);
+        parent->communicator->send_to_peer(client_peer_id, r);
         num_sent += batch_size;
       }
       for (auto &state : *states)
-        delete state;      
+        delete state;
     }
 
     // for (auto &[client_peer_id, states] : results_to_send) {
@@ -848,44 +831,43 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
     //     delete state;
     // }
 
-
-
     for (auto &[server_peer_id, states] : states_to_send) {
       uint64_t num_sent = 0;
       uint64_t total = states->size();
-
 
       while (num_sent < total) {
         uint64_t left = total - num_sent;
         uint64_t batch_size = std::min(parent->max_batch_size, left);
         Region r;
-        std::vector<std::pair<SearchState<T, TagT>*, bool>> state_batch;
+        std::vector<std::pair<SearchState<T, TagT> *, bool>> state_batch;
         state_batch.reserve(parent->max_batch_size);
         for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
           state_batch.emplace_back(
-				   states->at(i), should_send_emb(states->at(i), server_peer_id));
+              states->at(i), should_send_emb(states->at(i), server_peer_id));
         }
 
         MessageType msg_type = MessageType::STATES;
-	r.length = sizeof(MessageType) +
+        r.length = sizeof(MessageType) +
                    SearchState<T, TagT>::get_serialize_size_states(state_batch);
-	r.addr = new char[r.length];
-	size_t offset = 0;
-	std::memcpy(r.addr, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	SearchState<T, TagT>::write_serialize_states(r.addr + offset, state_batch);
-	parent->communicator->send_to_peer(server_peer_id, r);
+        r.addr = new char[r.length];
+        size_t offset = 0;
+        std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+        offset += sizeof(msg_type);
+        SearchState<T, TagT>::write_serialize_states(r.addr + offset,
+                                                     state_batch);
+        parent->communicator->send_to_peer(server_peer_id, r);
         num_sent += batch_size;
       }
       for (auto &state : *states)
-        delete state;      
+        delete state;
     }
     // for (auto &[server_peer_id, states] : states_to_send) {
     //   Region r;
     //   r.length = sizeof(MessageType::STATES);
-    //   std::vector<std::pair<SearchState<T, TagT>*, bool>> state_arr; 
+    //   std::vector<std::pair<SearchState<T, TagT>*, bool>> state_arr;
     //   for (const auto &state : *states) {
-    //     state_arr.emplace_back(state, should_send_emb(state, server_peer_id));
+    //     state_arr.emplace_back(state, should_send_emb(state,
+    //     server_peer_id));
     //   }
     //   r.length += SearchState<T, TagT>::get_serialize_size_states(state_arr);
     //   r.addr = new char[r.length];
@@ -894,17 +876,12 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
     //   size_t offset = 0;
     //   std::memcpy(r.addr, &msg_type, sizeof(msg_type));
     //   offset += sizeof(msg_type);
-    //   SearchState<T, TagT>::write_serialize_states(r.addr + offset, state_arr);
-    //   parent->communicator->send_to_peer(server_peer_id, r);
-    //   for (auto &state: *states) delete state;
+    //   SearchState<T, TagT>::write_serialize_states(r.addr + offset,
+    //   state_arr); parent->communicator->send_to_peer(server_peer_id, r); for
+    //   (auto &state: *states) delete state;
     // }
-    
   }
 }
-
-
-
-
 
 template class SSDPartitionIndex<float, uint32_t>;
 template class SSDPartitionIndex<uint8_t, uint32_t>;

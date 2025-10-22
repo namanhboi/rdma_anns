@@ -1,4 +1,5 @@
 #include "ssd_partition_index.h"
+#include "types.h"
 #include <cstdint>
 
 template <typename T, typename TagT>
@@ -164,7 +165,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(SearchSt
   if (state->frontier.empty()) {
     return SearchExecutionState::FINISHED;
   }
-  if (this->num_partitions > 1) {
+  if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
     if (this->get_cluster_assignment(state->frontier[0]) != this->my_partition_id) {
       return SearchExecutionState::TOP_CAND_NODE_OFF_SERVER;
     }

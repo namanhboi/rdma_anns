@@ -146,7 +146,7 @@ cmake --build . --target install
 
 libmkl-full-dev
 ```
-
+cd ~/workspace
 wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/47c7d946-fca1-441a-b0df-b094e3f045ea/intel-onemkl-2025.2.0.629_offline.sh
 
 sh ./intel-onemkl-2025.2.0.629_offline.sh -a --silent --cli --eula accept --install-dir $HOME/.local/intel-mkl

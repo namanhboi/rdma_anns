@@ -28,6 +28,19 @@ enum class DistributedSearchMode : uint32_t {
 };
 
 
+inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
+  if (mode == DistributedSearchMode::SCATTER_GATHER) {
+    return "SCATTER_GATHER";
+  } else if (mode == DistributedSearchMode::STATE_SEND) {
+    return "STATE_SEND";
+  } else if (mode == DistributedSearchMode::LOCAL) {
+    return "LOCAL";
+  } else {
+    throw std::runtime_error("Weird dist search mode value");
+  }
+}
+
+
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 
 // message type for the server, it then uses the correct

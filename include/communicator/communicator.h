@@ -105,8 +105,14 @@ public:
   /** doesn't include your own */
   std::vector<uint64_t> get_other_peer_ids() override;
 
-  ZMQP2PCommunicator(uint64_t my_id,
-                  const std::string &config_path);
+  ZMQP2PCommunicator(uint64_t my_id, const std::string &config_path);
+
+  /**
+     includes ip addreeses of all clients and servers.
+     client peer id should correspond to the last ip address
+  */
+  ZMQP2PCommunicator(uint64_t my_id, const std::vector<std::string> &peer_ips);
+  
   ~ZMQP2PCommunicator();
 };
 

@@ -160,5 +160,13 @@ std::vector<uint64_t> ZMQP2PCommunicator::get_other_peer_ids() {
   return peer_ids;
 }
 
+ZMQP2PCommunicator::ZMQP2PCommunicator(
+				       uint64_t my_peer_id, const std::vector<std::string> &address_list): my_id(my_peer_id) {
+  for (size_t i = 0; i < address_list.size(); i++) {
+    peer_id_to_address[i] = address_list[i];
+  }
+  my_address = address_list[my_id];
+}
+
 
 
