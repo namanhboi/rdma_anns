@@ -80,8 +80,7 @@ SSDPartitionIndex<T, TagT>::~SSDPartitionIndex() {
 
 template <typename T, typename TagT>
 int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
-                                     bool new_index_format,
-                                     const char *cluster_assignment_file) {
+                                     bool new_index_format) {
   std::string pq_table_bin, pq_compressed_vectors, disk_index_file,
       centroids_file;
 
@@ -268,7 +267,8 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
   }
   if (dist_search_mode == DistributedSearchMode::STATE_SEND) {
-    std::string cluster_file(cluster_assignment_file);
+    std::string cluster_file  = iprefix + "_partition_assignment.bin";;
+    // std::string cluster_file(cluster_assignment_file);
     if (!file_exists(cluster_file)) {
       throw std::invalid_argument(
           "dist search omde is   " +
@@ -277,8 +277,8 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
           cluster_file);
     }
     size_t ca_num_pts, ca_dim;
-    pipeann::load_bin<uint8_t>(cluster_assignment_file, cluster_assignment,
-                               ca_num_pts, ca_dim);
+    pipeann::load_bin<uint8_t>(cluster_file, cluster_assignment, ca_num_pts,
+                               ca_dim);
     if (ca_num_pts != this->global_graph_num_points) {
       throw std::invalid_argument("Number of points differ between partition "
                                   "assignment file and the disk index");

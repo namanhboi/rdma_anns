@@ -26,21 +26,18 @@ public:
   // tcp/rdma
   StateSendServer(const std::string &communicator_json,
                   const std::string &index_prefix,
-                  const std::string &cluster_assignment_file, pipeann::Metric m,
+                  pipeann::Metric m,
                   uint8_t my_partition_id,
                   uint32_t num_search_threads, bool use_mem_index, DistributedSearchMode dist_search_mode,bool tags, uint64_t batch_size, bool enable_locs, bool use_batching, uint64_t max_batch_size) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
         static_cast<uint64_t>(my_partition_id), communicator_json);
     reader = std::make_shared<LinuxAlignedFileReader>();
-    const char* cluster_file_ptr;
-    if (cluster_assignment_file != "") {
-      cluster_file_ptr = cluster_assignment_file.c_str();
-    }
+
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
         m, my_partition_id, num_search_threads, reader,
 								 communicator, dist_search_mode, tags, nullptr, batch_size, enable_locs, use_batching, max_batch_size);
     int res =
-      ssd_partition_index->load(index_prefix.c_str(), true, cluster_file_ptr);
+      ssd_partition_index->load(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
     }
@@ -106,8 +103,6 @@ int main(int argc, char **argv) {
   std::string type = data["type"].get<std::string>();
   std::string index_prefix = data["index_prefix"].get<std::string>();
   index_prefix += std::to_string(server_id);
-  std::string cluster_assignment_file =
-      data["cluster_assignment_file"].get<std::string>();
   uint32_t num_search_threads = data["num_search_threads"].get<uint32_t>();
   bool use_tags = data["use_tags"].get<bool>();
   bool enable_locs = data["enable_locs"].get<bool>();
@@ -154,21 +149,21 @@ int main(int argc, char **argv) {
 
   if (type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
-        communicator_json, index_prefix, cluster_assignment_file, m,
-        server_id, num_search_threads, use_mem_index,
-							     dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
+        communicator_json, index_prefix, m, server_id, num_search_threads,
+        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
+							     enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   } else if (type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
-        communicator_json, index_prefix, cluster_assignment_file, m,
-        server_id, num_search_threads, use_mem_index,
-							    dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
+        communicator_json, index_prefix, m, server_id, num_search_threads,
+        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
+							    enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   } else if (type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
-        communicator_json, index_prefix, cluster_assignment_file, m,
-        server_id, num_search_threads, use_mem_index,
-							   dist_search_mode, use_tags, num_queries_balance, enable_locs, use_batching, max_batch_size);
+        communicator_json, index_prefix, m, server_id, num_search_threads,
+        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
+							   enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   }
 

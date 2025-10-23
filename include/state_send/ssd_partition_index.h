@@ -332,8 +332,7 @@ public:
 
   // load compressed data, and obtains the handle to the disk-resident index
   // also loads in the paritition index mapping file if num_partitions > 1
-  int load(const char *index_prefix, bool new_index_format = true,
-           const char *cluster_assignment_file = nullptr);
+  int load(const char *index_prefix, bool new_index_format = true);
 
   void load_mem_index(pipeann::Metric metric, const size_t query_dim,
                       const std::string &mem_index_path);

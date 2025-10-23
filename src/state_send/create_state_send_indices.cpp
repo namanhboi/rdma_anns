@@ -18,6 +18,8 @@ void create_indices(const std::string &base_file,
   write_partitions_to_txt_files(output_index_path_prefix, num_partitions);
   if (!only_partition) {
     create_partition_assignment_file(output_index_path_prefix, num_partitions);
+    create_partition_assignment_symlinks(output_index_path_prefix,
+                                         num_partitions);
     create_base_files_from_tags<T>(base_file, output_index_path_prefix,
                                    num_partitions);
     create_graphs_from_tags(graph_path, output_index_path_prefix,

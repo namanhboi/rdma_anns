@@ -7,11 +7,15 @@
 #include "partition_and_pq.h"
 #include "query_buf.h"
 #include "utils.h"
+#include <cblas.h>
 #include <cstdint>
 #include <memory>
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 #define NUM_KMEANS_DUPLICATE 15
 
@@ -756,6 +760,26 @@ void create_pq_data(const std::string &base_path,
   delete[] train_data;
   train_data = nullptr;
 }
+
+void create_partition_assignment_symlinks(const std::string &index_path_prefix,
+                                          int num_partitions) {
+  std::string partition_assignment_file =
+    index_path_prefix + "_partition_assignment.bin";
+
+  if (!file_exists(partition_assignment_file)) {
+    throw std::invalid_argument("Partition assignment file doesn't exist " +
+                                partition_assignment_file);
+  }
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string symlink = index_path_prefix + "_partition" + std::to_string(i) +
+                          "_partition_assignment.bin";
+    fs::create_symlink(fs::path(partition_assignment_file), fs::path(symlink));
+  }
+}
+
+
+
+
 
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,

@@ -126,3 +126,8 @@ template <typename T>
 void create_pq_data(const std::string &base_path,
                     const std::string &index_path_prefix,
                     const size_t num_pq_chunks, pipeann::Metric metric);
+
+
+
+void create_partition_assignment_symlinks(const std::string &index_path_prefix,
+                                          int num_partitions);
