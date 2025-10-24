@@ -875,7 +875,7 @@ void create_mem_index_symlink(const std::string &index_path_prefix,
     if (!file_exists(symlink_data)) {
       fs::create_symlink(fs::path(mem_index_data), fs::path(symlink_data));
     }
-    if (!file_exists(symlink_index)) {
+    if (!file_exists(symlink_tags)) {
       fs::create_symlink(fs::path(mem_index_tags), fs::path(symlink_tags));
     }    
   }
