@@ -778,7 +778,29 @@ void create_partition_assignment_symlinks(const std::string &index_path_prefix,
   }
 }
 
+void create_pq_data_symlink(const std::string &index_path_prefix,
+                            int num_partitions) {
+  std::string pq_table_bin = index_path_prefix + "_pq_pivots.bin";
+  std::string pq_compressed_vectors = index_path_prefix + "_pq_compressed.bin";
+  if (!file_exists(pq_table_bin)) {
+    throw std::invalid_argument(pq_table_bin + " doesn't exists");
+  }
+  if (!file_exists(pq_compressed_vectors)) {
+    throw std::invalid_argument(pq_compressed_vectors + " doesn't exists");
+  }
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string symlink_table =
+      index_path_prefix + "_partition" + std::to_string(i) + "_pq_pivots.bin";
+    std::string symlink_vectors = index_path_prefix + "_partition" +
+                                  std::to_string(i) + "_pq_compressed.bin";
 
+    fs::create_symlink(fs::path(pq_table_bin), fs::path(symlink_table));
+    fs::create_symlink(fs::path(pq_compressed_vectors),
+                       fs::path(symlink_vectors));
+  }  
+
+
+}
 
 
 
