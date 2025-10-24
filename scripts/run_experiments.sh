@@ -229,26 +229,30 @@ cleanup() {
   echo
   echo "Interrupted! Shutting down gracefully..."
   
-  # Stop client first
-  echo "  Stopping client on $CLIENT_HOST (PID: $CLIENT_REMOTE_PID)..."
-  sshStopCommand "$CLIENT_HOST" "$CLIENT_REMOTE_PID" 2>/dev/null || true
-  sleep 2
-  
-  # Then stop servers
-  echo "  Stopping servers..."
-  for i in $(seq 0 $((NUM_SERVERS - 1))); do
-    HOST="${SERVER_HOSTS[$i]}"
-    PID="${SERVER_PIDS[$i]}"
-    echo "    Server $i on $HOST (PID: $PID)..."
-    sshStopCommand "$HOST" "$PID" 2>/dev/null || true
+  # Get unique hosts
+  declare -A ALL_CLEANUP_HOSTS
+  for ip in "${PEER_IPS[@]}"; do
+    HOST=$(echo $ip | cut -d: -f1)
+    ALL_CLEANUP_HOSTS[$HOST]=1
   done
   
-  echo "  Waiting for graceful shutdown..."
-  sleep 3
+  # Kill everything on all hosts
+  for HOST in "${!ALL_CLEANUP_HOSTS[@]}"; do
+    echo "  Stopping all processes on $HOST..."
+    ssh $SSH_OPTS "$USER@$HOST" /bin/bash <<'EOF' || true
+# Send SIGINT to all processes
+pkill -2 -f 'state_send_server' 2>/dev/null
+pkill -2 -f 'run_benchmark_state_send_tcp' 2>/dev/null
+sleep 1
+# If still running, force kill
+pkill -9 -f 'state_send_server' 2>/dev/null
+pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
+EOF
+  done
+  
   echo "All processes stopped."
   exit 0
 }
-
 trap cleanup SIGINT SIGTERM
 
 # --- Wait for client to finish ---
