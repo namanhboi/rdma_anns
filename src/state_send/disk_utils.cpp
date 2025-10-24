@@ -9,6 +9,7 @@
 #include "utils.h"
 #include <cblas.h>
 #include <cstdint>
+#include <experimental/filesystem>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -774,7 +775,10 @@ void create_partition_assignment_symlinks(const std::string &index_path_prefix,
   for (auto i = 0; i < num_partitions; i++) {
     std::string symlink = index_path_prefix + "_partition" + std::to_string(i) +
                           "_partition_assignment.bin";
-    fs::create_symlink(fs::path(partition_assignment_file), fs::path(symlink));
+    if (!file_exists(symlink)) {
+          fs::create_symlink(fs::path(partition_assignment_file),
+                             fs::path(symlink));
+    }
   }
 }
 
@@ -794,9 +798,13 @@ void create_pq_data_symlink(const std::string &index_path_prefix,
     std::string symlink_vectors = index_path_prefix + "_partition" +
                                   std::to_string(i) + "_pq_compressed.bin";
 
-    fs::create_symlink(fs::path(pq_table_bin), fs::path(symlink_table));
-    fs::create_symlink(fs::path(pq_compressed_vectors),
-                       fs::path(symlink_vectors));
+    if (!file_exists(symlink_table)) {
+      fs::create_symlink(fs::path(pq_table_bin), fs::path(symlink_table));
+    }
+    if (!file_exists(symlink_vectors)) {
+          fs::create_symlink(fs::path(pq_compressed_vectors),
+                             fs::path(symlink_vectors));
+    }
   }  
 
 
