@@ -170,7 +170,7 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
 done
 
 echo "Waiting for servers to initialize..."
-sleep 5
+sleep 30
 
 # --- Start Client ---
 echo "========================================"
