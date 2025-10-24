@@ -9,8 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Now source relative to script location
 source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5
 
-# Output log file path (6th argument)
-OUTPUT_LOG_FILE="${6:-./client_output.log}"
 
 
 # --- Helper Functions ---
@@ -81,7 +79,6 @@ echo "  Working directory: $WORKDIR"
 echo "  Graph prefix: $GRAPH_PREFIX"
 echo "  Query file: $QUERY_BIN"
 echo "  Ground truth: $TRUTHSET_BIN"
-echo "  Output log file: $OUTPUT_LOG_FILE"
 echo
 
 # Create log directory
@@ -254,15 +251,6 @@ EOF
   done
   
   echo "All processes stopped."
-  
-  # Copy client log before exiting
-  echo "Copying client log from remote host..."
-  if scp $SSH_OPTS "$USER@$CLIENT_HOST:${WORKDIR}/logs/client.log" "$OUTPUT_LOG_FILE" 2>/dev/null; then
-    echo "  ✓ Client log saved to: $OUTPUT_LOG_FILE"
-  else
-    echo "  ✗ Failed to copy client log"
-  fi
-  
   exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -290,18 +278,5 @@ done
 echo "Waiting for servers to exit gracefully..."
 sleep 3
 
-# --- Copy client log file back ---
-echo "========================================"
-echo " Retrieving client log file"
-echo "========================================"
-echo "Copying client log from $CLIENT_HOST..."
-if scp $SSH_OPTS "$USER@$CLIENT_HOST:${WORKDIR}/logs/client.log" "$OUTPUT_LOG_FILE"; then
-  echo "  ✓ Client log saved to: $OUTPUT_LOG_FILE"
-else
-  echo "  ✗ Failed to copy client log"
-  exit 1
-fi
-
-echo
 echo "All processes stopped successfully!"
 echo "Done!"
