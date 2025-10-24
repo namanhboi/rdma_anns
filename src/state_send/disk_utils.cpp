@@ -806,9 +806,42 @@ void create_pq_data_symlink(const std::string &index_path_prefix,
           fs::create_symlink(fs::path(pq_compressed_vectors),
                              fs::path(symlink_vectors));
     }
+  }
+}
+
+void create_mem_index_symlink(const std::string &index_path_prefix,
+                            const std::string &output_path_prefix,
+                            int num_partitions) {
+  std::string mem_index = index_path_prefix + "_mem.index";
+  std::string mem_index_data = index_path_prefix + "_mem.index.data";
+  std::string mem_index_tags = index_path_prefix + "_mem.index.tags";
+  if (!file_exists(mem_index)) {
+    throw std::invalid_argument(mem_index + " doesn't exists");
+  }
+  if (!file_exists(mem_index_data)) {
+    throw std::invalid_argument(mem_index_data + " doesn't exists");
+  }
+  if (!file_exists(mem_index_tags)) {
+    throw std::invalid_argument(mem_index_tags + " doesn't exists");
   }  
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string symlink_index =
+      output_path_prefix + "_partition" + std::to_string(i) + "_mem.index";
+    std::string symlink_data = output_path_prefix + "_partition" +
+                               std::to_string(i) + "_mem.index.data";
+    std::string symlink_tags = output_path_prefix + "_partition" +
+                               std::to_string(i) + "_mem.index.tags";
 
-
+    if (!file_exists(symlink_index)) {
+      fs::create_symlink(fs::path(mem_index), fs::path(symlink_index));
+    }
+    if (!file_exists(symlink_data)) {
+      fs::create_symlink(fs::path(mem_index_data), fs::path(symlink_data));
+    }
+    if (!file_exists(symlink_index)) {
+      fs::create_symlink(fs::path(mem_index_tags), fs::path(symlink_tags));
+    }    
+  }
 }
 
 

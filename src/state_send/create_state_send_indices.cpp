@@ -27,6 +27,8 @@ void create_indices(const std::string &base_file,
     create_disk_indices<T>(output_index_path_prefix, num_partitions);
     create_pq_data_symlink(index_path_prefix, output_index_path_prefix,
                            num_partitions);
+    create_mem_index_symlink(index_path_prefix, output_index_path_prefix, num_partitions);
+    
   }
 }
 

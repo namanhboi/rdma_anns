@@ -135,3 +135,8 @@ void create_partition_assignment_symlinks(const std::string &index_path_prefix,
 void create_pq_data_symlink(const std::string &index_path_prefix,
                             const std::string &output_path_prefix,
                             int num_partitions);
+
+
+void create_mem_index_symlink(const std::string &index_path_prefix,
+                            const std::string &output_path_prefix,
+                              int num_partitions);
