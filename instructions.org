@@ -192,7 +192,7 @@ cd ~/workspace/rdma_anns
 ** Create indices for statesend
 #+BEGIN_SRC
 
-./build/src/state_send/create_state_send_indices uint8 /mydata/local/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anngraphs/bigann/100M/pipeann_100M l2 2 /mydata/local/anngraphs/bigann/100M/global_partitions_2/pipeann_100M 0
+./build/src/state_send/create_state_send_indices uint8 /mydata/local/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anngraphs/bigann/100M/pipeann_100M l2 2 /mydata/local/anngraphs/bigann/100M/global_partitions_2/pipeann_100M 0 32 64 50
 #+END_SRC
 
 * Cloudlab setup

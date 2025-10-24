@@ -187,6 +187,18 @@ void create_cluster_random_slices(const std::string &base_file,
 }
 
 template <typename T>
+void create_slice_from_disk(const std::string &data_path,
+                             const std::string &index_path_prefix) {
+  std::stringstream slice_prefix;
+  slice_prefix << index_path_prefix << "_SAMPLE_RATE_" << MEM_INDEX_SAMPLING_RATE;
+  std::string slice_bin = slice_prefix.str() + "_data.bin";
+  if (!file_exists(slice_bin)) {
+    gen_random_slice<T>(data_path, slice_prefix.str(), MEM_INDEX_SAMPLING_RATE);
+  }
+}
+
+
+template <typename T>
 int build_in_memory_index(const std::string &data_path,
                           const std::string &tags_file, const unsigned R,
                           const unsigned L, const float alpha,
@@ -248,6 +260,29 @@ int build_in_memory_index(const std::string &data_path,
 
   return 0;
 }
+
+
+
+template <typename T>
+void create_mem_index_from_disk(const std::string &index_path_prefix, int R,
+                                int L, int num_threads, pipeann::Metric metric) {
+  std::stringstream slice_prefix;
+  slice_prefix << index_path_prefix << "_SAMPLE_RATE_" << MEM_INDEX_SAMPLING_RATE;
+  std::string slice_bin = slice_prefix.str() + "_data.bin";
+  std::string slice_tag = slice_prefix.str() + "_ids.bin";
+  if (!file_exists(slice_bin)) {
+    throw std::invalid_argument("slice bin doesn't exist " + slice_bin);
+  }
+  if (!file_exists(slice_tag)) {
+    throw std::invalid_argument("slice tag doesn't exist " + slice_bin);
+  }
+  std::string mem_index_path = index_path_prefix + "_mem.index";
+  if (!file_exists(mem_index_path)) {
+    build_in_memory_index<T>(slice_bin, slice_tag, R, L, MEM_INDEX_ALPHA,
+                             mem_index_path, num_threads, false, false, metric);
+  }
+}
+
 
 /**
 
@@ -809,6 +844,8 @@ void create_pq_data_symlink(const std::string &index_path_prefix,
   }
 }
 
+
+
 void create_mem_index_symlink(const std::string &index_path_prefix,
                             const std::string &output_path_prefix,
                             int num_partitions) {
@@ -979,3 +1016,34 @@ template void create_pq_data<uint8_t>(const std::string &base_path,
                                     pipeann::Metric metric);
 
 template void create_pq_data<int8_t>(const std::string &base_path, const std::string &index_path_prefix, const size_t num_pq_chunks, pipeann::Metric metric);
+
+
+template void
+create_slice_from_disk<float>(const std::string &data_path,
+                              const std::string &index_path_prefix);
+
+
+template void
+create_slice_from_disk<uint8_t>(const std::string &data_path,
+                              const std::string &index_path_prefix);
+
+template void
+create_slice_from_disk<int8_t>(const std::string &data_path,
+                              const std::string &index_path_prefix);
+
+template void
+create_mem_index_from_disk<float>(const std::string &index_path_prefix, int R,
+                                  int L, int num_threads,
+                                  pipeann::Metric metric);
+
+
+template void
+create_mem_index_from_disk<uint8_t>(const std::string &index_path_prefix, int R,
+                                  int L, int num_threads,
+                                  pipeann::Metric metric);
+
+
+template void
+create_mem_index_from_disk<int8_t>(const std::string &index_path_prefix, int R,
+                                   int L, int num_threads,
+                                   pipeann::Metric metric);

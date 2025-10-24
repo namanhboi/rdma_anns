@@ -140,3 +140,12 @@ void create_pq_data_symlink(const std::string &index_path_prefix,
 void create_mem_index_symlink(const std::string &index_path_prefix,
                             const std::string &output_path_prefix,
                               int num_partitions);
+
+template <typename T>
+void create_mem_index_from_disk(const std::string &index_path_prefix, int R,
+                                int L, int num_threads, pipeann::Metric metric);
+
+template <typename T>
+void create_slice_from_disk(const std::string &data_path,
+                            const std::string &index_path_prefix);
+

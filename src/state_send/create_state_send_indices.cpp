@@ -1,13 +1,15 @@
 #include "aux_utils.h"
 #include "disk_utils.h"
+#include "utils.h"
 #include <stdexcept>
 
 template <typename T>
 void create_indices(const std::string &base_file,
-                    const std::string &index_path_prefix,
-                    const std::string &dist_metric, int num_partitions,
+                    const std::string &index_path_prefix, pipeann::Metric m,
+                    int num_partitions,
                     const std::string &output_index_path_prefix,
-                    bool only_partition) {
+                    bool only_partition,
+                    int R, int L, int num_threads) {
   LOG(INFO) << num_partitions;
   std::string graph_path = index_path_prefix + "_graph";
   if (!file_exists(graph_path)) {
@@ -27,6 +29,7 @@ void create_indices(const std::string &base_file,
     create_disk_indices<T>(output_index_path_prefix, num_partitions);
     create_pq_data_symlink(index_path_prefix, output_index_path_prefix,
                            num_partitions);
+    create_mem_index_from_disk<T>(index_path_prefix, R, L, num_threads, m);
     create_mem_index_symlink(index_path_prefix, output_index_path_prefix, num_partitions);
     
   }
@@ -54,6 +57,9 @@ int main(int argc, char **argv) {
   int num_partitions = std::atoi(argv[5]);
   std::string output_index_path_prefix(argv[6]);
   int only_partition = std::atoi(argv[7]);
+  int R = std::atoi(argv[8]);
+  int L = std::atoi(argv[9]);
+  int T = std::atoi(argv[10]);
   if (only_partition != 1 && only_partition != 0) {
     throw std::invalid_argument("only partition can only be 0 or 1");
   }
@@ -65,13 +71,16 @@ int main(int argc, char **argv) {
   }
 
   if (data_type == "float") {
-    create_indices<float>(base_file, index_path_prefix, dist_metric,
-                          num_partitions, output_index_path_prefix, only_partition == 1);
+    create_indices<float>(base_file, index_path_prefix, m, num_partitions,
+                          output_index_path_prefix, only_partition == 1, R, L,
+                          T);
   } else if (data_type == "uint8") {
-    create_indices<uint8_t>(base_file, index_path_prefix, dist_metric,
-                            num_partitions, output_index_path_prefix, only_partition == 1);
+    create_indices<uint8_t>(base_file, index_path_prefix, m, num_partitions,
+                            output_index_path_prefix, only_partition == 1, R, L,
+                            T);
   } else if (data_type == "int8") {
-    create_indices<int8_t>(base_file, index_path_prefix, dist_metric,
-                           num_partitions, output_index_path_prefix, only_partition == 1);
+    create_indices<int8_t>(base_file, index_path_prefix, m, num_partitions,
+                           output_index_path_prefix, only_partition == 1, R, L,
+                           T);
   }
 }
