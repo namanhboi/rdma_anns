@@ -6,7 +6,9 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
-
+#include <boost/program_options.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
 
 
 // void write_results_csv(std::vector<std::shared_ptr<search_result_t>> results,
@@ -26,27 +28,19 @@
 // }
 
 
-template <typename T>
-int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
-                      const std::string &communicator_json) {
-  std::ifstream query_ifstream(query_json);
-  json query_data = json::parse(query_ifstream);
+namespace po = boost::program_options;
 
-  int num_client_thread = query_data["num_client_thread"].get<int>();
-  uint64_t dim = query_data["dim"].get<uint64_t>();
-  std::string query_bin(query_data["query_bin"].get<std::string>());
-  std::string truthset_bin(query_data["truthset_bin"].get<std::string>());
-  std::vector<uint64_t> Lvec(query_data["Lvec"].get<std::vector<uint64_t>>());
-  uint64_t beam_width = query_data["beam_width"].get<uint64_t>();
-  uint64_t K = query_data["K"].get<uint64_t>();
-  uint64_t mem_L = query_data["mem_L"].get<uint64_t>();
-  bool record_stats = query_data["record_stats"].get<bool>();
-  std::string dist_search_mode_str =
-    query_data["dist_search_mode"].get<std::string>();
-  uint64_t send_rate_per_second = query_data.value<uint64_t>(
-							     "send_rate_per_second", std::numeric_limits<uint64_t>::max());
+template <typename T>
+int search_disk_index(uint64_t num_client_thread, uint64_t dim,
+                      std::string query_bin, std::string truthset_bin,
+                      std::vector<uint64_t> &Lvec, uint64_t beam_width,
+                      uint64_t K, uint64_t mem_L, bool record_stats,
+                      std::string dist_search_mode_str, uint64_t client_peer_id,
+                      uint64_t send_rate_per_second,
+                      const std::vector<std::string> &address_list) {
+
   uint64_t microsecond_sleep_time = 0;
-  if (send_rate_per_second != std::numeric_limits<uint64_t>::max()) {
+  if (send_rate_per_second != 0) {
     microsecond_sleep_time = 1 * 1000 * 1000 / send_rate_per_second;
   }
   
@@ -73,8 +67,8 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
 
-  StateSendClient<T> client(client_peer_id, communicator_json,
-                            num_client_thread, dist_search_mode, dim);
+  StateSendClient<T> client(client_peer_id, address_list, num_client_thread,
+                            dist_search_mode, dim);
   client.start_result_thread();
   client.start_client_threads();
   
@@ -103,9 +97,6 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
     }
     calc_recall_flag = true;
   }
-  uint64_t num_queries_to_send = query_data.value<uint64_t>(
-							    "num_queries_to_send", std::uint64_t(query_num));
-
   auto run_tests = [&](uint32_t test_id, bool output) {
     uint64_t L = Lvec[test_id];
 
@@ -118,7 +109,7 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
 
 
     std::vector<uint64_t> query_ids;
-    for (int i = 0; i < (int64_t)num_queries_to_send; i += 1) {
+    for (int i = 0; i < (int64_t)query_num; i += 1) {
       uint64_t query_id =
         client.search(query + (i * query_dim), K, mem_L, L, beam_width, record_stats);
       query_ids.push_back(query_id);
@@ -127,7 +118,7 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
 				    std::chrono::microseconds(microsecond_sleep_time));
       }
     }
-    client.wait_results(num_queries_to_send);
+    client.wait_results(query_num);
 
     std::vector<std::shared_ptr<search_result_t>> results;
     std::vector<double> e2e_latencies;
@@ -170,31 +161,31 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
     std::chrono::duration<double> total_elapsed = last - first;
     // std::cout << "total time is " << (double) total_elapsed.count() << std::endl;
     float qps =
-      (float)((1.0 * (double)num_queries_to_send) / (1.0 * (double)total_elapsed.count()));
+      (float)((1.0 * (double)query_num) / (1.0 * (double)total_elapsed.count()));
 
     pipeann::convert_types<uint32_t, uint32_t>(
         query_result_tags_32.data(), query_result_tags[test_id].data(),
 					       (size_t)query_num, (size_t)K);
 
     float mean_latency = (float)get_mean_stats(
-					       query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
+					       query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
     });
 
     float latency_999 = (float)get_percentile_stats(
-						    query_stats, num_queries_to_send, 0.999f,
+						    query_stats, query_num, 0.999f,
         [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
         });
 
     float mean_hops = (float)get_mean_stats(
-					    query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
+					    query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_hops : 0;
     });
     
 
     float mean_ios = (float)get_mean_stats(
-        query_stats, num_queries_to_send, [](const std::shared_ptr<QueryStats> &stats) {
+        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_ios : 0;
     });
 
@@ -210,7 +201,7 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-						  (uint32_t)num_queries_to_send, gt_ids, gt_dists, (uint32_t)gt_dim,
+						  (uint32_t)query_num, gt_ids, gt_dists, (uint32_t)gt_dim,
 						  query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 
@@ -254,20 +245,74 @@ int search_disk_index(uint64_t client_peer_id, const std::string &query_json,
   return 0;
 }
 
-int main(int argc, char **argv) {
-  uint64_t client_peer_id = std::stoull(argv[1]);
-  std::string client_json(argv[2]);
-  std::string communicator_json(argv[3]);
 
-  std::ifstream query_ifstream(client_json);
-  json query_data = json::parse(query_ifstream);
-  std::string data_type = query_data["data_type"].get<std::string>();
+int main(int argc, char **argv) {
+  po::options_description desc("Options here mate");
+  
+  std::string data_type;
+  uint64_t num_client_thread;
+  uint64_t dim;
+  std::string query_bin;
+  std::string truthset_bin;
+  std::vector<uint64_t> Lvec;
+  uint64_t beam_width;
+  uint64_t K;
+  uint64_t mem_L;
+  bool record_stats;
+  std::string dist_search_mode_str;
+  uint64_t client_peer_id;
+  uint64_t send_rate_per_second;
+  std::vector<std::string> address_list;
+  desc.add_options()("help,h", "show help message")(
+      "num_client_thread",
+      po::value<uint64_t>(&num_client_thread)->default_value(1))(
+      "dim", po::value<uint64_t>(&dim)->required(),
+      "Dimension")("query_bin", po::value<std::string>(&query_bin)->required(),
+                   "Query binary file path")(
+      "truthset_bin", po::value<std::string>(&truthset_bin)->required(),
+      "Truthset binary file path")(
+      "L", po::value<std::vector<uint64_t>>(&Lvec)->multitoken()->required(),
+      "L values")("beam_width", po::value<uint64_t>(&beam_width)->required(),
+                  "Beam width")("K", po::value<uint64_t>(&K)->required(),
+                                "K value")(
+      "mem_L", po::value<uint64_t>(&mem_L)->required(),
+      "Memory L")("record_stats", po::value<bool>(&record_stats)->required(),
+                  "Record statistics flag")(
+      "dist_search_mode",
+      po::value<std::string>(&dist_search_mode_str)->required(),
+      "Distance search mode")("client_peer_id",
+                              po::value<uint64_t>(&client_peer_id)->required(),
+                              "Client peer ID")(
+      "send_rate", po::value<uint64_t>(&send_rate_per_second)->required(),
+      "Send rate per second")("address_list",
+                              po::value<std::vector<std::string>>(&address_list)
+                                  ->multitoken()
+                                  ->required(),
+                              "Address list")(
+					      "data_type", po::value<std::string>(&data_type)->required(), "data type");
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, desc), vm);
+  if (vm.count("help")) {
+    std::cout << desc << std::endl;
+    return 0;
+  }
+  po::notify(vm);
+  
   if (data_type == "uint8") {
-    search_disk_index<uint8_t>(client_peer_id, client_json, communicator_json);
+    search_disk_index<uint8_t>(num_client_thread, dim, query_bin, truthset_bin,
+                               Lvec, beam_width, K, mem_L, record_stats,
+                               dist_search_mode_str, client_peer_id,
+                               send_rate_per_second, address_list);
   } else if (data_type == "int8") {
-    search_disk_index<int8_t>(client_peer_id, client_json, communicator_json);
+    search_disk_index<int8_t>(num_client_thread, dim, query_bin, truthset_bin,
+                               Lvec, beam_width, K, mem_L, record_stats,
+                               dist_search_mode_str, client_peer_id,
+                               send_rate_per_second, address_list);
   } else if (data_type == "float") {
-    search_disk_index<float>(client_peer_id, client_json, communicator_json);
+    search_disk_index<float>(num_client_thread, dim, query_bin, truthset_bin,
+                               Lvec, beam_width, K, mem_L, record_stats,
+                               dist_search_mode_str, client_peer_id,
+                               send_rate_per_second, address_list);
   } else {
     throw std::invalid_argument(
 				"data type in json file is not uint8, int8, float " + data_type);

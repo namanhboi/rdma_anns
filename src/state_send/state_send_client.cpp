@@ -153,6 +153,28 @@ StateSendClient<T>::StateSendClient(const uint64_t id,
   result_thread = std::make_unique<ResultReceiveThread>(this);
 }
 
+template <typename T>
+StateSendClient<T>::StateSendClient(const uint64_t id,
+                                    const std::vector<std::string> &address_list,
+                                    int num_client_threads,
+                                    DistributedSearchMode dist_search_mode,
+                                    uint64_t dim)
+    : my_id(id), num_client_threads(num_client_threads), dim(dim),
+      dist_search_mode(dist_search_mode) {
+  communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
+  std::cout << "Done with constructor for statesendclient" << std::endl;
+  other_peer_ids = communicator->get_other_peer_ids();
+  communicator->register_receive_handler(
+      [this](const char *buffer, size_t size) {
+        this->receive_result_handler(buffer, size);
+      });
+
+  for (uint64_t i = 0; i < num_client_threads; i++) {
+    client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
+  }
+  result_thread = std::make_unique<ResultReceiveThread>(this);
+}
+
 template <typename T> void StateSendClient<T>::start_result_thread() {
   communicator->start_recv_thread();
   result_thread->start();
@@ -214,6 +236,7 @@ std::shared_ptr<search_result_t> combine_results(
   for (const auto &[cluster_id, res] : vec_res) {
     for (auto i = 0; i < res->num_res; i++) {
       node_id_dist.emplace_back(res->node_id[i], res->distance[i]);
+      // LOG(INFO) << res ->node_id[i];
     }
     max_num_res = std::max(max_num_res, res->num_res);
   }
@@ -346,6 +369,7 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
       break;
     }
     if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+      // LOG(INFO) << "HELLO";
       if (res->partition_history.size() != 1) {
         throw std::runtime_error("partition history size not 1: " +
                                  std::to_string(res->partition_history.size()));
@@ -378,8 +402,8 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
           std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
               {res->partition_history[0], res}});
 
+      
       if (num_res == parent->other_peer_ids.size()) {
-        // LOG(INFO) << "result done";
         std::shared_ptr<search_result_t> combined_res =
             combine_results(parent->sub_query_results.find(res->query_id));
         parent->results.insert_or_assign(combined_res->query_id, combined_res);

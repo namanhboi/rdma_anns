@@ -164,8 +164,11 @@ ZMQP2PCommunicator::ZMQP2PCommunicator(
 				       uint64_t my_peer_id, const std::vector<std::string> &address_list): my_id(my_peer_id) {
   for (size_t i = 0; i < address_list.size(); i++) {
     peer_id_to_address[i] = address_list[i];
+    std::cout <<peer_id_to_address[i] << std::endl;
   }
   my_address = address_list[my_id];
+  std::cout << my_address << std::endl;
+  bind_and_connect_peers();
 }
 
 

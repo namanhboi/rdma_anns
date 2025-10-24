@@ -10,8 +10,13 @@
 
 #include <csignal>
 #include <thread>
-std::atomic<bool> should_kill_server = false;
 
+#include <boost/program_options.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+
+std::atomic<bool> should_kill_server = false;
+namespace po = boost::program_options;
 
 template <typename T> class StateSendServer {
 private:
@@ -24,13 +29,13 @@ public:
   // of partition 1
   // need to set is_local = false since this is doing some communication via
   // tcp/rdma
-  StateSendServer(const std::string &communicator_json,
+  StateSendServer(const std::vector<std::string> &address_list,
                   const std::string &index_prefix,
                   pipeann::Metric m,
                   uint8_t my_partition_id,
                   uint32_t num_search_threads, bool use_mem_index, DistributedSearchMode dist_search_mode,bool tags, uint64_t batch_size, bool enable_locs, bool use_batching, uint64_t max_batch_size) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
-        static_cast<uint64_t>(my_partition_id), communicator_json);
+        static_cast<uint64_t>(my_partition_id), address_list);
     reader = std::make_shared<LinuxAlignedFileReader>();
 
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
@@ -85,6 +90,12 @@ void sigint_handler(int signal) {
     should_kill_server = true;
 }
 
+void parse_args(int argc, char **argv) {
+
+}
+
+
+
 
 /**
    server id: both the partition id for index prefix and also the peer id in communicator json
@@ -93,35 +104,72 @@ void sigint_handler(int signal) {
 */
 int main(int argc, char **argv) {
   std::signal(SIGINT, sigint_handler);
-  
-  uint64_t server_id = std::stoull(argv[1]);
-  std::string index_json(argv[2]);
-  std::string communicator_json(argv[3]);
+  po::options_description desc("Options here mate");  
+  uint64_t server_peer_id;
+  std::vector<std::string> address_list;
 
-  std::ifstream f(index_json);
-  json data = json::parse(f);
-  std::string type = data["type"].get<std::string>();
-  std::string index_prefix = data["index_prefix"].get<std::string>();
-  index_prefix += std::to_string(server_id);
-  uint32_t num_search_threads = data["num_search_threads"].get<uint32_t>();
-  bool use_tags = data["use_tags"].get<bool>();
-  bool enable_locs = data["enable_locs"].get<bool>();
-  bool use_mem_index = data["use_mem_index"].get<bool>();
-  std::string metric = data["metric"].get<std::string>();
+  std::string data_type;
+  std::string index_path_prefix;
 
-  uint64_t num_queries_balance = data["num_queries_balance"].get<uint64_t>();
+  uint32_t num_search_threads;
+  bool use_tags;
+  bool enable_locs;
+  bool use_mem_index;
+  std::string metric;
+
+  uint64_t num_queries_balance;
   // uint64_t max_batch_size = data["max_batch_size"].get<uint64_t>();
-  std::string dist_search_mode_str =
-    data["dist_search_mode"].get<std::string>();
+  std::string dist_search_mode_str;
   // bool use_batching = data["use_batching"].get<bool>();
   // uint64_t max_batch_size = data["max_batch_size"].get<bool>();
-  bool use_batching = data.value<bool>("use_batching", false);
-  uint64_t max_batch_size = data.value<uint64_t>("max_batch_size", 0);
+  bool use_batching;
+  uint64_t max_batch_size;
 
+desc.add_options()("help,h", "show help message")
+    ("server_peer_id", po::value<uint64_t>(&server_peer_id)->required(), "Server peer ID")
+    ("address_list", po::value<std::vector<std::string>>(&address_list)->multitoken()->required(), "Address list")
+    ("data_type", po::value<std::string>(&data_type)->required(), "Data type")
+    ("index_path_prefix", po::value<std::string>(&index_path_prefix)->required(), "Index path prefix")
+    ("num_search_threads", po::value<uint32_t>(&num_search_threads)->required(), "Number of search threads")
+    ("use_tags", po::value<bool>(&use_tags)->required(), "Use tags flag")
+    ("enable_locs", po::value<bool>(&enable_locs)->required(), "Enable locations flag")
+    ("use_mem_index", po::value<bool>(&use_mem_index)->required(), "Use memory index flag")
+    ("metric", po::value<std::string>(&metric)->required(), "Metric")
+    ("num_queries_balance", po::value<uint64_t>(&num_queries_balance)->required(), "Number of queries balance")
+    ("dist_search_mode", po::value<std::string>(&dist_search_mode_str)->required(), "Distance search mode")
+    ("use_batching", po::value<bool>(&use_batching)->required(), "Use batching flag")
+    ("max_batch_size", po::value<uint64_t>(&max_batch_size)->required(), "Maximum batch size");
+
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, desc), vm);
+  if (vm.count("help")) {
+    std::cout << desc << std::endl;
+    return 0;
+  }
+  po::notify(vm);
+  std::cout << "======== ARGUMENTS ========" << std::endl;
+  std::cout << "server_peer_id: " << server_peer_id << std::endl;
+  std::cout << "address_list: ";
+  for (const auto &addr : address_list) std::cout << addr << " ";
+  std::cout << std::endl;
+  std::cout << "data_type: " << data_type << std::endl;
+  std::cout << "index_path_prefix: " << index_path_prefix << std::endl;
+  std::cout << "num_search_threads: " << num_search_threads << std::endl;
+  std::cout << "use_tags: " << use_tags << std::endl;
+  std::cout << "enable_locs: " <<  enable_locs << std::endl;
+  std::cout << "use_mem_index: " << use_mem_index << std::endl;
+  std::cout << "metric: " << metric << std::endl;
+  std::cout << "num_queries_balance: " << num_queries_balance << std::endl;
+  std::cout << "dist_search_mode: " << dist_search_mode_str << std::endl;
+  std::cout << "use_batching: " << use_batching << std::endl;
+  std::cout << "max_batch_size: " << max_batch_size << std::endl;
+  std::cout << "===========================" << std::endl;
+
+  index_path_prefix += std::to_string(server_peer_id);
   DistributedSearchMode dist_search_mode;
 
 
-  if (type != "uint8" && type != "int8" && type != "float") {
+  if (data_type != "uint8" && data_type != "int8" && data_type != "float") {
     throw std::invalid_argument("data type doesn't make sense");
   }
   if (dist_search_mode_str == "STATE_SEND") {
@@ -147,23 +195,23 @@ int main(int argc, char **argv) {
               << ". Using default(L2) instead." << std::endl;
   }
 
-  if (type == "uint8") {
+  if (data_type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
-        communicator_json, index_prefix, m, server_id, num_search_threads,
+        address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
 							     enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
-  } else if (type == "int8") {
+  } else if (data_type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
-        communicator_json, index_prefix, m, server_id, num_search_threads,
+        address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
-							    enable_locs, use_batching, max_batch_size);
+							     enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
-  } else if (type == "float") {
+  } else if (data_type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
-        communicator_json, index_prefix, m, server_id, num_search_threads,
+        address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
-							   enable_locs, use_batching, max_batch_size);
+							     enable_locs, use_batching, max_batch_size);
     run_server(std::move(server));
   }
 

@@ -41,7 +41,7 @@ else()
 endif()
 
 add_library(graph_partitioning_utils graph_partitioning_utils.cpp)
-target_link_libraries(graph_partitioning_utils PUBLIC partition_lib OpenMP::OpenMP_CXX)
+target_link_libraries(graph_partitioning_utils PUBLIC partition_lib OpenMP::OpenMP_CXX Boost::program_options)
 target_include_directories(graph_partitioning_utils PUBLIC ${COMMON_INCLUDE_DIR})
 target_compile_options(graph_partitioning_utils PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
@@ -59,7 +59,7 @@ target_compile_options(ssd_state_send PRIVATE
 target_link_directories(ssd_state_send PUBLIC
 	${PROJECT_SOURCE_DIR}/extern/liburing/src
 )
-target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils)
+target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils Boost::program_options)
 
 
 if(BALANCE_ALL)
@@ -69,14 +69,14 @@ endif()
 
 
 add_executable(state_send_server state_send_server.cpp)
-target_link_libraries(state_send_server ssd_state_send)
+target_link_libraries(state_send_server ssd_state_send Boost::program_options)
 target_compile_options(state_send_server PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
 
 add_library(state_send_client SHARED state_send_client.cpp)
-target_link_libraries(state_send_client ssd_state_send)
+target_link_libraries(state_send_client ssd_state_send Boost::program_options)
 # add_executable(state_send_client state_send_client.cpp)
 target_compile_options(state_send_client PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
@@ -86,7 +86,7 @@ target_compile_options(state_send_client PRIVATE
 
 
 add_executable(create_scatter_gather_indices create_scatter_gather_indices.cpp)
-target_link_libraries(create_scatter_gather_indices ssd_state_send)
+target_link_libraries(create_scatter_gather_indices ssd_state_send Boost::program_options)
 target_compile_options(create_scatter_gather_indices PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
@@ -94,7 +94,7 @@ target_compile_options(create_scatter_gather_indices PRIVATE
 
 
 add_executable(create_state_send_indices create_state_send_indices.cpp)
-target_link_libraries(create_state_send_indices ssd_state_send)
+target_link_libraries(create_state_send_indices ssd_state_send Boost::program_options)
 target_compile_options(create_state_send_indices PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
@@ -102,7 +102,7 @@ target_compile_options(create_state_send_indices PRIVATE
 
 
 add_executable(build_disk_index build_disk_index.cpp)
-target_link_libraries(build_disk_index ssd_state_send)
+target_link_libraries(build_disk_index ssd_state_send Boost::program_options)
 target_compile_options(build_disk_index PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>

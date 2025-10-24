@@ -92,6 +92,10 @@ public:
   StateSendClient(const uint64_t id, const std::string &communicator_json,
                   int num_client_thread, DistributedSearchMode dist_search_mode,
                   uint64_t dim);
+
+  StateSendClient(const uint64_t id, const std::vector<std::string> &address_list,
+                  int num_client_thread, DistributedSearchMode dist_search_mode,
+                  uint64_t dim);  
   /**
      shuts down every thing correctly,
    */

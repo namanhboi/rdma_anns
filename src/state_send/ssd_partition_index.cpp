@@ -21,6 +21,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
       use_batching(use_batching) {
+  LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
   if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
   }
@@ -319,9 +320,10 @@ void SSDPartitionIndex<T, TagT>::load_tags(const std::string &tag_file_name,
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::apply_tags_to_result(
     std::shared_ptr<search_result_t> result) {
-  if (!enable_tags)
+  if (!enable_tags) {
+    // LOG(INFO) << "tag not enabled";
     return;
-
+  }
   for (auto i = 0; i < result->num_res; i++) {
     result->node_id[i] = id2tag(result->node_id[i]);
   }
@@ -793,7 +795,10 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         std::vector<std::shared_ptr<search_result_t>> results;
         results.reserve(parent->max_batch_size);
         for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
-          results.emplace_back(states->at(i)->get_search_result());
+          std::shared_ptr<search_result_t> res =
+            states->at(i)->get_search_result();
+          parent->apply_tags_to_result(res);
+          results.emplace_back(res);
         }
 
         r.length = sizeof(MessageType) +

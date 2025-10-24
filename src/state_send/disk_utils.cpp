@@ -763,6 +763,7 @@ void create_pq_data(const std::string &base_path,
 
 void create_partition_assignment_symlinks(const std::string &index_path_prefix,
                                           int num_partitions) {
+  LOG(INFO) << "HOLAAAAA" ;
   std::string partition_assignment_file =
     index_path_prefix + "_partition_assignment.bin";
 
