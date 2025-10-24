@@ -108,3 +108,11 @@ target_compile_options(build_disk_index PRIVATE
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
 
+
+add_executable(create_pq_data create_pq_data.cpp)
+target_link_libraries(create_pq_data ssd_state_send)
+target_compile_options(create_pq_data PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
