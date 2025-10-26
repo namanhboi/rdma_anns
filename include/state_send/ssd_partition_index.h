@@ -1,6 +1,7 @@
 #pragma once
 
 #include "blockingconcurrentqueue.h"
+#include "cached_io.h"
 #include "concurrentqueue.h"
 #include "libcuckoo/cuckoohash_map.hh"
 #include "linux_aligned_file_reader.h"
@@ -132,7 +133,30 @@ public:
 
   void state_print_detailed(SearchState<T, TagT> *state);
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
-  
+
+
+private:
+  class CounterThread {
+  private:
+    SSDPartitionIndex *parent;
+    std::atomic<bool> running = false;
+    std::thread real_thread;
+
+    const uint64_t io_cache_size = 64 * 1024 * 1024;
+    cached_ofstream csv_output;
+    uint64_t sleep_duration_ms;
+
+    void write_header_csv();
+    void write_one_row_to_csv();
+    void main_loop();    
+  public:
+    CounterThread(SSDPartitionIndex *parent, const std::string &log_output_path, uint64_t sleep_duration_ms);
+    void start();
+    void join();
+    void signal_stop();
+  };
+  std::unique_ptr<CounterThread> counter_thread;
+  bool use_counter_thread;
 private:
   static constexpr uint64_t max_queries_balance = 128;
   uint64_t num_queries_balance = 0;
@@ -150,6 +174,11 @@ private:
 
     moodycamel::ConcurrentQueue<SearchState<T, TagT> *> thread_state_queue;
 
+    std::atomic<uint64_t> number_concurrent_queries = 0;
+
+    std::atomic<uint64_t> number_own_states = 0;
+    std::atomic<uint64_t> number_foreign_states = 0;
+    
     /**
        main loop that runs the search. This version balances all queries at
        once, resulting in poor qps
@@ -161,7 +190,7 @@ private:
        time. 
      */
     void main_loop_batch();
-    friend class SSDPartitionIndex; // to access ctx of class to send io
+    friend class CounterThread;
   public:
     /**
        will run the search, won't contain a queue/have any way of directly
@@ -175,6 +204,7 @@ private:
   };
 
   moodycamel::ConcurrentQueue<SearchState<T, TagT> *> global_state_queue;
+  
   moodycamel::ProducerToken client_state_prod_token;
   moodycamel::ProducerToken server_state_prod_token;
 
@@ -201,9 +231,23 @@ private:
     std::unordered_set<uint64_t> peer_client_ids;
     std::condition_variable msg_queue_cv;
     std::mutex msg_queue_mutex; // also manages is_peer_client
-    
 
+    // used for the counterthread
+    std::vector<uint64_t> get_num_msg_peers() {
+      std::scoped_lock lock(msg_queue_mutex);
+      std::vector<uint64_t> num_msg_peer;
+      for (const auto &peer_id : parent->communicator->get_other_peer_ids()) {
+        uint64_t num_msg = 0;
+        if (msg_queue.contains(peer_id)) {
+	  num_msg = msg_queue[peer_id]->size();
+        }
+        num_msg_peer.push_back(num_msg);
+      }
+      return num_msg_peer;
+    }
+    
     void main_loop();
+    friend class CounterThread;
   public:
     BatchingThread(SSDPartitionIndex *parent);
     void push_result_to_batch(SearchState<T, TagT> *state);
@@ -241,7 +285,10 @@ public:
                     DistributedSearchMode dist_search_mode, bool tags = false,
                     pipeann::Parameters *parameters = nullptr,
                     uint64_t max_queries_balance = 8, bool enable_locs = true,
-                    bool use_batching = false, uint64_t max_batch_size = 0);
+                    bool use_batching = false, uint64_t max_batch_size = 0,
+                    bool use_counter_thread = false,
+                    std::string counter_csv = "",
+                    uint64_t counter_sleep_ms = 500);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -436,6 +483,12 @@ private:
 
   bool use_batching = false;
   uint64_t max_batch_size = 0;
+
+
+
+  std::atomic<uint64_t> num_foreign_states_global_queue = 0;
+  std::atomic<uint64_t> num_new_states_global_queue = 0;  
+  
 private:
   DistributedSearchMode dist_search_mode;
   // section is for commmunication

@@ -3,30 +3,43 @@
 #include "state_send_client.h"
 #include "types.h"
 #include "utils.h"
-#include <limits>
-#include <nlohmann/json.hpp>
-#include <stdexcept>
 #include <boost/program_options.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <limits>
+#include <nlohmann/json.hpp>
+#include <stdexcept>
 
 
-// void write_results_csv(std::vector<std::shared_ptr<search_result_t>> results,
-//                        const std::string &output_file) {
-//   std::ofstream output(output_file);
-//   output << "query_id,full_retset" << std::endl;
-//   for (const auto &res : results) {
-//     output << res->query_id << ",";
-//     for (const auto &neighbor : res->full_retset) {
-//       output << "(" << neighbor.id << "," <<neighbor.distance << "," <<neighbor.flag << "),";
-//       // j[res->query_id].push_back(
-// 				 // {neighbor.id, neighbor.distance, neighbor.flag});
-//     }
-//     output << std::endl;
-//   }
-
-// }
-
+void write_results_csv(
+    const std::vector<std::shared_ptr<search_result_t>> &results,
+    const std::vector<double> &send_timestamp,
+    const std::vector<double> &receive_timestamp,
+		       const std::string &output_file) {
+  std::ofstream output(output_file);
+  output << std::setprecision (15);
+  auto partition_history_to_str = [](std::shared_ptr<search_result_t> result) {
+    std::stringstream str;
+    str << "[";
+    for (const auto &id : result->partition_history) {
+      str << (int)id << ",";
+    }
+    str << "]";
+    return str.str();
+  };
+  
+  output << "query_id"
+         << "," << "send_timestamp_ns"
+         << "," << "receive_timestamp_ns"
+         << "," << "completion_time_us" << "," << "n_hops" << ","
+         << "partition_history" << "\n";
+  for (auto i = 0; i < results.size(); i++) {
+    output << results[i]->query_id << "," <<send_timestamp[i] << ","
+           << receive_timestamp[i] << "," << results[i]->stats->total_us << ","
+           << results[i]->stats->n_hops << ","
+    << partition_history_to_str(results[i]) << "\n";
+  }
+}
 
 namespace po = boost::program_options;
 
@@ -37,21 +50,22 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       uint64_t K, uint64_t mem_L, bool record_stats,
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
-                      const std::vector<std::string> &address_list) {
+                      const std::vector<std::string> &address_list,
+                      const std::string &result_output_folder) {
 
   uint64_t microsecond_sleep_time = 0;
   if (send_rate_per_second != 0) {
     microsecond_sleep_time = 1 * 1000 * 1000 / send_rate_per_second;
   }
-  
+
   // uint64_t num_queries_to_send =
   //   query_data["num_queries_to_send"].<uint64_t>();
 
-  
   DistributedSearchMode dist_search_mode;
 
   if (beam_width != 1) {
-    throw std::invalid_argument("beam_width should be 1, other sizes not yet impl");
+    throw std::invalid_argument(
+        "beam_width should be 1, other sizes not yet impl");
   }
   if (dist_search_mode_str == "STATE_SEND") {
     dist_search_mode = DistributedSearchMode::STATE_SEND;
@@ -66,26 +80,21 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::vector<std::vector<uint32_t>> query_result_tags(Lvec.size());
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
-
   StateSendClient<T> client(client_peer_id, address_list, num_client_thread,
                             dist_search_mode, dim);
   client.start_result_thread();
   client.start_client_threads();
-  
+
   // std::ifstream communincator_ifstream(communicator_json);
   // json communicator_data = json::parse(communincator_ifstream);
-  
-  
-  
+
   T *query = nullptr;
   unsigned *gt_ids = nullptr;
   float *gt_dists = nullptr;
   uint32_t *tags = nullptr;
   size_t query_num, query_dim, gt_num, gt_dim;
 
-
   bool calc_recall_flag = false;
-
 
   pipeann::load_bin<T>(query_bin, query, query_num, query_dim);
   if (file_exists(truthset_bin)) {
@@ -107,24 +116,26 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     std::vector<uint64_t> query_result_tags_64(K * query_num);
     std::vector<uint32_t> query_result_tags_32(K * query_num);
 
-
     std::vector<uint64_t> query_ids;
     for (int i = 0; i < (int64_t)query_num; i += 1) {
-      uint64_t query_id =
-        client.search(query + (i * query_dim), K, mem_L, L, beam_width, record_stats);
+      uint64_t query_id = client.search(query + (i * query_dim), K, mem_L, L,
+                                        beam_width, record_stats);
       query_ids.push_back(query_id);
       if (microsecond_sleep_time != 0) {
         std::this_thread::sleep_for(
-				    std::chrono::microseconds(microsecond_sleep_time));
+            std::chrono::microseconds(microsecond_sleep_time));
       }
     }
     client.wait_results(query_num);
 
     std::vector<std::shared_ptr<search_result_t>> results;
     std::vector<double> e2e_latencies;
+    std::vector<double> send_timestamp;
+    std::vector<double> receive_timestamp;
     std::vector<double> query_completion_time;
     double sum_e2e_latencies = 0;
-    std::chrono::steady_clock::time_point first = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point first =
+        std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point last;
 
     size_t i = 0;
@@ -136,7 +147,13 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       query_stats.push_back(result->stats);
       // query_completion_time.push_back(result->stats);
       auto sent = client.get_query_send_time(query_id);
+      send_timestamp.push_back(
+          std::chrono::duration<double, std::nano>(sent.time_since_epoch())
+              .count());
       auto received = client.get_query_result_time(query_id);
+      receive_timestamp.push_back(
+          std::chrono::duration<double, std::nano>(received.time_since_epoch())
+              .count());
 
       std::chrono::microseconds elapsed =
           std::chrono::duration_cast<std::chrono::microseconds>(received -
@@ -146,7 +163,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       sum_e2e_latencies += lat;
       // sum_query_completion_time += result->query_time;
 
-      first = std::min(first,sent);
+      first = std::min(first, sent);
       last = std::max(last, received);
       // std::cout << client.get_query_latency_milli(query_id) << std::endl;
 
@@ -156,41 +173,43 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                   sizeof(float) * K);
       i++;
     }
-    // write_results_csv(results, "result.csv");
-    std::sort(e2e_latencies.begin(),e2e_latencies.end());
+    std::string result_file =
+      result_output_folder + "/result_L_" + std::to_string(L) + ".csv";
+    write_results_csv(results, send_timestamp, receive_timestamp, result_file);
+    std::sort(e2e_latencies.begin(), e2e_latencies.end());
     std::chrono::duration<double> total_elapsed = last - first;
-    // std::cout << "total time is " << (double) total_elapsed.count() << std::endl;
-    float qps =
-      (float)((1.0 * (double)query_num) / (1.0 * (double)total_elapsed.count()));
+    // std::cout << "total time is " << (double) total_elapsed.count() <<
+    // std::endl;
+    float qps = (float)((1.0 * (double)query_num) /
+                        (1.0 * (double)total_elapsed.count()));
 
     pipeann::convert_types<uint32_t, uint32_t>(
         query_result_tags_32.data(), query_result_tags[test_id].data(),
-					       (size_t)query_num, (size_t)K);
+        (size_t)query_num, (size_t)K);
 
     float mean_latency = (float)get_mean_stats(
-					       query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
-    });
+        });
 
     float latency_999 = (float)get_percentile_stats(
-						    query_stats, query_num, 0.999f,
+        query_stats, query_num, 0.999f,
         [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
         });
 
     float mean_hops = (float)get_mean_stats(
-					    query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_hops : 0;
-    });
-    
+        });
 
     float mean_ios = (float)get_mean_stats(
         query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_ios : 0;
-    });
+        });
 
     // double mean_query_completion_time =
-      // sum_query_completion_time / query_completion_time.size();
+    // sum_query_completion_time / query_completion_time.size();
     double mean_e2e_latency = sum_e2e_latencies / e2e_latencies.size();
     // auto latency_999 = latencies[(uint64_t)(latencies.size() * 0.999)];
     // float mean_ios = 0, mean_hops = 0;
@@ -201,14 +220,14 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-						  (uint32_t)query_num, gt_ids, gt_dists, (uint32_t)gt_dim,
-						  query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
+            (uint32_t)query_num, gt_ids, gt_dists, (uint32_t)gt_dim,
+            query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 
       std::cout << std::setw(6) << L << std::setw(12) << beam_width
                 << std::setw(12) << qps << std::setw(12) << mean_latency
                 << std::setw(12) << latency_999 << std::setw(12) << mean_hops
-      << std::setw(12) << mean_ios;
+                << std::setw(12) << mean_ios;
       if (calc_recall_flag) {
         std::cout << std::setw(12) << recall << std::endl;
       }
@@ -226,9 +245,10 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::cout.precision(2);
 
   std::string recall_string = "Recall@" + std::to_string(K);
-  std::cout << std::setw(6) << "L" << std::setw(12) << "I/O Width" << std::setw(12) << "QPS" << std::setw(12)
-            << "AvgLat(us)" << std::setw(12) << "P99 Lat" << std::setw(12) << "Mean Hops" << std::setw(12) << "Mean IOs"
-            << std::setw(12);
+  std::cout << std::setw(6) << "L" << std::setw(12) << "I/O Width"
+            << std::setw(12) << "QPS" << std::setw(12) << "AvgLat(us)"
+            << std::setw(12) << "P99 Lat" << std::setw(12) << "Mean Hops"
+            << std::setw(12) << "Mean IOs" << std::setw(12);
   if (calc_recall_flag) {
     std::cout << std::setw(12) << recall_string << std::endl;
   } else
@@ -241,14 +261,13 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     run_tests(test_id, true);
   }
   client.shutdown();
-  
+
   return 0;
 }
 
-
 int main(int argc, char **argv) {
   po::options_description desc("Options here mate");
-  
+
   std::string data_type;
   uint64_t num_client_thread;
   uint64_t dim;
@@ -263,6 +282,8 @@ int main(int argc, char **argv) {
   uint64_t client_peer_id;
   uint64_t send_rate_per_second;
   std::vector<std::string> address_list;
+  std::string result_output_folder;
+
   desc.add_options()("help,h", "show help message")(
       "num_client_thread",
       po::value<uint64_t>(&num_client_thread)->default_value(1))(
@@ -289,7 +310,10 @@ int main(int argc, char **argv) {
                                   ->multitoken()
                                   ->required(),
                               "Address list")(
-					      "data_type", po::value<std::string>(&data_type)->required(), "data type");
+      "data_type", po::value<std::string>(&data_type)->required(),
+      "data type")("result_output_folder",
+                   po::value<std::string>(&result_output_folder)->required(),
+                   "path to save result csv");
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
   if (vm.count("help")) {
@@ -297,24 +321,24 @@ int main(int argc, char **argv) {
     return 0;
   }
   po::notify(vm);
-  
+
   if (data_type == "uint8") {
     search_disk_index<uint8_t>(num_client_thread, dim, query_bin, truthset_bin,
                                Lvec, beam_width, K, mem_L, record_stats,
                                dist_search_mode_str, client_peer_id,
-                               send_rate_per_second, address_list);
+                               send_rate_per_second, address_list, result_output_folder);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(num_client_thread, dim, query_bin, truthset_bin,
-                               Lvec, beam_width, K, mem_L, record_stats,
-                               dist_search_mode_str, client_peer_id,
-                               send_rate_per_second, address_list);
+                              Lvec, beam_width, K, mem_L, record_stats,
+                              dist_search_mode_str, client_peer_id,
+                              send_rate_per_second, address_list, result_output_folder);
   } else if (data_type == "float") {
     search_disk_index<float>(num_client_thread, dim, query_bin, truthset_bin,
-                               Lvec, beam_width, K, mem_L, record_stats,
-                               dist_search_mode_str, client_peer_id,
-                               send_rate_per_second, address_list);
+                             Lvec, beam_width, K, mem_L, record_stats,
+                             dist_search_mode_str, client_peer_id,
+                             send_rate_per_second, address_list, result_output_folder);
   } else {
     throw std::invalid_argument(
-				"data type in json file is not uint8, int8, float " + data_type);
+        "data type in json file is not uint8, int8, float " + data_type);
   }
 }

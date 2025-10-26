@@ -1,11 +1,13 @@
 #include "ssd_partition_index.h"
 #include "communicator.h"
+#include "parlay/type_traits.h"
 #include "query_buf.h"
 #include "types.h"
 #include "utils.h"
 #include <chrono>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 template <typename T, typename TagT>
@@ -15,12 +17,13 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     std::unique_ptr<P2PCommunicator> &communicator,
     DistributedSearchMode dist_search_mode, bool tags,
     pipeann::Parameters *params, uint64_t num_queries_balance, bool enable_locs,
-    bool use_batching, uint64_t max_batch_size)
+    bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
+					      std::string counter_csv, uint64_t counter_sleep_ms)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
-      use_batching(use_batching) {
+      use_batching(use_batching), use_counter_thread(use_counter_thread) {
   LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
   if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
@@ -66,6 +69,16 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     this->alpha = params->Get<float>("alpha");
     LOG(INFO) << "Beamwidth: " << this->beamwidth << ", L: " << this->l_index
               << ", R: " << this->range << ", C: " << this->maxc;
+  }
+  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
+    search_threads.push_back(std::make_unique<SearchThread>(this, thread_id));
+  }
+  if (use_batching) {
+    batching_thread = std::make_unique<BatchingThread>(this);
+  }
+  if (use_counter_thread) {
+    counter_thread =
+      std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
   }
 }
 
@@ -442,15 +455,14 @@ void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
-    search_threads.push_back(std::make_unique<SearchThread>(this, thread_id));
-  }
-  for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
     search_threads[thread_id]->start();
   }
 
   if (use_batching) {
-    batching_thread = std::make_unique<BatchingThread>(this);
     batching_thread->start();
+  }
+  if (use_counter_thread) {
+    counter_thread->start();
   }
 }
 
@@ -466,6 +478,10 @@ void SSDPartitionIndex<T, TagT>::shutdown() {
   if (use_batching) {
     batching_thread->signal_stop();
     batching_thread->join();
+  }
+  if (use_counter_thread) {
+    counter_thread->signal_stop();
+    counter_thread->join();
   }
   std::cout << "DONE WITH SHUTOWN" << std::endl;
 }
@@ -562,7 +578,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 
       search_threads[thread_id]->push_state(new_search_state);
 #else
-      // global_state_queue.enqueue()
+      num_new_states_global_queue.fetch_add(1);
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
 #endif
     }
@@ -589,6 +605,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       // this->state_print_detailed(state);
       // LOG(INFO) << "=======================";
     }
+    num_foreign_states_global_queue.fetch_add(states.size());
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
   } else if (msg_type == MessageType::RESULT_ACK) {
@@ -887,6 +904,118 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
     // }
   }
 }
+
+
+
+template <typename T, typename TagT>
+SSDPartitionIndex<T, TagT>::CounterThread::CounterThread(
+    SSDPartitionIndex *parent, const std::string &log_output_path,
+    uint64_t sleep_duration_ms)
+    : csv_output(log_output_path, io_cache_size, 0), parent(parent),
+    sleep_duration_ms(sleep_duration_ms) {}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::start() {
+  running = true;
+  real_thread =
+    std::thread(&SSDPartitionIndex<T, TagT>::CounterThread::main_loop, this);
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::signal_stop() {
+  running = false;
+  std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration_ms));
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::join() {
+  if (real_thread.joinable()) {
+    real_thread.join();
+  }
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
+  std::stringstream header;
+  header << "timestamp_ns" << ",";
+  header << "num_states_global_queue" << ","
+         << "num_foreign_states_global_queue" << ","
+  << "num_new_states_global_queue" << ",";
+  for (auto i = 0; i < parent->num_search_threads; i++) {
+    std::string thread_header_prefix = "thread" + std::to_string(i);
+    std::string num_state_pipeline =
+      thread_header_prefix + "_num_states";
+    std::string num_foreign_state_pipeline =
+      thread_header_prefix + "_num_foreign_states";
+    std::string num_own_state_pipeline =
+      thread_header_prefix + "_num_own_states";
+    header << num_state_pipeline << "," << num_foreign_state_pipeline << ","
+    << num_own_state_pipeline << ",";
+  }
+  size_t num_other_peer_ids = parent->communicator->get_num_peers() - 1;
+  for (const auto &other_peer_id : parent->communicator->get_other_peer_ids()) {
+    std::string peer_id_prefix = "peer_" + std::to_string(other_peer_id);
+    std::string num_ele_to_send = peer_id_prefix + "_num_ele_to_send";
+    header << num_ele_to_send;
+    num_other_peer_ids--;
+    if (num_other_peer_ids != 0)
+      header << ",";
+  }
+  header << "\n";
+  std::string header_str = header.str();
+  csv_output.write(header_str.c_str(), header_str.length());
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
+  std::stringstream data;
+  auto now = std::chrono::steady_clock::now();
+  auto duration = now.time_since_epoch();
+  double nanoseconds = std::chrono::duration<double, std::nano>(duration).count();
+
+  data << std::setprecision (15)  << nanoseconds << ",";
+  data << parent->global_state_queue.size_approx() << ","
+       << parent->num_foreign_states_global_queue << ","
+  << parent->num_new_states_global_queue << ",";
+  for (auto i = 0; i < parent->num_search_threads; i++) {
+    // std::string thread_header_prefix = "thread" + std::to_string(i);
+    // std::string num_state_pipeline =
+      // thread_header_prefix + "_num_states_pipeline";
+    // std::string num_foreign_state_pipeline =
+      // thread_header_prefix + "_num_foreign_states_pipeline";
+    // std::string num_own_state_pipeline =
+      // thread_header_prefix + "_num_own_states_pipeline";
+    uint64_t num_state_pipeline =
+      parent->search_threads[i]->number_concurrent_queries;
+    uint64_t num_own_states = parent->search_threads[i]->number_own_states;
+    uint64_t num_foreign_states =
+      parent->search_threads[i]->number_foreign_states;
+    data << num_state_pipeline << "," << num_foreign_states << ","
+    << num_own_states << ",";
+  }
+  auto num_msg_peers = parent->batching_thread->get_num_msg_peers();
+  for (auto i = 0; i < num_msg_peers.size(); i++) {
+    data << num_msg_peers[i];
+    if (i != num_msg_peers.size() - 1) {
+      data << ",";
+    }
+  }
+  data << "\n";
+  csv_output.write(data.str().c_str(), data.str().length());  
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::CounterThread::main_loop() {
+  auto duration_ms = std::chrono::milliseconds(sleep_duration_ms);
+  write_header_csv();
+  while (running) {
+    write_one_row_to_csv();
+    std::this_thread::sleep_for(duration_ms);
+  }
+  csv_output.flush_cache();
+  csv_output.close();
+}
+
 
 template class SSDPartitionIndex<float, uint32_t>;
 template class SSDPartitionIndex<uint8_t, uint32_t>;

@@ -137,7 +137,7 @@ class cached_ofstream {
     return fsize;
   }
   // writes n_bytes from write_buf to the underlying ofstream/cache
-  void write(char *write_buf, uint64_t n_bytes) {
+  void write(const char *write_buf, uint64_t n_bytes) {
     assert(cache_buf != nullptr);
     if (n_bytes <= (cache_size - cur_off)) {
       // case 1: cache can take all data

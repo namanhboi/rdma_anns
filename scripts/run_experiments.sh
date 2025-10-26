@@ -90,7 +90,8 @@ USE_MEM_INDEX=true
 NUM_QUERIES_BALANCE=8
 USE_BATCHING=true
 MAX_BATCH_SIZE=16
-
+USE_COUNTER_THREAD=true
+COUNTER_SLEEP_MS=100
 # --- Client parameters ---
 NUM_CLIENT_THREADS=1
 LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
@@ -140,7 +141,7 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
   HOST=$(echo $SERVER_IP | cut -d: -f1)
   
   echo "  Server $i on $HOST (tcp://$SERVER_IP)"
-  
+  COUNTER_CSV=${WORKDIR}/logs/counter_${i}.csv
   # Build server command with all arguments
   SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
@@ -155,7 +156,10 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
     --num_queries_balance=$NUM_QUERIES_BALANCE \
     --dist_search_mode=$DIST_SEARCH_MODE \
     --use_batching=$USE_BATCHING \
-    --max_batch_size=$MAX_BATCH_SIZE"
+    --max_batch_size=$MAX_BATCH_SIZE \
+    --use_counter_thread=$USE_COUNTER_THREAD \
+    --counter_csv=$COUNTER_CSV \
+    --counter_sleep_ms=$COUNTER_SLEEP_MS"
   echo ${SERVER_CMD}
   
   # Launch server via SSH
@@ -183,6 +187,9 @@ echo "  Client on $CLIENT_HOST"
 echo "  Client peer ID: $CLIENT_ID"
 echo "  Client address: tcp://$CLIENT_IP"
 
+RESULT_FOLDER=${WORKDIR}/logs/
+
+
 # Build client command with all arguments
 CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --num_client_thread=$NUM_CLIENT_THREADS \
@@ -198,7 +205,8 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --client_peer_id=$CLIENT_ID \
   --send_rate=$SEND_RATE \
   --address_list $ADDRESS_LIST_STR \
-  --data_type=$DATA_TYPE"
+  --data_type=$DATA_TYPE \
+  --result_output_folder=$RESULT_FOLDER"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH
