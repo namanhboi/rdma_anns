@@ -12,7 +12,7 @@ from pathlib import Path
 import argparse
 
 # Configuration
-WARMUP_SECONDS = 30  # Filter out first 30 seconds
+WARMUP_SECONDS = 0  # Filter out first 30 seconds
 
 # Key metrics to visualize
 KEY_METRICS = [
@@ -39,7 +39,7 @@ def load_server_data(file_path):
     
     return df
 
-def plot_individual_server(df, server_name, output_path):
+def plot_individual_server(df, server_name, output_path, peer_color_map):
     """Create individual time series plots for a single server"""
     fig, axes = plt.subplots(4, 1, figsize=(14, 13))
     fig.suptitle(f'Vector Search System Metrics - {server_name} (after {WARMUP_SECONDS}s warmup)', 
@@ -113,26 +113,68 @@ def plot_individual_server(df, server_name, output_path):
     cbar = plt.colorbar(im, ax=ax3, orientation='vertical', pad=0.01)
     cbar.set_label('Number of States', fontsize=10)
     
-    # Plot 4: Peer Communication Load
+    # Plot 4: Peer Communication Load (Stacked Area)
     ax4 = axes[3]
     peer_cols = [col for col in df.columns if col.startswith('peer')]
     peer_cols_sorted = sorted(peer_cols, key=lambda x: int(x.split('_')[1]))
-    colors_peer = plt.cm.Set2(np.linspace(0, 1, len(peer_cols_sorted)))
+    
+    # Get all peer IDs from the color map (to show all in legend)
+    all_peer_ids = sorted(peer_color_map.keys(), key=lambda x: int(x))
+    max_peer_id = max(all_peer_ids)
+    
+    # Prepare data for stacked area chart
+    peer_data = []
+    peer_labels = []
+    peer_colors = []
     
     for i, col in enumerate(peer_cols_sorted):
-        peer_num = col.split('_')[1]
+        peer_id = col.split('_')[1]
+        peer_data.append(df[col].values)
+        
         # Last peer is the client
         if i == len(peer_cols_sorted) - 1:
-            label = 'Client'
+            peer_labels.append('Client')
         else:
-            label = f'Peer {peer_num}'
-        ax4.plot(df['time_seconds'], df[col], 
-                label=label, linewidth=2, color=colors_peer[i])
+            peer_labels.append(f'Server {peer_id}')
+        
+        peer_colors.append(peer_color_map[peer_id])
+    
+    # Create stacked area chart
+    stack = ax4.stackplot(df['time_seconds'], *peer_data, labels=peer_labels, 
+                          colors=peer_colors, alpha=0.8)
+    
+    # Build complete ordered legend: Server 0, Server 1, ..., Client
+    handles = []
+    labels = []
+    peer_ids_in_data = [col.split('_')[1] for col in peer_cols_sorted]
+    
+    # Add all servers in numerical order
+    for peer_id in all_peer_ids:
+        if peer_id != max_peer_id:  # Not the client
+            label = f'Server {peer_id}'
+            if peer_id in peer_ids_in_data:
+                # Find the handle from stackplot
+                idx = peer_ids_in_data.index(peer_id)
+                handles.append(stack[idx])
+            else:
+                # Create dummy handle for missing server
+                handles.append(plt.Rectangle((0,0),1,1, fc=peer_color_map[peer_id], alpha=0.8))
+            labels.append(label)
+    
+    # Add Client last
+    client_label = 'Client'
+    if max_peer_id in peer_ids_in_data:
+        idx = peer_ids_in_data.index(max_peer_id)
+        handles.append(stack[idx])
+    else:
+        handles.append(plt.Rectangle((0,0),1,1, fc=peer_color_map[max_peer_id], alpha=0.8))
+    labels.append(client_label)
+    
     ax4.set_xlabel('Time (seconds)', fontsize=11, fontweight='bold')
     ax4.set_ylabel('Elements to Send', fontsize=11, fontweight='bold')
-    ax4.set_title('Peer-to-Peer Communication Queue', fontsize=12, fontweight='bold')
-    ax4.legend(loc='best', framealpha=0.9)
-    ax4.grid(True, alpha=0.3)
+    ax4.set_title('Server-to-Server Communication Queue (Stacked)', fontsize=12, fontweight='bold')
+    ax4.legend(handles, labels, loc='best', framealpha=0.9)
+    ax4.grid(True, alpha=0.3, axis='y')
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
@@ -183,7 +225,6 @@ def plot_combined_servers(data_dict, output_path):
     print(f"✓ Saved combined plot: {output_path}")
     plt.close()
 
-
 def plot_comprehensive_dashboard(data_dict, output_path):
     """Create a comprehensive dashboard showing all metrics for all servers"""
     n_servers = len(data_dict)
@@ -199,6 +240,22 @@ def plot_comprehensive_dashboard(data_dict, output_path):
                  fontsize=18, fontweight='bold', y=0.985)
     
     server_colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E']
+    
+    # Collect all unique peer IDs across all servers to assign consistent colors
+    all_peer_ids = set()
+    for df in data_dict.values():
+        peer_cols = [col for col in df.columns if col.startswith('peer')]
+        for col in peer_cols:
+            peer_id = col.split('_')[1]
+            all_peer_ids.add(peer_id)
+    
+    # Sort peer IDs and assign colors (client always gets a specific color)
+    sorted_peer_ids = sorted(all_peer_ids, key=lambda x: int(x))
+    peer_color_map = {}
+    color_palette = plt.cm.Set2(np.linspace(0, 1, 8))  # Use Set2 colormap
+    
+    for i, peer_id in enumerate(sorted_peer_ids):
+        peer_color_map[peer_id] = color_palette[i % len(color_palette)]
     
     # ========== TOP SECTION: COMBINED COMPARISON PLOTS ==========
     # These span all columns
@@ -338,27 +395,70 @@ def plot_comprehensive_dashboard(data_dict, output_path):
         cbar.set_label('States', fontsize=8)
         cbar.ax.tick_params(labelsize=7)
         
-        # Row 7: Peer Communication Load
+        # Row 7: Peer Communication Load (Stacked Area)
         ax4 = fig.add_subplot(gs[7, col_idx])
         peer_cols = [col for col in df.columns if col.startswith('peer')]
         peer_cols_sorted = sorted(peer_cols, key=lambda x: int(x.split('_')[1]))
-        colors_peer = plt.cm.Set2(np.linspace(0, 1, len(peer_cols_sorted)))
+        
+        # Get all peer IDs from the color map (to show all in legend)
+        all_peer_ids = sorted(peer_color_map.keys(), key=lambda x: int(x))
+        max_peer_id = max(all_peer_ids)
+        
+        # Prepare data for stacked area chart
+        peer_data = []
+        peer_labels = []
+        peer_colors_list = []
         
         for i, col in enumerate(peer_cols_sorted):
-            peer_num = col.split('_')[1]
+            peer_id = col.split('_')[1]
+            peer_data.append(df[col].values)
+            
+            # Last peer is the client
             if i == len(peer_cols_sorted) - 1:
-                label = 'Client'
+                peer_labels.append('Client')
             else:
-                label = f'Peer {peer_num}'
-            ax4.plot(df['time_seconds'], df[col], 
-                    label=label, linewidth=2, color=colors_peer[i])
+                peer_labels.append(f'Server {peer_id}')
+            
+            peer_colors_list.append(peer_color_map[peer_id])
+        
+        # Create stacked area chart
+        stack = ax4.stackplot(df['time_seconds'], *peer_data, labels=peer_labels, 
+                              colors=peer_colors_list, alpha=0.8)
+        
+        # Build complete ordered legend: Server 0, Server 1, ..., Client
+        handles = []
+        labels = []
+        peer_ids_in_data = [col.split('_')[1] for col in peer_cols_sorted]
+        
+        # Add all servers in numerical order
+        for peer_id in all_peer_ids:
+            if peer_id != max_peer_id:  # Not the client
+                label = f'Server {peer_id}'
+                if peer_id in peer_ids_in_data:
+                    # Find the handle from stackplot
+                    idx = peer_ids_in_data.index(peer_id)
+                    handles.append(stack[idx])
+                else:
+                    # Create dummy handle for missing server
+                    handles.append(plt.Rectangle((0,0),1,1, fc=peer_color_map[peer_id], alpha=0.8))
+                labels.append(label)
+        
+        # Add Client last
+        client_label = 'Client'
+        if max_peer_id in peer_ids_in_data:
+            idx = peer_ids_in_data.index(max_peer_id)
+            handles.append(stack[idx])
+        else:
+            handles.append(plt.Rectangle((0,0),1,1, fc=peer_color_map[max_peer_id], alpha=0.8))
+        labels.append(client_label)
+        
         ax4.set_ylabel('Elements to Send', fontsize=10, fontweight='bold')
-        ax4.set_title('P2P Communication Queue', fontsize=11, fontweight='bold')
-        ax4.legend(loc='best', fontsize=8, framealpha=0.9)
-        ax4.grid(True, alpha=0.3)
+        ax4.set_title('Server Communication Queue (Stacked)', fontsize=11, fontweight='bold')
+        ax4.legend(handles, labels, loc='best', fontsize=8, framealpha=0.9)
+        ax4.grid(True, alpha=0.3, axis='y')
         ax4.set_ylim([0, peer_max * 1.1 if peer_max > 0 else 1])
         
-        # Row 8: Per-thread breakdown (Own vs Foreign states)
+        # Row 8: Per-thread breakdown (Own vs Foreign states) - Stacked Area
         ax5 = fig.add_subplot(gs[8, col_idx])
         own_cols = [col for col in df.columns if col.startswith('thread') and col.endswith('num_own_states')]
         foreign_cols = [col for col in df.columns if col.startswith('thread') and col.endswith('num_foreign_states')]
@@ -370,15 +470,15 @@ def plot_comprehensive_dashboard(data_dict, output_path):
         total_own = df[own_cols_sorted].sum(axis=1)
         total_foreign = df[foreign_cols_sorted].sum(axis=1)
         
-        ax5.fill_between(df['time_seconds'], 0, total_own, 
-                         label='Own States', color='#6A994E', alpha=0.7)
-        ax5.fill_between(df['time_seconds'], total_own, total_own + total_foreign, 
-                         label='Foreign States', color='#E63946', alpha=0.7)
+        # Create stacked area chart
+        ax5.stackplot(df['time_seconds'], total_own, total_foreign,
+                      labels=['Own States', 'Foreign States'],
+                      colors=['#6A994E', '#E63946'], alpha=0.8)
         ax5.set_xlabel('Time (seconds)', fontsize=10, fontweight='bold')
         ax5.set_ylabel('Number of States', fontsize=10, fontweight='bold')
-        ax5.set_title('Own vs Foreign States', fontsize=11, fontweight='bold')
+        ax5.set_title('Own vs Foreign States (Stacked)', fontsize=11, fontweight='bold')
         ax5.legend(loc='best', fontsize=8, framealpha=0.9)
-        ax5.grid(True, alpha=0.3)
+        ax5.grid(True, alpha=0.3, axis='y')
         ax5.set_ylim([0, own_foreign_max * 1.1])
     
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
@@ -388,7 +488,7 @@ def plot_comprehensive_dashboard(data_dict, output_path):
 def main():
     """Main execution function"""
     # Parse command line arguments
-    home_directory = Path.home()
+    home_directory = Path.home()    
     parser = argparse.ArgumentParser(
         description='Visualize distributed vector search system metrics',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -455,11 +555,27 @@ Examples:
     print(f"\nLoaded data from {len(data_dict)} server(s)")
     print("-" * 70)
     
+    # Collect all unique peer IDs across all servers to assign consistent colors
+    all_peer_ids = set()
+    for df in data_dict.values():
+        peer_cols = [col for col in df.columns if col.startswith('peer')]
+        for col in peer_cols:
+            peer_id = col.split('_')[1]
+            all_peer_ids.add(peer_id)
+    
+    # Sort peer IDs and assign colors
+    sorted_peer_ids = sorted(all_peer_ids, key=lambda x: int(x))
+    peer_color_map = {}
+    color_palette = plt.cm.Set2(np.linspace(0, 1, 8))  # Use Set2 colormap
+    
+    for i, peer_id in enumerate(sorted_peer_ids):
+        peer_color_map[peer_id] = color_palette[i % len(color_palette)]
+    
     # Create individual plots for each server
     print("\nGenerating individual server plots...")
     for server_name, df in data_dict.items():
         output_file = output_dir / f"{server_name.lower().replace(' ', '_')}_plot.png"
-        plot_individual_server(df, server_name, str(output_file))
+        plot_individual_server(df, server_name, str(output_file), peer_color_map)
     
     # Create combined comparison plot
     print("\nGenerating combined comparison plot...")

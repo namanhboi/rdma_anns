@@ -60,6 +60,9 @@ def load_and_process_single_file(file_path):
     df['completion_time_us'] = pd.to_numeric(df['completion_time_us'])
     df['n_hops'] = pd.to_numeric(df['n_hops'])
     
+    # Calculate end-to-end latency in microseconds
+    df['latency_us'] = (df['receive_timestamp_ns'] - df['send_timestamp_ns']) / 1000.0
+    
     # Extract L value from filename (e.g., result_L_10.csv -> 10)
     l_value = file_path.stem.split('_')[-1]
     df['L'] = int(l_value)
@@ -70,8 +73,8 @@ def load_and_process_single_file(file_path):
     # Calculate number of unique partitions visited
     df['n_partitions_visited'] = df['partition_list'].apply(lambda x: len(set(x)))
     
-    # Calculate inter-partition hops (length of partition history - 1)
-    df['inter_partition_hops'] = df['partition_list'].apply(lambda x: len(x) - 1)
+    # Calculate inter-partition hops (length of partition history - 1, minimum 0)
+    df['inter_partition_hops'] = df['partition_list'].apply(lambda x: max(0, len(x) - 1))
     
     return df
 
@@ -80,23 +83,51 @@ def plot_all_metrics(df, l_value):
     fig = plt.figure(figsize=(18, 10))
     gs = fig.add_gridspec(2, 3, hspace=0.3, wspace=0.3)
     
+    # Define consistent color palette for partitions
+    # Get unique partition IDs from the data
+    all_partitions = []
+    for partition_list in df['partition_list']:
+        all_partitions.extend(partition_list)
+    unique_partitions = sorted(set(all_partitions))
+    
+    # Create color map for partitions (using a distinct color palette)
+    if unique_partitions:
+        colors = plt.cm.tab10(range(len(unique_partitions)))
+        partition_colors = {pid: colors[i] for i, pid in enumerate(unique_partitions)}
+    else:
+        partition_colors = {}  # Empty color map if no partitions
+    
     # 1. Completion time progression - spans top row
     ax1 = fig.add_subplot(gs[0, :])
     df_sorted = df.sort_values('query_id')
-    ax1.plot(range(len(df_sorted)), df_sorted['completion_time_us'], 
+    ax1.plot(range(len(df_sorted)), df_sorted['latency_us'], 
             alpha=0.6, linewidth=0.5, color='steelblue')
     ax1.set_xlabel('Query Index', fontsize=11)
-    ax1.set_ylabel('Completion Time (μs)', fontsize=11)
-    ax1.set_title(f'Completion Time Progression (L={l_value})', fontsize=13, fontweight='bold')
+    ax1.set_ylabel('End-to-End Latency (μs)', fontsize=11)
+    ax1.set_title(f'End-to-End Latency Progression (L={l_value})', fontsize=13, fontweight='bold')
     ax1.grid(True, alpha=0.3)
     
     # Add rolling average
     window = 100
     if len(df_sorted) >= window:
-        rolling_avg = df_sorted['completion_time_us'].rolling(window=window).mean()
+        rolling_avg = df_sorted['latency_us'].rolling(window=window).mean()
         ax1.plot(range(len(df_sorted)), rolling_avg, 
                 color='red', linewidth=2, label=f'{window}-query moving avg')
         ax1.legend()
+    
+    # Add statistics box
+    mean_val = df['latency_us'].mean()
+    median_val = df['latency_us'].median()
+    p95_val = df['latency_us'].quantile(0.95)
+    p99_val = df['latency_us'].quantile(0.99)
+    std_val = df['latency_us'].std()
+    stats_text = f'Mean: {mean_val:.0f} μs\nMedian: {median_val:.0f} μs\n'
+    stats_text += f'95th %: {p95_val:.0f} μs\n99th %: {p99_val:.0f} μs\n'
+    stats_text += f'Std Dev: {std_val:.0f} μs'
+    ax1.text(0.98, 0.98, stats_text,
+            transform=ax1.transAxes, fontsize=9,
+            verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     # 2. Partitions visited distribution - bottom left
     ax2 = fig.add_subplot(gs[1, 0])
@@ -165,39 +196,48 @@ def plot_all_metrics(df, l_value):
     ax4 = fig.add_subplot(gs[1, 2])
     
     # Count all partition visits across all queries
-    all_partitions = []
+    all_partitions_freq = []
     for partition_list in df['partition_list']:
-        all_partitions.extend(partition_list)
+        all_partitions_freq.extend(partition_list)
     
-    partition_counts = Counter(all_partitions)
+    partition_counts = Counter(all_partitions_freq)
     
-    # Sort by partition ID
-    sorted_partitions = sorted(partition_counts.items())
-    partition_ids = [pid for pid, _ in sorted_partitions]
-    visit_counts = [count for _, count in sorted_partitions]
+    if partition_counts:
+        # Sort by partition ID
+        sorted_partitions = sorted(partition_counts.items())
+        partition_ids = [pid for pid, _ in sorted_partitions]
+        visit_counts = [count for _, count in sorted_partitions]
+        
+        # Create bar plot with partition-specific colors
+        bar_colors = [partition_colors[pid] for pid in partition_ids]
+        ax4.bar(partition_ids, visit_counts, 
+               color=bar_colors, alpha=0.7, edgecolor='black', width=0.6)
+        ax4.set_xticks(partition_ids)
+        
+        # Add value labels on top of bars
+        for pid, count in zip(partition_ids, visit_counts):
+            ax4.text(pid, count, str(count), ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        # Add statistics
+        total_visits = sum(visit_counts)
+        stats_text = f'Total: {total_visits}\n'
+        stats_text += f'Unique: {len(partition_ids)}\n'
+        stats_text += f'Avg: {total_visits/len(partition_ids):.1f}'
+        ax4.text(0.98, 0.02, stats_text,
+                transform=ax4.transAxes, fontsize=9,
+                verticalalignment='bottom', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    else:
+        # No partition visits - show empty plot with message
+        ax4.text(0.5, 0.5, 'No partition visits',
+                transform=ax4.transAxes, fontsize=12,
+                ha='center', va='center',
+                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
     
-    # Create bar plot
-    ax4.bar(partition_ids, visit_counts, 
-           color='steelblue', alpha=0.7, edgecolor='black', width=0.6)
     ax4.set_xlabel('Partition ID', fontsize=11)
     ax4.set_ylabel('Number of Times Visited', fontsize=11)
     ax4.set_title(f'Partition Visit Frequency', fontsize=12, fontweight='bold')
     ax4.grid(True, alpha=0.3, axis='y')
-    ax4.set_xticks(partition_ids)
-    
-    # Add value labels on top of bars
-    for pid, count in zip(partition_ids, visit_counts):
-        ax4.text(pid, count, str(count), ha='center', va='bottom', fontsize=9, fontweight='bold')
-    
-    # Add statistics
-    total_visits = sum(visit_counts)
-    stats_text = f'Total: {total_visits}\n'
-    stats_text += f'Unique: {len(partition_ids)}\n'
-    stats_text += f'Avg: {total_visits/len(partition_ids):.1f}'
-    ax4.text(0.98, 0.02, stats_text,
-            transform=ax4.transAxes, fontsize=9,
-            verticalalignment='bottom', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     plt.tight_layout()
     return fig
@@ -209,12 +249,14 @@ def print_summary_statistics(df, l_value):
     print("="*80)
     
     print(f"\nNumber of queries: {len(df)}")
-    print(f"\nCompletion Time (μs):")
-    print(f"  Mean: {df['completion_time_us'].mean():.2f}")
-    print(f"  Median: {df['completion_time_us'].median():.2f}")
-    print(f"  Std Dev: {df['completion_time_us'].std():.2f}")
-    print(f"  Min: {df['completion_time_us'].min():.2f}")
-    print(f"  Max: {df['completion_time_us'].max():.2f}")
+    print(f"\nEnd-to-End Latency (μs):")
+    print(f"  Mean: {df['latency_us'].mean():.2f}")
+    print(f"  Median: {df['latency_us'].median():.2f}")
+    print(f"  95th percentile: {df['latency_us'].quantile(0.95):.2f}")
+    print(f"  99th percentile: {df['latency_us'].quantile(0.99):.2f}")
+    print(f"  Std Dev: {df['latency_us'].std():.2f}")
+    print(f"  Min: {df['latency_us'].min():.2f}")
+    print(f"  Max: {df['latency_us'].max():.2f}")
     
     print(f"\nPartitions Visited:")
     print(f"  Mean: {df['n_partitions_visited'].mean():.2f}")
@@ -237,7 +279,11 @@ def print_summary_statistics(df, l_value):
     print(f"\nPartition Usage:")
     print(f"  Unique partitions accessed: {len(partition_counts)}")
     print(f"  Total partition visits: {sum(partition_counts.values())}")
-    print(f"  Most visited partition: {max(partition_counts, key=partition_counts.get)} ({partition_counts[max(partition_counts, key=partition_counts.get)]} visits)")
+    if partition_counts:
+        most_visited_pid = max(partition_counts, key=partition_counts.get)
+        print(f"  Most visited partition: {most_visited_pid} ({partition_counts[most_visited_pid]} visits)")
+    else:
+        print(f"  Most visited partition: N/A (no partition visits)")
 
 def main():
     # Set up argument parser
