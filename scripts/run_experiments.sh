@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# Disable SSH agent to prevent interference
+unset SSH_AUTH_SOCK
+unset SSH_AGENT_PID
+
 # --- Configuration ---
 echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,21 +13,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Now source relative to script location
 source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5
 
-
-
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"
+if [[ "$MODE" == "distributed" ]]; then 
+    WORKDIR="/users/$USER/workspace/rdma_anns/"
+fi
 echo ${WORKDIR}
 
 # SSH options to suppress agent messages
 SSH_OPTS="-o StrictHostKeyChecking=no -o ForwardAgent=no -o LogLevel=ERROR"
+
+# Reconstruct arrays from exported strings
+IFS=' ' read -ra PEER_IPS <<< "$PEER_IPS_STR"
+
+if [[ "$MODE" == "distributed" ]]; then
+    IFS=' ' read -ra CLOUDLAB_HOSTS <<< "$CLOUDLAB_HOSTS_STR"
+fi
 
 sshCommandAsync() {
     local server="$1"
     local command="$2"
     local outfile="${3:-}"
     
-    local output=$(ssh $SSH_OPTS "$USER@$server" /bin/bash <<EOF
+    local output=$(ssh $SSH_OPTS "$server" /bin/bash <<EOF
 nohup /bin/bash -c '$command' > '$outfile' 2>&1 &
 echo \$!
 EOF
@@ -38,7 +50,7 @@ sshCommandSync() {
     local command="$2"
     local outfile="${3:-}"
     
-    ssh $SSH_OPTS "$USER@$server" /bin/bash <<EOF
+    ssh $SSH_OPTS "$server" /bin/bash <<EOF
 $command
 EOF
 }
@@ -49,7 +61,7 @@ sshStopCommand() {
     
     # Validate PID is numeric
     if [[ "$pid" =~ ^[0-9]+$ ]]; then
-        ssh $SSH_OPTS "$USER@$server" /bin/bash <<EOF
+        ssh $SSH_OPTS "$server" /bin/bash <<EOF
 kill -2 $pid 2>/dev/null || true
 EOF
     else
@@ -57,8 +69,7 @@ EOF
     fi
 }
 
-# Reconstruct PEER_IPS array from exported string
-IFS=' ' read -ra PEER_IPS <<< "$PEER_IPS_STR"
+
 
 # Client is always the last peer
 CLIENT_ID=$((${#PEER_IPS[@]} - 1))
@@ -82,24 +93,6 @@ echo "  Ground truth: $TRUTHSET_BIN"
 echo
 
 # Create log directory
-mkdir -p logs
-
-# --- Server parameters ---
-NUM_SEARCH_THREADS=8
-USE_MEM_INDEX=true
-NUM_QUERIES_BALANCE=8
-USE_BATCHING=true
-MAX_BATCH_SIZE=16
-USE_COUNTER_THREAD=true
-COUNTER_SLEEP_MS=100
-# --- Client parameters ---
-NUM_CLIENT_THREADS=1
-LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
-BEAM_WIDTH=1
-K_VALUE=10
-MEM_L=10
-RECORD_STATS=true
-SEND_RATE=0
 
 # Build address list string (tcp:// prefixed, space-separated)
 ADDRESS_LIST_STR=""
@@ -113,17 +106,18 @@ echo "========================================"
 echo " Preparing remote hosts"
 echo "========================================"
 
-declare -A HOSTS
-for ip in "${PEER_IPS[@]}"; do
-  HOST=$(echo $ip | cut -d: -f1)
-  HOSTS[$HOST]=1
-done
 
-echo "Creating log directories on hosts..."
-for HOST in "${!HOSTS[@]}"; do
-  echo "  Creating directories on $HOST..."
-  sshCommandSync "$HOST" "mkdir -p ${WORKDIR}/logs"
-  echo "    ✓ Ready: $HOST"
+LOG_DIRNAME="logs_${EXPERIMENT_NAME}_$(date +%Y%m%d_%H%M%S)"
+LOCAL_LOG_DIR="$HOME/workspace/rdma_anns/${LOG_DIRNAME}"
+mkdir -p "$LOCAL_LOG_DIR"
+
+
+# For distributed mode, use CloudLab hostnames
+echo "Creating log directories on CloudLab hosts..."
+for CLOUDLAB_HOST in "${CLOUDLAB_HOSTS[@]}"; do
+    echo "  Creating directories on $CLOUDLAB_HOST..."
+    sshCommandSync "$CLOUDLAB_HOST" "mkdir -p ${WORKDIR}/${LOG_DIRNAME}"
+    echo "    ✓ Ready: $CLOUDLAB_HOST"
 done
 
 echo
@@ -138,10 +132,17 @@ declare -A SERVER_HOSTS
 
 for i in $(seq 0 $((NUM_SERVERS - 1))); do
   SERVER_IP="${PEER_IPS[$i]}"
-  HOST=$(echo $SERVER_IP | cut -d: -f1)
   
-  echo "  Server $i on $HOST (tcp://$SERVER_IP)"
-  COUNTER_CSV=${WORKDIR}/logs/counter_${i}.csv
+  # Determine which host to SSH to
+  if [[ "$MODE" == "local" ]]; then
+      SSH_HOST="$USER@127.0.0.1"
+  else
+      SSH_HOST="${CLOUDLAB_HOSTS[$i]}"
+  fi
+  
+  echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
+  COUNTER_CSV=${WORKDIR}/${LOG_DIRNAME}/counter_${i}.csv
+  
   # Build server command with all arguments
   SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
@@ -163,12 +164,12 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
   echo ${SERVER_CMD}
   
   # Launch server via SSH
-  REMOTE_PID=$(sshCommandAsync "$HOST" \
+  REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
     "cd ${WORKDIR} && $SERVER_CMD" \
-    "${WORKDIR}/logs/server_${i}.log")
+    "${WORKDIR}/${LOG_DIRNAME}/server_${i}.log")
   
   SERVER_PIDS[$i]=$REMOTE_PID
-  SERVER_HOSTS[$i]=$HOST
+  SERVER_HOSTS[$i]=$SSH_HOST
   echo "    PID: $REMOTE_PID"
   echo
 done
@@ -181,14 +182,18 @@ echo "========================================"
 echo " Starting client"
 echo "========================================"
 
-CLIENT_HOST=$(echo $CLIENT_IP | cut -d: -f1)
+# Determine which host to SSH to for client
+if [[ "$MODE" == "local" ]]; then
+    CLIENT_SSH_HOST="$USER@127.0.0.1"
+else
+    CLIENT_SSH_HOST="${CLOUDLAB_HOSTS[$CLIENT_ID]}"
+fi
 
-echo "  Client on $CLIENT_HOST"
+echo "  Client via $CLIENT_SSH_HOST"
 echo "  Client peer ID: $CLIENT_ID"
 echo "  Client address: tcp://$CLIENT_IP"
 
-RESULT_FOLDER=${WORKDIR}/logs/
-
+RESULT_FOLDER=${WORKDIR}/${LOG_DIRNAME}/
 
 # Build client command with all arguments
 CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
@@ -210,9 +215,9 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
 
 echo ${CLIENT_CMD}
 # Launch client via SSH
-CLIENT_REMOTE_PID=$(sshCommandAsync "$CLIENT_HOST" \
+CLIENT_REMOTE_PID=$(sshCommandAsync "$CLIENT_SSH_HOST" \
   "cd ${WORKDIR} && $CLIENT_CMD" \
-  "${WORKDIR}/logs/client.log")
+  "${WORKDIR}/${LOG_DIRNAME}/client.log")
 
 echo "  PID: $CLIENT_REMOTE_PID"
 
@@ -222,14 +227,14 @@ echo " System Running ($MODE mode)"
 echo "========================================"
 echo "Server PIDs:"
 for i in $(seq 0 $((NUM_SERVERS - 1))); do
-  echo "  Server $i on ${SERVER_HOSTS[$i]}: PID ${SERVER_PIDS[$i]}"
+  echo "  Server $i via ${SERVER_HOSTS[$i]}: PID ${SERVER_PIDS[$i]}"
 done
 echo
-echo "Client on $CLIENT_HOST: PID $CLIENT_REMOTE_PID"
+echo "Client via $CLIENT_SSH_HOST: PID $CLIENT_REMOTE_PID"
 echo
-echo "Logs available at: ${WORKDIR}/logs/"
-echo "  Server logs: logs/server_*.log"
-echo "  Client log: logs/client.log"
+echo "Logs available at: ${WORKDIR}/${LOG_DIRNAME}/"
+echo "  Server logs: ${LOG_DIRNAME}/server_*.log"
+echo "  Client log: ${LOG_DIRNAME}/client.log"
 echo "========================================"
 
 # --- Cleanup handler (for Ctrl+C) ---
@@ -237,17 +242,10 @@ cleanup() {
   echo
   echo "Interrupted! Shutting down gracefully..."
   
-  # Get unique hosts
-  declare -A ALL_CLEANUP_HOSTS
-  for ip in "${PEER_IPS[@]}"; do
-    HOST=$(echo $ip | cut -d: -f1)
-    ALL_CLEANUP_HOSTS[$HOST]=1
-  done
-  
-  # Kill everything on all hosts
-  for HOST in "${!ALL_CLEANUP_HOSTS[@]}"; do
-    echo "  Stopping all processes on $HOST..."
-    ssh $SSH_OPTS "$USER@$HOST" /bin/bash <<'EOF' || true
+  if [[ "$MODE" == "local" ]]; then
+      # Kill everything on localhost
+      echo "  Stopping all processes on localhost..."
+      ssh $SSH_OPTS "$USER@127.0.0.1" /bin/bash <<'EOF' || true
 # Send SIGINT to all processes
 pkill -2 -f 'state_send_server' 2>/dev/null
 pkill -2 -f 'run_benchmark_state_send_tcp' 2>/dev/null
@@ -256,7 +254,21 @@ sleep 1
 pkill -9 -f 'state_send_server' 2>/dev/null
 pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
 EOF
-  done
+  else
+      # Kill everything on all CloudLab hosts
+      for CLOUDLAB_HOST in "${CLOUDLAB_HOSTS[@]}"; do
+          echo "  Stopping all processes on $CLOUDLAB_HOST..."
+          ssh $SSH_OPTS "$CLOUDLAB_HOST" /bin/bash <<'EOF' || true
+# Send SIGINT to all processes
+pkill -2 -f 'state_send_server' 2>/dev/null
+pkill -2 -f 'run_benchmark_state_send_tcp' 2>/dev/null
+sleep 1
+# If still running, force kill
+pkill -9 -f 'state_send_server' 2>/dev/null
+pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
+EOF
+      done
+  fi
   
   echo "All processes stopped."
   exit 0
@@ -267,7 +279,7 @@ trap cleanup SIGINT SIGTERM
 echo "Waiting for client to complete..."
 
 # Poll the client process until it exits
-while ssh -o StrictHostKeyChecking=no "$USER@$CLIENT_HOST" "kill -0 $CLIENT_REMOTE_PID" 2>/dev/null; do
+while ssh $SSH_OPTS "$CLIENT_SSH_HOST" "kill -0 $CLIENT_REMOTE_PID" 2>/dev/null; do
   sleep 2
 done
 
@@ -277,14 +289,64 @@ echo "Stopping servers gracefully (sending SIGINT)..."
 
 # Send SIGINT to all servers
 for i in $(seq 0 $((NUM_SERVERS - 1))); do
-  HOST="${SERVER_HOSTS[$i]}"
+  SSH_HOST="${SERVER_HOSTS[$i]}"
   PID="${SERVER_PIDS[$i]}"
-  echo "  Sending SIGINT to server $i on $HOST (PID: $PID)..."
-  sshStopCommand "$HOST" "$PID" || true
+  echo "  Sending SIGINT to server $i via $SSH_HOST (PID: $PID)..."
+  sshStopCommand "$SSH_HOST" "$PID" || true
 done
 
 echo "Waiting for servers to exit gracefully..."
-sleep 3
+sleep 5
 
 echo "All processes stopped successfully!"
+
+# --- Copy logs back to local machine ---
+echo
+echo "========================================"
+echo " Organizing logs"
+echo "========================================"
+
+# Create local log directory with timestamp
+
+if [[ "$MODE" == "distributed" ]]; then
+
+    echo "Local log directory: $LOCAL_LOG_DIR"
+    echo
+
+    echo "Running in DISTRIBUTED mode - copying logs from remote hosts..."
+    
+    # Copy logs from each CloudLab host
+    for i in "${!CLOUDLAB_HOSTS[@]}"; do
+        CLOUDLAB_HOST="${CLOUDLAB_HOSTS[$i]}"
+        echo "  Copying logs from $CLOUDLAB_HOST..."
+        
+        # Use tar over SSH
+        ssh $SSH_OPTS "$CLOUDLAB_HOST" "cd ${WORKDIR}/${LOG_DIRNAME} 2>/dev/null && tar cf - . 2>/dev/null" | tar xf - -C "$LOCAL_LOG_DIR/" 2>/dev/null && {
+            echo "    ✓ Logs saved to: $LOCAL_LOG_DIR"
+        } || {
+            echo "    ⚠ Could not copy logs from $CLOUDLAB_HOST"
+        }
+    done
+fi
+
+echo
+echo "All logs organized successfully!"
+if [[ "$MODE" == "distributed" ]]; then
+    echo "Logs location: $LOCAL_LOG_DIR"
+else
+    echo "Logs location: $HOME/workspace/rdma_anns/${LOG_DIRNAME}"
+fi
+
+
+
+
+
+echo
+
 echo "Done!"
+
+
+### making the figuers automatically
+mkdir "${LOCAL_LOG_DIR}/figures"
+python3.10 "$HOME/workspace/rdma_anns/scripts/plot_counter_data.py" -i ${LOCAL_LOG_DIR}  -o "${LOCAL_LOG_DIR}/figures"
+python3.10 "$HOME/workspace/rdma_anns/scripts/plot_query_data.py" -i ${LOCAL_LOG_DIR} -o "${LOCAL_LOG_DIR}/figures"
