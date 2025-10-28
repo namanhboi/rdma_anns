@@ -287,8 +287,11 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
         number_own_states--;
       } else {
 	number_foreign_states--;
-      }      
+      }
       number_concurrent_queries--;
+      if (state->stats != nullptr) {
+        state->stats->total_us += (double)state->query_timer.elapsed();
+      }      
       parent->send_state(state);
     }    
   }
