@@ -560,14 +560,20 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                message_type_to_string(msg_type));
   if (msg_type == MessageType::QUERIES) {
     std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
-        QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+      QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+		 message_type_to_string(msg_type), queries.size());    
     for (auto query : queries) {
       // std::cout << "received new query "<< query->query_id << std::endl;
       // assert(query->dim == this->dim);
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it
+      logger->info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));
       pq_table.populate_chunk_distances(query->query, query->pq_dists);
+      logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), msg_id,
+                   message_type_to_string(msg_type));
       query_emb_map.insert_or_assign(query->query_id, query);
 
       SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
@@ -603,6 +609,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     std::vector<SearchState<T, TagT> *> states =
         SearchState<T, TagT>::deserialize_states(buffer + offset, size);
     // LOG(INFO) << "States received " << states.size();
+    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+		 message_type_to_string(msg_type), states.size());        
     for (auto state : states) {
       assert(state->cur_list_size > 0);
       state->partition_history.push_back(my_partition_id);
@@ -612,8 +620,12 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
               "Query embedding map contains query_id already: " +
               std::to_string(state->query_id));
         }
+        logger->info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
+                     msg_id, message_type_to_string(msg_type));
         pq_table.populate_chunk_distances(state->query_emb->query,
                                           state->query_emb->pq_dists);
+        logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(),
+                     msg_id, message_type_to_string(msg_type)); 
         query_emb_map.insert_or_assign(state->query_id, state->query_emb);
       } else {
         state->query_emb = query_emb_map.find(state->query_id);
@@ -623,6 +635,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
   } else if (msg_type == MessageType::RESULT_ACK) {
+    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
     ack a = ack::deserialize(buffer + offset);
     query_emb_map.erase(a.query_id);
