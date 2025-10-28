@@ -103,8 +103,16 @@ class cached_ofstream {
       : cache_size(cache_size), cur_off(0) {
     open(filename, cache_size, initial_offset);
   }
-  void open(const std::string &filename, uint64_t cache_size, size_t initial_offset = 0) {
-    open_file_to_write(writer, filename);
+  void open(const std::string &filename, uint64_t cache_size, size_t initial_offset = 0, bool is_binary = true) {
+    if (is_binary) {
+      open_file_to_write(writer, filename);
+    } else {
+      writer.open(filename);
+      if (writer.fail()) {
+	LOG(ERROR) << std::string("Failed to open file") + filename + " for write because " << std::strerror(errno);
+	crash();
+      }      
+    }
     assert(writer.is_open());
     assert(cache_size > 0);
     writer.seekp(initial_offset, writer.beg);

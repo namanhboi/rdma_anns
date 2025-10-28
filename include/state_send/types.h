@@ -41,6 +41,7 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
 }
 
 
+
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 
 // message type for the server, it then uses the correct
@@ -61,9 +62,31 @@ enum class MessageType : uint32_t {
 
 
   POISON // used to kill the batchig thread
-  
+
 
 };
+
+
+inline std::string message_type_to_string(MessageType msg_type) {
+  switch (msg_type) {
+    case MessageType::QUERIES:
+      return "QUERIES";
+    case MessageType::STATES:
+      return "STATES";
+    case MessageType::RESULT:
+      return "RESULT";
+    case MessageType::RESULT_ACK:
+      return "RESULT_ACK";
+    case MessageType::RESULTS:
+      return "RESULTS";
+    case MessageType::RESULTS_ACK:
+      return "RESULTS_ACK";
+    case MessageType::POISON:
+      return "POISON";
+    default:
+      return "UNKNOWN";
+  }
+}
 /**
    sent to a server to free data associated with query embedding during state
    send

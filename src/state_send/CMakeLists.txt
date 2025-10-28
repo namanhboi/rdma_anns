@@ -20,9 +20,13 @@ set (CPP_FILES
   disk_utils.cpp
 )
 
+
 add_library(ssd_state_send SHARED
   ${CPP_FILES}
 )
+find_package(spdlog REQUIRED)
+
+
 #OpenMP
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -59,8 +63,7 @@ target_compile_options(ssd_state_send PRIVATE
 target_link_directories(ssd_state_send PUBLIC
 	${PROJECT_SOURCE_DIR}/extern/liburing/src
 )
-target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils Boost::program_options)
-
+target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils Boost::program_options spdlog::spdlog_header_only)
 
 if(BALANCE_ALL)
     target_compile_definitions(ssd_state_send PRIVATE BALANCE_ALL)

@@ -11,6 +11,7 @@
 #include "query_buf.h"
 #include "tsl/robin_set.h"
 #include "utils.h"
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <immintrin.h>
@@ -22,6 +23,8 @@
 #include "types.h"
 #include "index.h"
 #include <unordered_set>
+#include "spdlog/spdlog.h"
+
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -158,6 +161,15 @@ private:
   };
   std::unique_ptr<CounterThread> counter_thread;
   bool use_counter_thread;
+
+private:
+  bool use_logging;
+  std::shared_ptr<spdlog::logger> logger;
+
+  inline uint64_t get_timestamp_ns() {
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+  }
 private:
   static constexpr uint64_t max_queries_balance = 128;
   uint64_t num_queries_balance = 0;
@@ -289,7 +301,8 @@ public:
                     bool use_batching = false, uint64_t max_batch_size = 0,
                     bool use_counter_thread = false,
                     std::string counter_csv = "",
-                    uint64_t counter_sleep_ms = 500);
+                    uint64_t counter_sleep_ms = 500,
+                    const std::string& log_file = "");
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -485,8 +498,6 @@ private:
   bool use_batching = false;
   uint64_t max_batch_size = 0;
 
-
-
   std::atomic<uint64_t> num_foreign_states_global_queue = 0;
   std::atomic<uint64_t> num_new_states_global_queue = 0;  
   
@@ -494,7 +505,7 @@ private:
   DistributedSearchMode dist_search_mode;
   // section is for commmunication
   std::unique_ptr<P2PCommunicator> &communicator;
-  
+
 private:
   /**
      notify based on client peer id
@@ -517,7 +528,10 @@ private:
      check that the top candidate node is offserver first as precondition.
    */
   void send_state(SearchState<T, TagT> *search_state);
-  
+
+
+private:
+  std::atomic<uint64_t> msg_received_id = 0;
 public:
   /**
    * will be registered to the communicator by the server cpp file.

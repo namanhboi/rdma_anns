@@ -6,9 +6,11 @@
 #include "utils.h"
 #include <chrono>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
+#include "spdlog/sinks/basic_file_sink.h" // support for basic file logging
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
@@ -18,12 +20,22 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     DistributedSearchMode dist_search_mode, bool tags,
     pipeann::Parameters *params, uint64_t num_queries_balance, bool enable_locs,
     bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
-					      std::string counter_csv, uint64_t counter_sleep_ms)
+    std::string counter_csv, uint64_t counter_sleep_ms,
+    const std::string &log_file)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
       use_batching(use_batching), use_counter_thread(use_counter_thread) {
+  use_logging = log_file != "";
+  logger = spdlog::basic_logger_mt("logger", log_file);
+  logger->set_pattern("%v");
+  if (use_logging) {
+    logger->set_level(spdlog::level::info);
+  } else {
+    logger->set_level(spdlog::level::off);
+  }
+
   LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
   if (dist_search_mode == DistributedSearchMode::LOCAL) {
     assert(communicator == nullptr);
@@ -80,6 +92,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     counter_thread =
       std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
   }
+
 }
 
 template <typename T, typename TagT>
@@ -537,10 +550,14 @@ void SSDPartitionIndex<T, TagT>::notify_client(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                                  size_t size) {
+  uint64_t msg_id = msg_received_id.fetch_add(1);
+  
   MessageType msg_type;
   size_t offset = 0;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   offset += sizeof(msg_type);
+  logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));
   if (msg_type == MessageType::QUERIES) {
     std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
         QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
@@ -601,9 +618,6 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       } else {
         state->query_emb = query_emb_map.find(state->query_id);
       }
-      // LOG(INFO) << "=======================";
-      // this->state_print_detailed(state);
-      // LOG(INFO) << "=======================";
     }
     num_foreign_states_global_queue.fetch_add(states.size());
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
@@ -615,6 +629,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   } else {
     throw std::runtime_error("Weird message type value");
   }
+  logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));
 }
 
 template <typename T, typename TagT>

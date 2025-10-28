@@ -142,7 +142,7 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
   
   echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
   COUNTER_CSV=${WORKDIR}/${LOG_DIRNAME}/counter_${i}.csv
-  
+  LOG_FILE=${WORKDIR}/${LOG_DIRNAME}/log_${i}.txt
   # Build server command with all arguments
   SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
@@ -160,7 +160,8 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
     --max_batch_size=$MAX_BATCH_SIZE \
     --use_counter_thread=$USE_COUNTER_THREAD \
     --counter_csv=$COUNTER_CSV \
-    --counter_sleep_ms=$COUNTER_SLEEP_MS"
+    --counter_sleep_ms=$COUNTER_SLEEP_MS \
+    --log_file=$LOG_FILE"
   echo ${SERVER_CMD}
   
   # Launch server via SSH
