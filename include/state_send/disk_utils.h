@@ -151,6 +151,7 @@ void create_slice_from_disk(const std::string &data_path,
 
 
 
+template<typename T>
 void create_and_write_overlap_partitions_to_loc_files(
     const std::string &base_file, int num_partitions, double overlap,
 						      const std::string &output_index_path_prefix);

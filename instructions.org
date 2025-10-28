@@ -199,6 +199,11 @@ cd ~/workspace/rdma_anns
 #+BEGIN_SRC
 ./build/src/state_send/create_pq_data uint8 /mydata/local/anngraphs/bigann/100M/clusters_2/pipeann_100M_cluster0.bin /mydata/local/anngraphs/bigann/100M/clusters_2/pipeann_100M_cluster0 l2 32
 #+END_SRC
+
+** Create overlapping partition loc files
+#+BEGIN_SRC
+$HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 ~/big-ann-benchmarks/data/bigann/10M/overlap_clusters_2/pipeann_10M
+#+END_SRC
 * Cloudlab setup
 
 ** nfs

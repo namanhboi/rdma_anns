@@ -1,3 +1,4 @@
+#include "defs.h"
 #include "disk_utils.h"
 #include "aux_utils.h"
 #include "cached_io.h"
@@ -887,6 +888,7 @@ void create_mem_index_symlink(const std::string &index_path_prefix,
 
 
 
+template<typename T>
 void create_and_write_overlap_partitions_to_loc_files(
 						      const std::string &base_file, int num_partitions, double overlap,
 						      const std::string &output_index_path_prefix) {
@@ -906,7 +908,7 @@ void create_and_write_overlap_partitions_to_loc_files(
   if (!should_partition)
     return;
 
-  PointSet points = ReadPoints(base_file);
+  PointSet points = internal::ReadBytes<T>(base_file);
   const double epsilon = 0.05;
   std::vector<std::vector<uint32_t>> partitions = OverlappingGraphPartitioning(
 									       points, num_partitions, epsilon, overlap, false);
@@ -1159,3 +1161,16 @@ template void
 create_mem_index_from_disk<int8_t>(const std::string &index_path_prefix, int R,
                                    int L, int num_threads,
                                    pipeann::Metric metric);
+
+template void create_and_write_overlap_partitions_to_loc_files<float>(
+    const std::string &base_file, int num_partitions, double overlap,
+								      const std::string &output_index_path_prefix);
+
+
+template void create_and_write_overlap_partitions_to_loc_files<uint8_t>(
+    const std::string &base_file, int num_partitions, double overlap,
+								      const std::string &output_index_path_prefix);
+
+template void create_and_write_overlap_partitions_to_loc_files<int8_t>(
+    const std::string &base_file, int num_partitions, double overlap,
+								      const std::string &output_index_path_prefix);
