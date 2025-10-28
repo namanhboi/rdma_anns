@@ -142,8 +142,9 @@ private:
     std::atomic<bool> running = false;
     std::thread real_thread;
 
-    const uint64_t io_cache_size = 64 * 1024 * 1024;
-    cached_ofstream csv_output;
+    std::stringstream cached_csv_output;
+    // cached_ofstream csv_output;
+    std::ofstream csv_output;
     uint64_t sleep_duration_ms;
 
     void write_header_csv();

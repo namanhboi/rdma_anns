@@ -7,6 +7,7 @@
 #include "partition_and_pq.h"
 #include "query_buf.h"
 #include "utils.h"
+#include <boost/container/container_fwd.hpp>
 #include <cblas.h>
 #include <cstdint>
 #include <experimental/filesystem>
@@ -15,6 +16,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <filesystem>
+#include "points_io.h"
+#include "overlapping_partitioning.h"
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -882,6 +886,114 @@ void create_mem_index_symlink(const std::string &index_path_prefix,
 }
 
 
+
+void create_and_write_overlap_partitions_to_loc_files(
+						      const std::string &base_file, int num_partitions, double overlap,
+						      const std::string &output_index_path_prefix) {
+  if (!file_exists(base_file)) {
+    throw std::invalid_argument("base file doesn't exist " + base_file);
+  }
+
+  bool should_partition = false;
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string partition_loc_file = output_index_path_prefix + "_partition" +
+                                     std::to_string(i) + "_ids_uint32.bin";
+    if (!file_exists(partition_loc_file)) {
+      should_partition = true;
+      break;
+    }
+  }
+  if (!should_partition)
+    return;
+
+  PointSet points = ReadPoints(base_file);
+  const double epsilon = 0.05;
+  std::vector<std::vector<uint32_t>> partitions = OverlappingGraphPartitioning(
+									       points, num_partitions, epsilon, overlap, false);
+  
+  write_partitions_to_loc_files(partitions, output_index_path_prefix);
+}
+
+void create_overlap_partition_assignment_file(const std::string &output_index_path_prefix, int num_partitions) {
+  std::vector<std::string> loc_files;
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string loc_file = output_index_path_prefix + "_partition" +
+                           std::to_string(i) + "_ids_uint32.bin";
+    if (!file_exists(loc_file)) {
+      throw std::runtime_error("loc file doesn't exist : " + loc_file);
+    }
+    loc_files.push_back(loc_file);
+  }
+
+  std::string partition_assignment_file =
+      output_index_path_prefix + "_partition_assignment.bin";
+  if (file_exists(partition_assignment_file)) {
+    LOG(INFO) << "partition_assignment_file already exists "
+              << partition_assignment_file;
+    return;
+  }
+
+  std::vector<std::vector<uint32_t>> locs;
+  locs.resize(num_partitions);
+  for (auto i = 0; i < num_partitions; i++) {
+    std::string loc_file = loc_files[i];
+    size_t num_pts, dim;
+    pipeann::load_bin<uint32_t>(loc_file, locs[i], num_pts, dim);
+  }
+
+  size_t num_points = 0;
+  std::unordered_set<uint32_t> unique_node_ids;
+  for (const auto &loc : locs) {
+    unique_node_ids.insert(loc.cbegin(), loc.cend());
+  }
+  num_points = unique_node_ids.size();
+
+  std::vector<std::vector<uint8_t>> partition_map;
+  partition_map.resize(num_points);
+  for (auto i = 0; i < num_partitions; i++) {
+    uint8_t partition_i = static_cast<uint8_t>(i);
+    for (const uint32_t j : locs[i]) {
+      partition_map[j].push_back(partition_i);
+    }
+  }
+
+  std::ofstream partition_out(partition_assignment_file, std::ios::binary);
+
+  uint8_t num_partitions_u8 = static_cast<uint8_t>(num_partitions);
+  partition_out.write(reinterpret_cast<char *>(num_points), sizeof(num_points));
+  partition_out.write(reinterpret_cast<char *>(num_partitions_u8),
+                      sizeof(num_partitions_u8));
+  for (const auto &home_partitions : partition_map) {
+    uint8_t num_home_partition_u8 = static_cast<uint8_t>(home_partitions.size());
+    partition_out.write(reinterpret_cast<char *>(num_home_partition_u8),
+                        sizeof(num_home_partition_u8));
+    partition_out.write(reinterpret_cast<const char *>(home_partitions.data()),
+                        sizeof(uint8_t) * num_home_partition_u8);
+  }
+}
+
+void load_overlap_partition_assignment_file(
+    const std::string &partition_assignment_file,
+					    std::vector<std::vector<uint8_t>> &partition_assignment,
+					    uint8_t &num_partitions) {
+  if (!file_exists(partition_assignment_file)) {
+    throw std::invalid_argument(partition_assignment_file + " doesn't exist");
+  }
+  std::ifstream input(partition_assignment_file, std::ios::binary);
+  size_t num_points;
+  input.read(reinterpret_cast<char *>(&num_points), sizeof(num_points));
+  input.read(reinterpret_cast<char *>(&num_partitions), sizeof(num_partitions));
+  partition_assignment.resize(num_points);
+  for (uint32_t i = 0; i < num_points; i++) {
+    // partition_assignment[i].push_back()
+    uint8_t num_home_partitions;
+    input.read(reinterpret_cast<char *>(&num_home_partitions),
+               sizeof(num_home_partitions));
+    partition_assignment[i].resize(num_home_partitions);
+    input.read(reinterpret_cast<char *>(partition_assignment[i].data()),
+               sizeof(uint8_t) * num_home_partitions);
+  }
+}
 
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,

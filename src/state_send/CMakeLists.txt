@@ -116,3 +116,12 @@ target_compile_options(create_pq_data PRIVATE
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
 
+
+add_executable(create_overlap_partition_loc_files create_overlap_partition_loc_files.cpp)
+target_link_libraries(create_overlap_partition_loc_files ssd_state_send)
+target_compile_options(create_overlap_partition_loc_files PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
+

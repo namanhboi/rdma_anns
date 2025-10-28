@@ -16,7 +16,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
   std::vector<std::shared_ptr<QueryEmbedding<T>>> batch_of_queries;
   constexpr int max_batch_size = 1;
   batch_of_queries.reserve(max_batch_size + 1);
-  std::cout << "main loop started for client thread " << std::endl;
+  // std::cout << "main loop started for client thread " << std::endl;
   while (running) {
     batch_of_queries.resize(max_batch_size + 1);
     size_t num_dequeued = concurrent_query_queue.wait_dequeue_bulk(
@@ -140,7 +140,7 @@ StateSendClient<T>::StateSendClient(const uint64_t id,
     : my_id(id), num_client_threads(num_client_threads), dim(dim),
       dist_search_mode(dist_search_mode) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, communicator_json);
-  std::cout << "Done with constructor for statesendclient" << std::endl;
+  // std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
   communicator->register_receive_handler(
       [this](const char *buffer, size_t size) {
@@ -162,7 +162,7 @@ StateSendClient<T>::StateSendClient(const uint64_t id,
     : my_id(id), num_client_threads(num_client_threads), dim(dim),
       dist_search_mode(dist_search_mode) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
-  std::cout << "Done with constructor for statesendclient" << std::endl;
+  // std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
   communicator->register_receive_handler(
       [this](const char *buffer, size_t size) {
@@ -181,7 +181,7 @@ template <typename T> void StateSendClient<T>::start_result_thread() {
 }
 
 template <typename T> void StateSendClient<T>::start_client_threads() {
-  std::cout << "starting " << client_threads.size() << " threads" << std::endl;
+  // std::cout << "starting " << client_threads.size() << " threads" << std::endl;
   for (auto &client_thread : client_threads) {
     client_thread->start();
   }

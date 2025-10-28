@@ -149,3 +149,27 @@ template <typename T>
 void create_slice_from_disk(const std::string &data_path,
                             const std::string &index_path_prefix);
 
+
+
+void create_and_write_overlap_partitions_to_loc_files(
+    const std::string &base_file, int num_partitions, double overlap,
+						      const std::string &output_index_path_prefix);
+
+
+
+/**
+   new format for partition assignment file:
+   size_t num_points
+   uint8_t num_partitions
+   for each point:
+   uint8_t num_home_partitions
+   uint8_t home_partition[num_home_partitions]
+*/
+void create_overlap_partition_assignment_file(
+					      const std::string &output_index_path_prefix, int num_partitions);
+
+
+void load_overlap_partition_assignment_file(
+    const std::string &partition_assignment_file,
+    std::vector<std::vector<uint8_t>> &partition_assignment,
+					    uint8_t &num_partitions);

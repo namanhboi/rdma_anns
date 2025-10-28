@@ -911,8 +911,11 @@ template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::CounterThread::CounterThread(
     SSDPartitionIndex *parent, const std::string &log_output_path,
     uint64_t sleep_duration_ms)
-    : csv_output(log_output_path, io_cache_size, 0), parent(parent),
-    sleep_duration_ms(sleep_duration_ms) {}
+    : parent(parent), sleep_duration_ms(sleep_duration_ms),
+    csv_output(log_output_path, std::ios::out) {
+  cached_csv_output << std::setprecision(15);
+}
+
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::start() {
@@ -936,9 +939,8 @@ void SSDPartitionIndex<T, TagT>::CounterThread::join() {
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
-  std::stringstream header;
-  header << "timestamp_ns" << ",";
-  header << "num_states_global_queue" << ","
+  cached_csv_output << "timestamp_ns" << ",";
+  cached_csv_output << "num_states_global_queue" << ","
          << "num_foreign_states_global_queue" << ","
   << "num_new_states_global_queue" << ",";
   for (auto i = 0; i < parent->num_search_threads; i++) {
@@ -949,32 +951,30 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
       thread_header_prefix + "_num_foreign_states";
     std::string num_own_state_pipeline =
       thread_header_prefix + "_num_own_states";
-    header << num_state_pipeline << "," << num_foreign_state_pipeline << ","
+    cached_csv_output << num_state_pipeline << "," << num_foreign_state_pipeline << ","
     << num_own_state_pipeline << ",";
   }
   size_t num_other_peer_ids = parent->communicator->get_num_peers() - 1;
   for (const auto &other_peer_id : parent->communicator->get_other_peer_ids()) {
     std::string peer_id_prefix = "peer_" + std::to_string(other_peer_id);
     std::string num_ele_to_send = peer_id_prefix + "_num_ele_to_send";
-    header << num_ele_to_send;
+    cached_csv_output << num_ele_to_send;
     num_other_peer_ids--;
     if (num_other_peer_ids != 0)
-      header << ",";
+      cached_csv_output << ",";
   }
-  header << "\n";
-  std::string header_str = header.str();
-  csv_output.write(header_str.c_str(), header_str.length());
+  cached_csv_output << "\n";
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
-  std::stringstream data;
   auto now = std::chrono::steady_clock::now();
   auto duration = now.time_since_epoch();
   double nanoseconds = std::chrono::duration<double, std::nano>(duration).count();
 
-  data << std::setprecision (15)  << nanoseconds << ",";
-  data << parent->global_state_queue.size_approx() << ","
+
+  cached_csv_output << nanoseconds << ",";
+  cached_csv_output << parent->global_state_queue.size_approx() << ","
        << parent->num_foreign_states_global_queue << ","
   << parent->num_new_states_global_queue << ",";
   for (auto i = 0; i < parent->num_search_threads; i++) {
@@ -990,18 +990,17 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
     uint64_t num_own_states = parent->search_threads[i]->number_own_states;
     uint64_t num_foreign_states =
       parent->search_threads[i]->number_foreign_states;
-    data << num_state_pipeline << "," << num_foreign_states << ","
+    cached_csv_output << num_state_pipeline << "," << num_foreign_states << ","
     << num_own_states << ",";
   }
   auto num_msg_peers = parent->batching_thread->get_num_msg_peers();
   for (auto i = 0; i < num_msg_peers.size(); i++) {
-    data << num_msg_peers[i];
+    cached_csv_output << num_msg_peers[i];
     if (i != num_msg_peers.size() - 1) {
-      data << ",";
+      cached_csv_output << ",";
     }
   }
-  data << "\n";
-  csv_output.write(data.str().c_str(), data.str().length());  
+  cached_csv_output << "\n";
 }
 
 template <typename T, typename TagT>
@@ -1012,7 +1011,7 @@ void SSDPartitionIndex<T, TagT>::CounterThread::main_loop() {
     write_one_row_to_csv();
     std::this_thread::sleep_for(duration_ms);
   }
-  csv_output.flush_cache();
+  csv_output << cached_csv_output.str();
   csv_output.close();
 }
 
