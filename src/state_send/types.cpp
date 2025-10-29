@@ -255,12 +255,21 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&has_embedding, buffer + offset, sizeof(has_embedding));
   offset += sizeof(has_embedding);
   if (has_embedding) {
+    SingletonLogger::get_logger().info(
+        "[{}] [{}] [{}]:BEGIN_DESERIALIZE_QUERY_EMB",
+				       SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
     state->query_emb = QueryEmbedding<T>::deserialize(buffer + offset);
     offset += state->query_emb->get_serialize_size();
+    SingletonLogger::get_logger().info(
+        "[{}] [{}] [{}]:END_DESERIALIZE_QUERY_EMB",
+				       SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
   } else {
     state->query_emb = nullptr;
   }
 
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_FULL_RETSET",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");
   // --- full_retset ---
   size_t size_full_retset;
   std::memcpy(&size_full_retset, buffer + offset, sizeof(size_full_retset));
@@ -283,7 +292,12 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
 
     state->full_retset.emplace_back(id, distance, f);
   }
-
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_FULL_RETSET",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");  
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_RETSET",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");  
   // --- retset ---
   std::memcpy(&state->cur_list_size, buffer + offset,
               sizeof(state->cur_list_size));
@@ -307,7 +321,12 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
     state->retset[i].flag = f;
     // state->retset[i] = {id, distance, f};
   }
-
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_RETSET",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");
+  SingletonLogger::get_logger().info(
+      "[{}] [{}] [{}]:BEGIN_DESERIALIZE_VISITED_STATE",
+				     SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
   // --- visited ---
   size_t size_visited;
   std::memcpy(&size_visited, buffer + offset, sizeof(size_visited));
@@ -323,6 +342,9 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
     state->visited.insert(val);
   }
 
+  SingletonLogger::get_logger().info(
+      "[{}] [{}] [{}]:END_DESERIALIZE_VISITED_STATE",
+				     SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
   // --- frontier ---
   size_t size_frontier;
   std::memcpy(&size_frontier, buffer + offset, sizeof(size_frontier));
@@ -379,7 +401,7 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&state->client_peer_id, buffer + offset,
               sizeof(state->client_peer_id));
   offset += sizeof(state->client_peer_id);
-  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESRIALIZE_STATE",
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_STATE",
                                      SingletonLogger::get_timestamp_ns(),
                                      log_msg_id, "STATE");
   return state;
