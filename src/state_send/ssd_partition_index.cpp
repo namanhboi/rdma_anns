@@ -574,8 +574,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       pq_table.populate_chunk_distances(query->query, query->pq_dists);
       logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), msg_id,
                    message_type_to_string(msg_type));
+      logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
+                   message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
-
+      logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
+                   message_type_to_string(msg_type));      
       SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
 
       new_search_state->client_type = ClientType::TCP;
@@ -602,7 +605,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       search_threads[thread_id]->push_state(new_search_state);
 #else
       num_new_states_global_queue.fetch_add(1);
+      logger->info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
+      logger->info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));      
 #endif
     }
   } else if (msg_type == MessageType::STATES) {
@@ -625,21 +632,34 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
         pq_table.populate_chunk_distances(state->query_emb->query,
                                           state->query_emb->pq_dists);
         logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(),
-                     msg_id, message_type_to_string(msg_type)); 
+                     msg_id, message_type_to_string(msg_type));
+        logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
+                     get_timestamp_ns(), msg_id,
+                     message_type_to_string(msg_type));
         query_emb_map.insert_or_assign(state->query_id, state->query_emb);
+        logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+                     msg_id, message_type_to_string(msg_type));
       } else {
         state->query_emb = query_emb_map.find(state->query_id);
       }
     }
     num_foreign_states_global_queue.fetch_add(states.size());
+    logger->info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
+      logger->info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               message_type_to_string(msg_type));    
   } else if (msg_type == MessageType::RESULT_ACK) {
     logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
     ack a = ack::deserialize(buffer + offset);
+    logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE", get_timestamp_ns(),
+                 msg_id, message_type_to_string(msg_type));
     query_emb_map.erase(a.query_id);
+    logger->info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
+                 msg_id, message_type_to_string(msg_type));
   } else {
     throw std::runtime_error("Weird message type value");
   }

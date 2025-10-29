@@ -25,7 +25,12 @@ add_library(ssd_state_send SHARED
   ${CPP_FILES}
 )
 find_package(spdlog REQUIRED)
+find_package(spdlog REQUIRED)
 
+message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
+message(STATUS "spdlog_DIR: ${spdlog_DIR}")
+message(STATUS "spdlog_INCLUDE_DIRS: ${spdlog_INCLUDE_DIRS}")
+message(STATUS "spdlog_LIBRARIES: ${spdlog_LIBRARIES}")
 
 #OpenMP
 find_package(OpenMP)
