@@ -331,16 +331,22 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   size_t size_visited;
   std::memcpy(&size_visited, buffer + offset, sizeof(size_visited));
   offset += sizeof(size_visited);
-
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:VISITED_STATE {}",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE", size_visited);
   // Read elements safely (no reinterpret_cast)
   state->visited.clear();
   state->visited.reserve(size_visited);
-  for (size_t i = 0; i < size_visited; ++i) {
-    uint64_t val;
-    std::memcpy(&val, buffer + offset, sizeof(val));
-    offset += sizeof(val);
-    state->visited.insert(val);
-  }
+  state->visited.insert(reinterpret_cast<const uint32_t *>(buffer + offset),
+                        reinterpret_cast<const uint32_t *>(
+							   buffer + offset + sizeof(uint32_t) * size_visited));
+  // for (size_t i = 0; i < size_visited; ++i) {
+    // uint32_t val;
+    // std::memcpy(&val, buffer + offset, sizeof(val));
+    // offset += sizeof(val);
+    // state->visited.insert(val);
+  // }
+  offset += sizeof(uint32_t) * size_visited;
 
   SingletonLogger::get_logger().info(
       "[{}] [{}] [{}]:END_DESERIALIZE_VISITED_STATE",
