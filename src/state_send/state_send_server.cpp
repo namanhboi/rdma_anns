@@ -36,7 +36,7 @@ public:
                   bool tags, uint64_t batch_size, bool enable_locs,
                   bool use_batching, uint64_t max_batch_size,
                   bool use_counter_thread, std::string counter_csv,
-                  uint64_t counter_sleep_ms, std::string log_file) {
+                  uint64_t counter_sleep_ms, bool use_logging,std::string log_file) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
         static_cast<uint64_t>(my_partition_id), address_list);
     reader = std::make_shared<LinuxAlignedFileReader>();
@@ -45,7 +45,7 @@ public:
         m, my_partition_id, num_search_threads, reader, communicator,
         dist_search_mode, tags, nullptr, batch_size, enable_locs, use_batching,
         max_batch_size, use_counter_thread, counter_csv, counter_sleep_ms,
-								 log_file);
+								 use_logging, log_file);
     int res = ssd_partition_index->load(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
@@ -126,7 +126,9 @@ int main(int argc, char **argv) {
   bool use_counter_thread;
   std::string counter_csv;
   uint64_t counter_sleep_ms;
+  bool use_logging;
   std::string log_file;
+
 
   desc.add_options()("help,h", "show help message")(
       "server_peer_id", po::value<uint64_t>(&server_peer_id)->required(),
@@ -164,8 +166,11 @@ int main(int argc, char **argv) {
       "path to save result of counter thread")(
       "counter_sleep_ms", po::value<uint64_t>(&counter_sleep_ms)->required(),
       "how long should counter thraed sleep before waking up to collect data")(
+      "use_logging", po::value<bool>(&use_logging)->required(),
+      "use logging or not")(
       "log_file", po::value<std::string>(&log_file)->required(),
-									       "where to log to, if set to empty str then won't log");
+			    "where to log to, if set to empty str then won't log");
+  
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -227,21 +232,21 @@ int main(int argc, char **argv) {
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
         enable_locs, use_batching, max_batch_size, use_counter_thread,
-							     counter_csv, counter_sleep_ms,log_file);
+							     counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   } else if (data_type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
         enable_locs, use_batching, max_batch_size, use_counter_thread,
-							    counter_csv, counter_sleep_ms,log_file);
+							    counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   } else if (data_type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         use_mem_index, dist_search_mode, use_tags, num_queries_balance,
         enable_locs, use_batching, max_batch_size, use_counter_thread,
-							   counter_csv, counter_sleep_ms, log_file);
+							   counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   }
 

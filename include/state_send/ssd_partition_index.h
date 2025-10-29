@@ -23,8 +23,6 @@
 #include "types.h"
 #include "index.h"
 #include <unordered_set>
-#include "spdlog/spdlog.h"
-
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -164,7 +162,6 @@ private:
 
 private:
   bool use_logging;
-  std::shared_ptr<spdlog::logger> logger;
 
   inline uint64_t get_timestamp_ns() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -302,6 +299,7 @@ public:
                     bool use_counter_thread = false,
                     std::string counter_csv = "",
                     uint64_t counter_sleep_ms = 500,
+                    bool use_logging = false,
                     const std::string& log_file = "");
   ~SSDPartitionIndex();
 

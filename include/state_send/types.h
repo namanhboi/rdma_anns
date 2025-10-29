@@ -62,8 +62,6 @@ enum class MessageType : uint32_t {
 
 
   POISON // used to kill the batchig thread
-
-
 };
 
 

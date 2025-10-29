@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
-#include "spdlog/sinks/basic_file_sink.h" // support for basic file logging
+#include "singleton_logger.h"
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
@@ -20,20 +20,23 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     DistributedSearchMode dist_search_mode, bool tags,
     pipeann::Parameters *params, uint64_t num_queries_balance, bool enable_locs,
     bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
-    std::string counter_csv, uint64_t counter_sleep_ms,
+					      std::string counter_csv, uint64_t counter_sleep_ms,
+					      bool use_logging,
     const std::string &log_file)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
       use_batching(use_batching), use_counter_thread(use_counter_thread) {
-  use_logging = log_file != "";
-  logger = spdlog::basic_logger_mt("logger", log_file);
-  logger->set_pattern("%v");
+  use_logging = use_logging;
+    // = spdlog::basic_logger_mt("logger", log_file);
+  // logger->set_pattern("%v");
   if (use_logging) {
-    logger->set_level(spdlog::level::info);
+    SingletonLogger::get_logger(log_file, spdlog::level::info);
+    // logger->set_level(spdlog::level::info);
+    // 
   } else {
-    logger->set_level(spdlog::level::off);
+    SingletonLogger::get_logger(log_file, spdlog::level::off);    
   }
 
   LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
@@ -92,7 +95,6 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     counter_thread =
       std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
   }
-
 }
 
 template <typename T, typename TagT>
@@ -556,16 +558,17 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   size_t offset = 0;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   offset += sizeof(msg_type);
-  logger->info("[{}] [{}] [{}]:BEGIN_HANDLER", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_HANDLER",
+                                     get_timestamp_ns(), msg_id,
+                                     message_type_to_string(msg_type));
   if (msg_type == MessageType::QUERIES) {
-    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
     std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
       QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
-    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
-    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
 		 message_type_to_string(msg_type), queries.size());    
     for (auto query : queries) {
       // std::cout << "received new query "<< query->query_id << std::endl;
@@ -573,18 +576,18 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it
-      logger->info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
       pq_table.populate_chunk_distances(query->query, query->pq_dists);
-      logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), msg_id,
                    message_type_to_string(msg_type));
-      logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
                    message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
-      logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
                    msg_id, message_type_to_string(msg_type));
 
-      logger->info("[{}] [{}] [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(),
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(),
                    msg_id, message_type_to_string(msg_type));
       SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
 
@@ -602,7 +605,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
         new_search_state->stats = std::make_shared<QueryStats>();
       }
       state_reset(new_search_state);
-      logger->info("[{}] [{}] [{}]:END_CREATE_STATE", get_timestamp_ns(),
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE", get_timestamp_ns(),
                    msg_id, message_type_to_string(msg_type));      
       // uint32_t best_medoid = medoids[0];
       // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
@@ -614,22 +617,22 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       search_threads[thread_id]->push_state(new_search_state);
 #else
       num_new_states_global_queue.fetch_add(1);
-      logger->info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
-      logger->info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));      
 #endif
     }
   } else if (msg_type == MessageType::STATES) {
-    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
     std::vector<SearchState<T, TagT> *> states =
       SearchState<T, TagT>::deserialize_states(buffer + offset, size);
-    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));        
     // LOG(INFO) << "States received " << states.size();
-    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
 		 message_type_to_string(msg_type), states.size());        
     for (auto state : states) {
       assert(state->cur_list_size > 0);
@@ -640,47 +643,47 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
               "Query embedding map contains query_id already: " +
               std::to_string(state->query_id));
         }
-        logger->info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
+        SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
                      msg_id, message_type_to_string(msg_type));
         pq_table.populate_chunk_distances(state->query_emb->query,
                                           state->query_emb->pq_dists);
-        logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), 
+        SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), 
                      msg_id, message_type_to_string(msg_type));
-        logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
+        SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
                      get_timestamp_ns(), msg_id,
                      message_type_to_string(msg_type));
         query_emb_map.insert_or_assign(state->query_id, state->query_emb);
-        logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+        SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
                      msg_id, message_type_to_string(msg_type));
       } else {
         state->query_emb = query_emb_map.find(state->query_id);
       }
     }
     num_foreign_states_global_queue.fetch_add(states.size());
-    logger->info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
     global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
                                     states.size());
-      logger->info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));    
   } else if (msg_type == MessageType::RESULT_ACK) {
-    logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
-    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
     ack a = ack::deserialize(buffer + offset);
-    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));            
-    logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE", get_timestamp_ns(),
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE", get_timestamp_ns(),
                  msg_id, message_type_to_string(msg_type));
     query_emb_map.erase(a.query_id);
-    logger->info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
                  msg_id, message_type_to_string(msg_type));
   } else {
     throw std::runtime_error("Weird message type value");
   }
-  logger->info("[{}] [{}] [{}]:END_HANDLER", get_timestamp_ns(), msg_id,
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_HANDLER", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
 }
 

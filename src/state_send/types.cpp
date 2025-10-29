@@ -230,7 +230,6 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   SearchState *state = new SearchState;
   size_t offset = 0;
 
-
   bool has_embedding;
   std::memcpy(&has_embedding, buffer + offset, sizeof(has_embedding));
   offset += sizeof(has_embedding);
@@ -698,12 +697,6 @@ ack ack::deserialize(const char *buffer) {
   std::memcpy(&a.query_id, buffer, sizeof(a.query_id));
   return a;
 }
-
-
-
-
-
-
 
 
 template struct QueryEmbedding<float>;

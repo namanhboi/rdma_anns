@@ -161,6 +161,7 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
     --use_counter_thread=$USE_COUNTER_THREAD \
     --counter_csv=$COUNTER_CSV \
     --counter_sleep_ms=$COUNTER_SLEEP_MS \
+    --use_logging=$USE_LOGGING \
     --log_file=$LOG_FILE"
   echo ${SERVER_CMD}
   
@@ -351,3 +352,5 @@ echo "Done!"
 mkdir "${LOCAL_LOG_DIR}/figures"
 python3.10 "$HOME/workspace/rdma_anns/scripts/plot_counter_data.py" -i ${LOCAL_LOG_DIR}  -o "${LOCAL_LOG_DIR}/figures"
 python3.10 "$HOME/workspace/rdma_anns/scripts/plot_query_data.py" -i ${LOCAL_LOG_DIR} -o "${LOCAL_LOG_DIR}/figures"
+python3.10 "$HOME/workspace/rdma_anns/scripts/analyze_log.py" ${LOCAL_LOG_DIR} "${LOCAL_LOG_DIR}/figures"
+
