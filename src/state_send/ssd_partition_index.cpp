@@ -556,11 +556,15 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   size_t offset = 0;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   offset += sizeof(msg_type);
-  logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+  logger->info("[{}] [{}] [{}]:BEGIN_HANDLER", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
   if (msg_type == MessageType::QUERIES) {
+    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));
     std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
       QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));
     logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
 		 message_type_to_string(msg_type), queries.size());    
     for (auto query : queries) {
@@ -577,8 +581,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
                    message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
-      logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
-                   message_type_to_string(msg_type));      
+      logger->info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+                   msg_id, message_type_to_string(msg_type));
+
+      logger->info("[{}] [{}] [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(),
+                   msg_id, message_type_to_string(msg_type));
       SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
 
       new_search_state->client_type = ClientType::TCP;
@@ -595,6 +602,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
         new_search_state->stats = std::make_shared<QueryStats>();
       }
       state_reset(new_search_state);
+      logger->info("[{}] [{}] [{}]:END_CREATE_STATE", get_timestamp_ns(),
+                   msg_id, message_type_to_string(msg_type));      
       // uint32_t best_medoid = medoids[0];
       // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
       // state_print(new_search_state);
@@ -613,8 +622,12 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 #endif
     }
   } else if (msg_type == MessageType::STATES) {
+    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));
     std::vector<SearchState<T, TagT> *> states =
-        SearchState<T, TagT>::deserialize_states(buffer + offset, size);
+      SearchState<T, TagT>::deserialize_states(buffer + offset, size);
+    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));        
     // LOG(INFO) << "States received " << states.size();
     logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
 		 message_type_to_string(msg_type), states.size());        
@@ -631,7 +644,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                      msg_id, message_type_to_string(msg_type));
         pq_table.populate_chunk_distances(state->query_emb->query,
                                           state->query_emb->pq_dists);
-        logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(),
+        logger->info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), 
                      msg_id, message_type_to_string(msg_type));
         logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
                      get_timestamp_ns(), msg_id,
@@ -654,7 +667,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     logger->info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
+    logger->info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));
     ack a = ack::deserialize(buffer + offset);
+    logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 message_type_to_string(msg_type));            
     logger->info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE", get_timestamp_ns(),
                  msg_id, message_type_to_string(msg_type));
     query_emb_map.erase(a.query_id);
@@ -663,7 +680,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   } else {
     throw std::runtime_error("Weird message type value");
   }
-  logger->info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+  logger->info("[{}] [{}] [{}]:END_HANDLER", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
 }
 
