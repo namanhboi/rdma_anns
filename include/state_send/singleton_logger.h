@@ -16,6 +16,7 @@ private:
                   spdlog::level::level_enum log_level)
       : log_file(log_file), log_level(log_level) {
     logger = spdlog::basic_logger_mt("logger", log_file);
+    logger->set_pattern("%v");
     logger->set_level(log_level);
   }
 

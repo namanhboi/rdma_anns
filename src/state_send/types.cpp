@@ -2,7 +2,7 @@
 
 #include "types.h"
 #include <chrono>
-
+#include "singleton_logger.h"
 
 
 
@@ -87,6 +87,16 @@ std::shared_ptr<QueryStats> QueryStats::deserialize(const char *buffer) {
 template <typename T, typename TagT>
 size_t SearchState<T, TagT>::write_serialize(char *buffer, bool with_embedding) const {
   size_t offset = 0;
+  write_data(buffer, reinterpret_cast<const char *>(&query_id),
+             sizeof(query_id), offset);
+  size_t num_partitions = partition_history.size();
+
+  write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
+             sizeof(num_partitions), offset);
+  for (const auto partition_id : partition_history) {
+    write_data(buffer, reinterpret_cast<const char *>(&partition_id),
+               sizeof(partition_id), offset);
+  }  
 
   write_data(buffer, reinterpret_cast<const char *>(&with_embedding),
              sizeof(with_embedding), offset);
@@ -146,17 +156,7 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer, bool with_embedding) 
   write_data(buffer, reinterpret_cast<const char *>(&beam_width),
              sizeof(beam_width), offset);
 
-  write_data(buffer, reinterpret_cast<const char *>(&query_id),
-             sizeof(query_id), offset);
 
-  size_t num_partitions = partition_history.size();
-
-  write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
-             sizeof(num_partitions), offset);
-  for (const auto partition_id : partition_history) {
-    write_data(buffer, reinterpret_cast<const char *>(&partition_id),
-               sizeof(partition_id), offset);
-  }
 
   bool record_stats = (stats != nullptr);
 
@@ -227,8 +227,29 @@ size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
 
 template <typename T, typename TagT>
 SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
+
   SearchState *state = new SearchState;
   size_t offset = 0;
+  std::memcpy(&state->query_id, buffer + offset, sizeof(state->query_id));
+  offset += sizeof(state->query_id);
+
+  // --- partition history ---
+  size_t size_partition_history;
+  std::memcpy(&size_partition_history, buffer + offset,
+              sizeof(size_partition_history));
+  offset += sizeof(size_partition_history);
+  uint64_t log_msg_id = state->query_id << 32 | static_cast<uint32_t>(size_partition_history);
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_STATE",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");
+
+  const uint8_t *start_partition_history =
+      reinterpret_cast<const uint8_t *>(buffer + offset);
+  state->partition_history =
+      std::vector<uint8_t>(start_partition_history,
+                           start_partition_history + size_partition_history);
+  offset += size_partition_history * sizeof(uint8_t);
+  
 
   bool has_embedding;
   std::memcpy(&has_embedding, buffer + offset, sizeof(has_embedding));
@@ -337,21 +358,8 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&state->beam_width, buffer + offset, sizeof(state->beam_width));
   offset += sizeof(state->beam_width);
 
-  std::memcpy(&state->query_id, buffer + offset, sizeof(state->query_id));
-  offset += sizeof(state->query_id);
 
-  // --- partition history ---
-  size_t size_partition_history;
-  std::memcpy(&size_partition_history, buffer + offset,
-              sizeof(size_partition_history));
-  offset += sizeof(size_partition_history);
 
-  const uint8_t *start_partition_history =
-      reinterpret_cast<const uint8_t *>(buffer + offset);
-  state->partition_history =
-      std::vector<uint8_t>(start_partition_history,
-                           start_partition_history + size_partition_history);
-  offset += size_partition_history * sizeof(uint8_t);
 
   bool record_stats;
   std::memcpy(&record_stats, buffer + offset, sizeof(record_stats));
@@ -371,7 +379,9 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   std::memcpy(&state->client_peer_id, buffer + offset,
               sizeof(state->client_peer_id));
   offset += sizeof(state->client_peer_id);
-
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESRIALIZE_STATE",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");
   return state;
 }
 
