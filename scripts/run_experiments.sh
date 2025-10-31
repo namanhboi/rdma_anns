@@ -84,8 +84,6 @@ echo "  Servers: $NUM_SERVERS"
 echo "  Client ID: $CLIENT_ID"
 echo "  Dataset: $DATASET_NAME ($DATASET_SIZE)"
 echo "  Dist search mode: $DIST_SEARCH_MODE"
-echo "  Use tags: $USE_TAGS"
-echo "  Enable locs: $ENABLE_LOCS"
 echo "  Working directory: $WORKDIR"
 echo "  Graph prefix: $GRAPH_PREFIX"
 echo "  Query file: $QUERY_BIN"
@@ -150,8 +148,6 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
     --data_type=$DATA_TYPE \
     --index_path_prefix=${GRAPH_PREFIX} \
     --num_search_threads=$NUM_SEARCH_THREADS \
-    --use_tags=$USE_TAGS \
-    --enable_locs=$ENABLE_LOCS \
     --use_mem_index=$USE_MEM_INDEX \
     --metric=$METRIC \
     --num_queries_balance=$NUM_QUERIES_BALANCE \

@@ -33,17 +33,17 @@ public:
                   const std::string &index_prefix, pipeann::Metric m,
                   uint8_t my_partition_id, uint32_t num_search_threads,
                   bool use_mem_index, DistributedSearchMode dist_search_mode,
-                  bool tags, uint64_t batch_size, bool enable_locs,
-                  bool use_batching, uint64_t max_batch_size,
-                  bool use_counter_thread, std::string counter_csv,
-                  uint64_t counter_sleep_ms, bool use_logging,std::string log_file) {
+                  uint64_t batch_size, bool use_batching,
+                  uint64_t max_batch_size, bool use_counter_thread,
+                  std::string counter_csv, uint64_t counter_sleep_ms,
+                  bool use_logging, std::string log_file) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
         static_cast<uint64_t>(my_partition_id), address_list);
     reader = std::make_shared<LinuxAlignedFileReader>();
 
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
         m, my_partition_id, num_search_threads, reader, communicator,
-        dist_search_mode, tags, nullptr, batch_size, enable_locs, use_batching,
+        dist_search_mode, nullptr, batch_size, use_batching,
         max_batch_size, use_counter_thread, counter_csv, counter_sleep_ms,
 								 use_logging, log_file);
     int res = ssd_partition_index->load(index_prefix.c_str(), true);
@@ -110,8 +110,6 @@ int main(int argc, char **argv) {
   std::string index_path_prefix;
 
   uint32_t num_search_threads;
-  bool use_tags;
-  bool enable_locs;
   bool use_mem_index;
   std::string metric;
 
@@ -142,10 +140,7 @@ int main(int argc, char **argv) {
       po::value<std::string>(&index_path_prefix)->required(),
       "Index path prefix")("num_search_threads",
                            po::value<uint32_t>(&num_search_threads)->required(),
-                           "Number of search threads")(
-      "use_tags", po::value<bool>(&use_tags)->required(), "Use tags flag")(
-      "enable_locs", po::value<bool>(&enable_locs)->required(),
-      "Enable locations flag")("use_mem_index",
+                           "Number of search threads")("use_mem_index",
                                po::value<bool>(&use_mem_index)->required(),
                                "Use memory index flag")(
       "metric", po::value<std::string>(&metric)->required(),
@@ -188,8 +183,6 @@ int main(int argc, char **argv) {
   std::cout << "data_type: " << data_type << std::endl;
   std::cout << "index_path_prefix: " << index_path_prefix << std::endl;
   std::cout << "num_search_threads: " << num_search_threads << std::endl;
-  std::cout << "use_tags: " << use_tags << std::endl;
-  std::cout << "enable_locs: " << enable_locs << std::endl;
   std::cout << "use_mem_index: " << use_mem_index << std::endl;
   std::cout << "metric: " << metric << std::endl;
   std::cout << "num_queries_balance: " << num_queries_balance << std::endl;
@@ -197,8 +190,6 @@ int main(int argc, char **argv) {
   std::cout << "use_batching: " << use_batching << std::endl;
   std::cout << "max_batch_size: " << max_batch_size << std::endl;
   std::cout << "===========================" << std::endl;
-
-  index_path_prefix += std::to_string(server_peer_id);
   DistributedSearchMode dist_search_mode;
 
   if (data_type != "uint8" && data_type != "int8" && data_type != "float") {
@@ -208,16 +199,14 @@ int main(int argc, char **argv) {
     dist_search_mode = DistributedSearchMode::STATE_SEND;
   } else if (dist_search_mode_str == "SCATTER_GATHER") {
     dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
+  } else if (dist_search_mode_str == "SINGLE_SERVER") {
+    dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
   } else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);
   }
-
-  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
-    if (use_tags == false) {
-      throw std::invalid_argument(
-          "use_tags must be true if we are doing scatter gather");
-    }
+  if (dist_search_mode != DistributedSearchMode::SINGLE_SERVER) {
+    index_path_prefix += std::to_string(server_peer_id);
   }
 
   pipeann::Metric m =
@@ -230,22 +219,22 @@ int main(int argc, char **argv) {
   if (data_type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
-        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
-        enable_locs, use_batching, max_batch_size, use_counter_thread,
+        use_mem_index, dist_search_mode, num_queries_balance,
+        use_batching, max_batch_size, use_counter_thread,
 							     counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   } else if (data_type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
-        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
-        enable_locs, use_batching, max_batch_size, use_counter_thread,
+        use_mem_index, dist_search_mode, num_queries_balance,
+        use_batching, max_batch_size, use_counter_thread,
 							    counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   } else if (data_type == "float") {
     auto server = std::make_unique<StateSendServer<float>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
-        use_mem_index, dist_search_mode, use_tags, num_queries_balance,
-        enable_locs, use_batching, max_batch_size, use_counter_thread,
+        use_mem_index, dist_search_mode, num_queries_balance,
+        use_batching, max_batch_size, use_counter_thread,
 							   counter_csv, counter_sleep_ms, use_logging, log_file);
     run_server(std::move(server));
   }

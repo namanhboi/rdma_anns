@@ -48,7 +48,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 
     QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
                                                batch_of_queries);
-    if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND || parent->dist_search_mode== DistributedSearchMode::SINGLE_SERVER) {
       uint32_t server_peer_id =
           parent->current_round_robin_peer_index.fetch_add(1) %
           parent->other_peer_ids.size();
@@ -412,7 +412,7 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
             res->query_id, std::chrono::steady_clock::now());
         parent->num_results_received.fetch_add(1);
       }
-    } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND || parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
       // LOG(INFO) << "result received " << res->query_id;
       parent->results.insert_or_assign(res->query_id, res);
       // for (auto i = 0; i < res->num_res; i++) {

@@ -292,15 +292,14 @@ public:
                     uint32_t num_search_threads,
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
-                    DistributedSearchMode dist_search_mode, bool tags = false,
+                    DistributedSearchMode dist_search_mode,
                     pipeann::Parameters *parameters = nullptr,
-                    uint64_t max_queries_balance = 8, bool enable_locs = true,
-                    bool use_batching = false, uint64_t max_batch_size = 0,
+                    uint64_t max_queries_balance = 8, bool use_batching = false,
+                    uint64_t max_batch_size = 0,
                     bool use_counter_thread = false,
                     std::string counter_csv = "",
-                    uint64_t counter_sleep_ms = 500,
-                    bool use_logging = false,
-                    const std::string& log_file = "");
+                    uint64_t counter_sleep_ms = 500, bool use_logging = false,
+                    const std::string &log_file = "");
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -481,7 +480,7 @@ private:
 
   bool load_flag = false;   // already loaded.
   bool enable_tags = false; // support for tags and dynamic indexing
-  bool enable_locs = true; // support for loc files
+  bool enable_locs = false; // support for loc files
 
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;

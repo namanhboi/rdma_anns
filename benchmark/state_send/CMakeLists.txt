@@ -3,14 +3,14 @@ set(COMMON_INCLUDE_DIR
   
 )
 
-add_executable(run_benchmark_state_send_local run_benchmark_state_send_local.cpp)
-target_compile_features(run_benchmark_state_send_local PRIVATE cxx_std_20)
-target_include_directories(run_benchmark_state_send_local PRIVATE ${COMMON_INCLUDE_DIR})
-target_link_libraries(run_benchmark_state_send_local
-  ssd_state_send
-Boost::program_options)
+# add_executable(run_benchmark_state_send_local run_benchmark_state_send_local.cpp)
+# target_compile_features(run_benchmark_state_send_local PRIVATE cxx_std_20)
+# target_include_directories(run_benchmark_state_send_local PRIVATE ${COMMON_INCLUDE_DIR})
+# target_link_libraries(run_benchmark_state_send_local
+#   ssd_state_send
+# Boost::program_options)
 
-target_compile_options(run_benchmark_state_send_local PRIVATE -g -O0 -Wall)
+# target_compile_options(run_benchmark_state_send_local PRIVATE -g -O0 -Wall)
 
 
 find_package(nlohmann_json REQUIRED)

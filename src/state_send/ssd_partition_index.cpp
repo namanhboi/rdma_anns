@@ -17,13 +17,11 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::Metric m, uint8_t partition_id, uint32_t num_search_threads,
     std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator,
-    DistributedSearchMode dist_search_mode, bool tags,
-    pipeann::Parameters *params, uint64_t num_queries_balance, bool enable_locs,
-    bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
-					      std::string counter_csv, uint64_t counter_sleep_ms,
-					      bool use_logging,
-    const std::string &log_file)
-    : reader(fileReader), communicator(communicator),
+    DistributedSearchMode dist_search_mode, pipeann::Parameters *params,
+    uint64_t num_queries_balance, bool use_batching, uint64_t max_batch_size,
+    bool use_counter_thread, std::string counter_csv, uint64_t counter_sleep_ms,
+    bool use_logging, const std::string &log_file)
+: reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
@@ -40,10 +38,6 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   }
 
   LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
-  if (dist_search_mode == DistributedSearchMode::LOCAL) {
-    assert(communicator == nullptr);
-  }
-
   if (use_batching && max_batch_size == 0)
     throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
@@ -58,8 +52,8 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   }
   this->num_search_threads = num_search_threads;
   data_is_normalized = false;
-  this->enable_tags = tags;
-  this->enable_locs = enable_locs;
+  // this->enable_tags = tags;
+  // this->enable_locs = enable_locs;
   if (m == pipeann::Metric::COSINE) {
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "Cosine metric chosen for (normalized) float data."
@@ -85,6 +79,17 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     LOG(INFO) << "Beamwidth: " << this->beamwidth << ", L: " << this->l_index
               << ", R: " << this->range << ", C: " << this->maxc;
   }
+
+
+  if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    this->enable_locs = true;
+  } else if (this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    this->enable_tags = true;
+  } else if (this->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
+    this->enable_tags = false;
+    this->enable_locs = false;
+  }
+  
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
     search_threads.push_back(std::make_unique<SearchThread>(this, thread_id));
   }
@@ -232,7 +237,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   pq_table.load_pq_centroid_bin(pq_table_bin.c_str(), nchunks_u64,
                                 pq_pivots_offset);
 
-  if (dist_search_mode == DistributedSearchMode::LOCAL &&
+  if (dist_search_mode == DistributedSearchMode::SINGLE_SERVER &&
       disk_nnodes != npts_u64) {
     LOG(INFO) << "Mismatch in #points for compressed data file and disk "
                  "index file: "

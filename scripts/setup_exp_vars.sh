@@ -28,7 +28,7 @@ if [ $# -ne 5 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode>"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M"
-    echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER"
+    echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"
     echo "  mode: local or distributed"
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
@@ -36,7 +36,7 @@ fi
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" ]] && { echo "Error: dataset_name must be 'bigann'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" ]] && { echo "Error: dataset_size must be 10M or 100M"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" ]] && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" ]] && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
 # Numeric validation
@@ -56,28 +56,22 @@ else
 fi
 
 # --- Graph prefix path ---
-if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
-    PREFIX="global_partitions"
-    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
+if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
+    GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/pipeann_${DATASET_SIZE}"
 else
-    PREFIX="clusters"
-    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
+    if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
+	PREFIX="global_partitions"
+	GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
+    else
+	PREFIX="clusters"
+	GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
+    fi
+    GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/${PREFIX}_${NUM_SERVERS}/${GRAPH_SUFFIX}"
 fi
-
-GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/${PREFIX}_${NUM_SERVERS}/${GRAPH_SUFFIX}"
 
 # --- Query and truthset paths ---
 QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.u8bin"
 TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/bigann-${DATASET_SIZE}"
-
-# --- Tags/locs toggle ---
-if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
-    USE_TAGS=false
-    ENABLE_LOCS=true
-else
-    USE_TAGS=true
-    ENABLE_LOCS=false
-fi
 
 # --- User configuration ---
 USER_LOCAL=nam
@@ -158,7 +152,6 @@ export NUM_SEARCH_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BAT
 export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE
 export NUM_SERVERS DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
 export ANNGRAHPS_PREFIX GRAPH_PREFIX QUERY_BIN TRUTHSET_BIN
-export USE_TAGS ENABLE_LOCS
 export PEER_IPS
 export PEER_IPS_STR="${PEER_IPS[*]}"
 export USER
@@ -186,8 +179,6 @@ if [ $SOURCED -eq 0 ]; then
     echo "Graph prefix path:   $GRAPH_PREFIX"
     echo "Query binary:        $QUERY_BIN"
     echo "Truthset binary:     $TRUTHSET_BIN"
-    echo "Use tags:            $USE_TAGS"
-    echo "Enable locs:         $ENABLE_LOCS"
     echo
     echo "Peer IPs (servers + client):"
     for ip in "${PEER_IPS[@]}"; do

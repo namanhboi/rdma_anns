@@ -71,6 +71,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     dist_search_mode = DistributedSearchMode::STATE_SEND;
   } else if (dist_search_mode_str == "SCATTER_GATHER") {
     dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
+  }else if (dist_search_mode_str == "SINGLE_SERVER") {
+    dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
   } else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);

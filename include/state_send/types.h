@@ -24,7 +24,7 @@ enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 enum class DistributedSearchMode : uint32_t {
   SCATTER_GATHER = 0,
   STATE_SEND = 1,
-  LOCAL = 2
+  SINGLE_SERVER = 2
 };
 
 
@@ -33,8 +33,8 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
     return "SCATTER_GATHER";
   } else if (mode == DistributedSearchMode::STATE_SEND) {
     return "STATE_SEND";
-  } else if (mode == DistributedSearchMode::LOCAL) {
-    return "LOCAL";
+  } else if (mode == DistributedSearchMode::SINGLE_SERVER) {
+    return "SINGLE_SERVER";    
   } else {
     throw std::runtime_error("Weird dist search mode value");
   }
