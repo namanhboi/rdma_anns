@@ -5,7 +5,10 @@
 
 
 /**
-   $HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 ~/big-ann-benchmarks/data/bigann/10M/overlap_clusters_2/pipeann_10M
+   $HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files \ ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 \
+~/big-ann-benchmarks/data/bigann/10M/overlap_clusters_2/pipeann_10M
+
+./build/src/state_send/create_overlap_partition_loc_files /home/nd433/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_100000000 uint8 2 0.2 /home/nd433/anngraphs/bigann/100M/global_overlap_partitions_2/pipeann_100M
 */
 int main(int argc, char **argv) {
   std::string base_file(argv[1]);

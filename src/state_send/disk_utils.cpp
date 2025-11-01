@@ -910,8 +910,9 @@ void create_and_write_overlap_partitions_to_loc_files(
 
   PointSet points = internal::ReadBytes<T>(base_file);
   const double epsilon = 0.05;
+  // for some dumb reason it has to be num_partitions - 1
   std::vector<std::vector<uint32_t>> partitions = OverlappingGraphPartitioning(
-									       points, num_partitions, epsilon, overlap, false);
+									       points, num_partitions - 1, epsilon, overlap, false);
   
   write_partitions_to_loc_files(partitions, output_index_path_prefix);
 }
@@ -962,12 +963,12 @@ void create_overlap_partition_assignment_file(const std::string &output_index_pa
   std::ofstream partition_out(partition_assignment_file, std::ios::binary);
 
   uint8_t num_partitions_u8 = static_cast<uint8_t>(num_partitions);
-  partition_out.write(reinterpret_cast<char *>(num_points), sizeof(num_points));
-  partition_out.write(reinterpret_cast<char *>(num_partitions_u8),
+  partition_out.write(reinterpret_cast<char *>(&num_points), sizeof(num_points));
+  partition_out.write(reinterpret_cast<char *>(&num_partitions_u8),
                       sizeof(num_partitions_u8));
   for (const auto &home_partitions : partition_map) {
     uint8_t num_home_partition_u8 = static_cast<uint8_t>(home_partitions.size());
-    partition_out.write(reinterpret_cast<char *>(num_home_partition_u8),
+    partition_out.write(reinterpret_cast<char *>(&num_home_partition_u8),
                         sizeof(num_home_partition_u8));
     partition_out.write(reinterpret_cast<const char *>(home_partitions.data()),
                         sizeof(uint8_t) * num_home_partition_u8);

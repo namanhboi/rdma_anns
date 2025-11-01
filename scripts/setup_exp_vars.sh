@@ -16,20 +16,24 @@ SERVER_STARTING_ADDRESS="10.10.1.1"
 BASE_PORT=8000
 
 # --- Argument parsing ---
-NUM_SERVERS=$1
-DATASET_NAME=$2
-DATASET_SIZE=$3
-DIST_SEARCH_MODE=$4
-MODE=$5
+MASTER_LOG_FOLDER_NAME=$1
+NUM_SERVERS=$2
+DATASET_NAME=$3
+DATASET_SIZE=$4
+DIST_SEARCH_MODE=$5
+MODE=$6
+NUM_SEARCH_THREADS=$7
+MAX_BATCH_SIZE=$8
 
-
-
-if [ $# -ne 5 ]; then
-    echo "Usage: ${BASH_SOURCE[0]} <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode>"
+if [ $# -ne 8 ]; then
+    echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size>"
+    echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M"
     echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"
     echo "  mode: local or distributed"
+    echo "  num_search_thread: number"
+    echo "  max_batch_size: number"
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
 
@@ -126,11 +130,11 @@ fi
 
 
 # --- Server parameters ---
-NUM_SEARCH_THREADS=8
+
 USE_MEM_INDEX=true
 NUM_QUERIES_BALANCE=8
 USE_BATCHING=true
-MAX_BATCH_SIZE=1
+
 USE_COUNTER_THREAD=true
 USE_LOGGING=true
 COUNTER_SLEEP_MS=10
@@ -144,7 +148,7 @@ MEM_L=10
 RECORD_STATS=true
 SEND_RATE=0
 
-EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_LVEC_${LVEC// /_}
+EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_LVEC_${LVEC// /_}
 # --- Export variables ---
 
 
@@ -157,6 +161,8 @@ export PEER_IPS_STR="${PEER_IPS[*]}"
 export USER
 export EXPERIMENT_NAME
 export USE_LOGGING
+export MASTER_LOG_FOLDER_NAME
+
 
 if [[ "$MODE" == "distributed" ]]; then
     export CLOUDLAB_HOSTS

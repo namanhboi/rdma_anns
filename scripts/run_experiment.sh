@@ -11,7 +11,7 @@ echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Now source relative to script location
-source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5
+source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8
 
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"
@@ -106,15 +106,15 @@ echo "========================================"
 
 
 LOG_DIRNAME="logs_${EXPERIMENT_NAME}_$(date +%Y%m%d_%H%M%S)"
-LOCAL_LOG_DIR="$HOME/workspace/rdma_anns/${LOG_DIRNAME}"
+LOCAL_LOG_DIR="$HOME/workspace/rdma_anns/logs/${MASTER_LOG_FOLDER_NAME}/${LOG_DIRNAME}"
 mkdir -p "$LOCAL_LOG_DIR"
-
+REMOTE_LOG_DIR="${WORKDIR}/logs/${MASTER_LOG_FOLDER_NAME}/${LOG_DIRNAME}"
 
 # For distributed mode, use CloudLab hostnames
 echo "Creating log directories on CloudLab hosts..."
 for CLOUDLAB_HOST in "${CLOUDLAB_HOSTS[@]}"; do
     echo "  Creating directories on $CLOUDLAB_HOST..."
-    sshCommandSync "$CLOUDLAB_HOST" "mkdir -p ${WORKDIR}/${LOG_DIRNAME}"
+    sshCommandSync "$CLOUDLAB_HOST" "mkdir -p ${REMOTE_LOG_DIR}"
     echo "    ✓ Ready: $CLOUDLAB_HOST"
 done
 
@@ -139,8 +139,8 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
   fi
   
   echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
-  COUNTER_CSV=${WORKDIR}/${LOG_DIRNAME}/counter_${i}.csv
-  LOG_FILE=${WORKDIR}/${LOG_DIRNAME}/log_${i}.txt
+  COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
+  LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
   # Build server command with all arguments
   SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
@@ -164,7 +164,7 @@ for i in $(seq 0 $((NUM_SERVERS - 1))); do
   # Launch server via SSH
   REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
     "cd ${WORKDIR} && $SERVER_CMD" \
-    "${WORKDIR}/${LOG_DIRNAME}/server_${i}.log")
+    "${REMOTE_LOG_DIR}/server_${i}.log")
   
   SERVER_PIDS[$i]=$REMOTE_PID
   SERVER_HOSTS[$i]=$SSH_HOST
@@ -191,8 +191,6 @@ echo "  Client via $CLIENT_SSH_HOST"
 echo "  Client peer ID: $CLIENT_ID"
 echo "  Client address: tcp://$CLIENT_IP"
 
-RESULT_FOLDER=${WORKDIR}/${LOG_DIRNAME}/
-
 # Build client command with all arguments
 CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --num_client_thread=$NUM_CLIENT_THREADS \
@@ -209,13 +207,13 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --send_rate=$SEND_RATE \
   --address_list $ADDRESS_LIST_STR \
   --data_type=$DATA_TYPE \
-  --result_output_folder=$RESULT_FOLDER"
+  --result_output_folder=$REMOTE_LOG_DIR"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH
 CLIENT_REMOTE_PID=$(sshCommandAsync "$CLIENT_SSH_HOST" \
   "cd ${WORKDIR} && $CLIENT_CMD" \
-  "${WORKDIR}/${LOG_DIRNAME}/client.log")
+  "${REMOTE_LOG_DIR}/client.log")
 
 echo "  PID: $CLIENT_REMOTE_PID"
 
@@ -230,9 +228,9 @@ done
 echo
 echo "Client via $CLIENT_SSH_HOST: PID $CLIENT_REMOTE_PID"
 echo
-echo "Logs available at: ${WORKDIR}/${LOG_DIRNAME}/"
-echo "  Server logs: ${LOG_DIRNAME}/server_*.log"
-echo "  Client log: ${LOG_DIRNAME}/client.log"
+echo "Logs available at: ${REMOTE_LOG_DIR}/"
+echo "  Server logs: ${REMOTE_LOG_DIR}/server_*.log"
+echo "  Client log: ${REMOTE_LOG_DIR}/client.log"
 echo "========================================"
 
 # --- Cleanup handler (for Ctrl+C) ---
@@ -319,7 +317,7 @@ if [[ "$MODE" == "distributed" ]]; then
         echo "  Copying logs from $CLOUDLAB_HOST..."
         
         # Use tar over SSH
-        ssh $SSH_OPTS "$CLOUDLAB_HOST" "cd ${WORKDIR}/${LOG_DIRNAME} 2>/dev/null && tar cf - . 2>/dev/null" | tar xf - -C "$LOCAL_LOG_DIR/" 2>/dev/null && {
+        ssh $SSH_OPTS "$CLOUDLAB_HOST" "cd ${REMOTE_LOG_DIR} 2>/dev/null && tar cf - . 2>/dev/null" | tar xf - -C "$LOCAL_LOG_DIR/" 2>/dev/null && {
             echo "    ✓ Logs saved to: $LOCAL_LOG_DIR"
         } || {
             echo "    ⚠ Could not copy logs from $CLOUDLAB_HOST"
@@ -329,24 +327,14 @@ fi
 
 echo
 echo "All logs organized successfully!"
-if [[ "$MODE" == "distributed" ]]; then
-    echo "Logs location: $LOCAL_LOG_DIR"
-else
-    echo "Logs location: $HOME/workspace/rdma_anns/${LOG_DIRNAME}"
-fi
-
-
-
-
-
+echo "Logs location: $LOCAL_LOG_DIR"
 echo
-
 echo "Done!"
 
 
 ### making the figuers automatically
-mkdir "${LOCAL_LOG_DIR}/figures"
-python3.10 "$HOME/workspace/rdma_anns/scripts/plot_counter_data.py" -i ${LOCAL_LOG_DIR}  -o "${LOCAL_LOG_DIR}/figures"
-python3.10 "$HOME/workspace/rdma_anns/scripts/plot_query_data.py" -i ${LOCAL_LOG_DIR} -o "${LOCAL_LOG_DIR}/figures"
-python3.10 "$HOME/workspace/rdma_anns/scripts/analyze_log.py" ${LOCAL_LOG_DIR} "${LOCAL_LOG_DIR}/figures"
+# mkdir "${LOCAL_LOG_DIR}/figures"
+# python3.10 "$HOME/workspace/rdma_anns/scripts/plot_counter_data.py" -i ${LOCAL_LOG_DIR}  -o "${LOCAL_LOG_DIR}/figures"
+# python3.10 "$HOME/workspace/rdma_anns/scripts/plot_query_data.py" -i ${LOCAL_LOG_DIR} -o "${LOCAL_LOG_DIR}/figures"
+# python3.10 "$HOME/workspace/rdma_anns/scripts/analyze_log.py" ${LOCAL_LOG_DIR} "${LOCAL_LOG_DIR}/figures"
 
