@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
   } else {
     throw std::invalid_argument("data type weird value");
   }
+  sort_and_rewrite_partition_loc_files(output_index_path_prefix,
+                                       num_partitions);
   create_overlap_partition_assignment_file(output_index_path_prefix,
                                            num_partitions);
 
