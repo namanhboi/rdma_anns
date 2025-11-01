@@ -552,7 +552,10 @@ void create_and_write_partitions_to_loc_files(
 
   std::vector<std::vector<int>> graph = load_graph_file(graph_path);
   std::vector<std::vector<uint32_t>> partitions =
-      get_partitions_from_adjgraph(graph, num_partitions);
+    get_partitions_from_adjgraph(graph, num_partitions);
+  for (auto &partition : partitions) {
+    std::sort(partition.begin(), partition.end());
+  }
   write_partitions_to_loc_files(partitions, output_index_path_prefix);
 }
 
@@ -913,6 +916,9 @@ void create_and_write_overlap_partitions_to_loc_files(
   // for some dumb reason it has to be num_partitions - 1
   std::vector<std::vector<uint32_t>> partitions = OverlappingGraphPartitioning(
 									       points, num_partitions - 1, epsilon, overlap, false);
+  for (auto &partition : partitions) {
+    std::sort(partition.begin(), partition.end());
+  }
   
   write_partitions_to_loc_files(partitions, output_index_path_prefix);
 }
@@ -975,6 +981,24 @@ void create_overlap_partition_assignment_file(const std::string &output_index_pa
   }
 }
 
+void sort_and_rewrite_partition_loc_files(
+					  const std::string &output_index_path_prefix, int num_partitions) {
+  for (uint32_t i = 0; i < num_partitions; i++) {
+    std::string partition_loc_file = output_index_path_prefix + "_partition" +
+                                     std::to_string(i) + "_ids_uint32.bin";
+    if (!file_exists(partition_loc_file)) {
+      throw std::invalid_argument(partition_loc_file +" doesn't exist");
+    }
+    size_t num_pts, dim;
+    std::vector<uint32_t> node_ids;
+    pipeann::load_bin<uint32_t>(partition_loc_file, node_ids, num_pts, dim);
+    std::sort(node_ids.begin(), node_ids.end());
+    pipeann::save_bin<const uint32_t>(partition_loc_file, node_ids.data(),
+                                      node_ids.size(), 1);
+  }  
+}
+
+
 void load_overlap_partition_assignment_file(
     const std::string &partition_assignment_file,
 					    std::vector<std::vector<uint8_t>> &partition_assignment,
@@ -995,6 +1019,12 @@ void load_overlap_partition_assignment_file(
     partition_assignment[i].resize(num_home_partitions);
     input.read(reinterpret_cast<char *>(partition_assignment[i].data()),
                sizeof(uint8_t) * num_home_partitions);
+  }
+  for (const auto partition : partition_assignment) {
+    if (partition.size() > num_partitions) {
+      throw std::runtime_error(
+			       "number of home partitions more than num_parittions");
+    }
   }
 }
 

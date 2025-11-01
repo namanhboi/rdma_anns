@@ -17,6 +17,8 @@ void create_indices(const std::string &base_file,
   }
   create_and_write_partitions_to_loc_files(graph_path, output_index_path_prefix,
                                            num_partitions);
+  sort_and_rewrite_partition_loc_files(output_index_path_prefix,
+                                       num_partitions);
   write_partitions_to_txt_files(output_index_path_prefix, num_partitions);
   if (!only_partition) {
     create_partition_assignment_file(output_index_path_prefix, num_partitions);
@@ -39,10 +41,7 @@ void create_indices(const std::string &base_file,
 }
 
 /**
-   ./create_state_send_indices uint8
-/home/nam/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_10000000
-/home/nam/big-ann-benchmarks/data/bigann/pipeann_10M l2 2
-/home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M
+   ./create_state_send_indices uint8 /home/nam/big-ann-benchmarks/data/bigann/base.1B.u8bin.crop_nb_10000000 /home/nam/big-ann-benchmarks/data/bigann/pipeann_10M l2 2 /home/nam/big-ann-benchmarks/data/bigann/global_graph_partitions/pipeann_10M
 
 
 ./build/tests/search_memory_index uint8 10000000

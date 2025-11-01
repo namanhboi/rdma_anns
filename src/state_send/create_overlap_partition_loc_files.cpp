@@ -33,4 +33,10 @@ int main(int argc, char **argv) {
   }
   create_overlap_partition_assignment_file(output_index_path_prefix,
                                            num_partitions);
+
+  // std::vector<std::vector<uint8_t>> partition_assignment;
+  // uint8_t num_partitions_test;
+  // load_overlap_partition_assignment_file(
+      // output_index_path_prefix + "_partition_assignment.bin",
+					 // partition_assignment, num_partitions_test);
 }

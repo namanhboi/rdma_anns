@@ -174,3 +174,7 @@ void load_overlap_partition_assignment_file(
     const std::string &partition_assignment_file,
     std::vector<std::vector<uint8_t>> &partition_assignment,
 					    uint8_t &num_partitions);
+
+
+void sort_and_rewrite_partition_loc_files(
+					  const std::string &output_index_path_prefix, int num_partitions);
