@@ -418,7 +418,8 @@ public:
   inline uint8_t get_cluster_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND)
       return my_partition_id;
-    return cluster_assignment[node_id];
+
+    return cluster_assignment[node_id][0];
   }
 
   uint64_t get_data_dim() {return this->data_dim;}
@@ -487,7 +488,7 @@ private:
 
   std::atomic<uint64_t> current_search_thread_index{0};
 
-  std::vector<uint8_t> cluster_assignment;
+  std::vector<std::vector<uint8_t>> cluster_assignment;
 
 
   std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;

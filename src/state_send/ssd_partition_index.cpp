@@ -310,9 +310,13 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
           ", but the cluster assignment bin file doesn't exist: " +
           cluster_file);
     }
+    // for testing right now to see what the overhead is of nodes with multiple clusters as home cluster
     size_t ca_num_pts, ca_dim;
-    pipeann::load_bin<uint8_t>(cluster_file, cluster_assignment, ca_num_pts,
-                               ca_dim);
+    std::vector<uint8_t> tmp;
+    pipeann::load_bin<uint8_t>(cluster_file, tmp, ca_num_pts, ca_dim);
+    for (const auto &node_id : tmp) {
+      cluster_assignment.push_back({node_id});
+    }
     if (ca_num_pts != this->global_graph_num_points) {
       throw std::invalid_argument("Number of points differ between partition "
                                   "assignment file and the disk index");
