@@ -2,13 +2,14 @@
 
 set -euxo pipefail
 
+if [[ $# -ne 3 ]]; then
+    echo "Usage: ${BASH_SOURCE[0]} <source_index_path_prefix> <output_index_path_prefix> <partition_id>"
+fi
+
 SOURCE_INDEX_PATH_PREFIX=$1
 OUTPUT_INDEX_PATH_PREFIX=$2
 PARTITION_ID=$3
 
-if [[ $# -ne 3 ]]; then
-    echo "Usage: ${BASH_SOURCE[0]} <source_index_path_prefix> <output_index_path_prefix> <partition_id>"
-fi
 
 PARTITION_INDEX_PREFIX="${OUTPUT_INDEX_PATH_PREFIX}_partition${PARTITION_ID}"
 
