@@ -175,12 +175,10 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     return SearchExecutionState::FINISHED;
   }
   if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
-    if (this->get_cluster_assignment(state->frontier[0]) !=
-        this->my_partition_id) {
+    if (state_is_top_cand_off_server(state)) {
       return SearchExecutionState::TOP_CAND_NODE_OFF_SERVER;
     }
   }
-
   return SearchExecutionState::TOP_CAND_NODE_ON_SERVER;
 }
 
@@ -214,12 +212,24 @@ void SSDPartitionIndex<T, TagT>::state_update_frontier(
 }
 
 template <typename T, typename TagT>
-uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_partition(
+uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_random_partition(
     SearchState<T, TagT> *state) {
   if (state->frontier.size() == 0) {
     throw std::invalid_argument("State has frontier size 0");
   }
-  return this->get_cluster_assignment(state->frontier[0]);
+  return this->get_random_partition_assignment(state->frontier[0]);
+}
+
+template <typename T, typename TagT>
+bool SSDPartitionIndex<T, TagT>::state_is_top_cand_off_server(
+							      SearchState<T, TagT> *state) {
+  if (std::find(partition_assignment[state->frontier[0]].cbegin(),
+                partition_assignment[state->frontier[0]].cend(),
+                this->my_partition_id) !=
+      partition_assignment[state->frontier[0]].cend()) {
+    return false;
+  }
+  return true;
 }
 
 std::string neighbors_to_string(pipeann::Neighbor *neighbors,
@@ -232,6 +242,11 @@ std::string neighbors_to_string(pipeann::Neighbor *neighbors,
   }
   return str.str();
 }
+
+
+
+
+
 
 template <typename T, typename TagT>
 std::string state_visited_to_string(SearchState<T, TagT> *state) {

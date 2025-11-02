@@ -15,6 +15,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <immintrin.h>
+#include <limits>
 #include <set>
 #include <string>
 #include <variant>
@@ -128,9 +129,9 @@ public:
   //                                   {
   // 
   // }
-  
-  uint8_t state_top_cand_partition(SearchState<T, TagT> *state);
 
+  uint8_t state_top_cand_random_partition(SearchState<T, TagT> *state);
+  bool state_is_top_cand_off_server(SearchState<T, TagT> *state);
 
   void state_print_detailed(SearchState<T, TagT> *state);
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
@@ -415,11 +416,16 @@ public:
 
   uint64_t get_frozen_loc() { return this->frozen_location; }
 
-  inline uint8_t get_cluster_assignment(uint32_t node_id) {
+  uint8_t get_random_partition_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND)
       return my_partition_id;
+    
+    static thread_local std::random_device dev;
+    static thread_local std::mt19937 gen(dev());
 
-    return cluster_assignment[node_id][0];
+    std::uniform_int_distribution<uint8_t> distrib(
+						   0, partition_assignment[node_id].size() - 1);
+    return partition_assignment[node_id][distrib(gen)];
   }
 
   uint64_t get_data_dim() {return this->data_dim;}
@@ -488,7 +494,7 @@ private:
 
   std::atomic<uint64_t> current_search_thread_index{0};
 
-  std::vector<std::vector<uint8_t>> cluster_assignment;
+  std::vector<std::vector<uint8_t>> partition_assignment;
 
 
   std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;

@@ -195,7 +195,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             // parent->state_print_detailed(allocated_states[i]);
           }
           uint8_t partition_assignment_top_cand =
-            parent->get_cluster_assignment(
+            parent->get_random_partition_assignment(
 					   allocated_states[i]->frontier[0]);
           if (partition_assignment_top_cand != parent->my_partition_id) {
             parent->send_state(allocated_states[i]);
@@ -214,14 +214,14 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           parent->num_foreign_states_global_queue--;          
           // state that was sent, need to check that the top node in frontier is
           // on this server
-          uint8_t partition_assignment_top_cand =
-            parent->state_top_cand_partition(allocated_states[i]);
-          if (partition_assignment_top_cand != parent->my_partition_id) {
-            throw std::runtime_error(
-                "Partition assigmnent of sent state is not the same as "
-                "server " +
-                std::to_string(partition_assignment_top_cand) + " " +
-                std::to_string(parent->my_partition_id));
+          // uint8_t partition_assignment_top_cand =
+            // parent->state_top_cand_random_partition(allocated_states[i]);
+            if (parent->state_is_top_cand_off_server(allocated_states[i])) {
+              throw std::runtime_error("state isn't on this server");
+                // "Partition assigmnent of sent state is not the same as "
+                // "server " +
+                // std::to_string(partition_assignment_top_cand) + " " +
+                // std::to_string(parent->my_partition_id));
           }
           assert(allocated_states[i]->frontier.size()> 0);
           bool read_issued =

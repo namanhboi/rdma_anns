@@ -10,13 +10,12 @@ void create_indices(const std::string &base_file,
                     const std::string &output_index_path_prefix,
                     bool only_partition,
                     int R, int L, int num_threads) {
-  LOG(INFO) << num_partitions;
   std::string graph_path = index_path_prefix + "_graph";
   if (!file_exists(graph_path)) {
     write_graph_index_from_disk_index<T>(index_path_prefix, graph_path);
   }
-  create_and_write_partitions_to_loc_files(graph_path, output_index_path_prefix,
-                                           num_partitions);
+  create_and_write_partitions_to_loc_files<T>(
+					      base_file, output_index_path_prefix, num_partitions);
   sort_and_rewrite_partition_loc_files(output_index_path_prefix,
                                        num_partitions);
   write_partitions_to_txt_files(output_index_path_prefix, num_partitions);
@@ -36,7 +35,6 @@ void create_indices(const std::string &base_file,
 
     create_mem_index_from_disk<T>(index_path_prefix, R, L, num_threads, m);
     create_mem_index_symlink(index_path_prefix, output_index_path_prefix, num_partitions);
-    
   }
 }
 

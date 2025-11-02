@@ -198,7 +198,6 @@ cd ~/workspace/rdma_anns
 
 ** Create indices for statesend
 #+BEGIN_SRC
-
 ./build/src/state_send/create_state_send_indices uint8 /mydata/local/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anngraphs/bigann/100M/pipeann_100M l2 2 /mydata/local/anngraphs/bigann/100M/global_partitions_2/pipeann_100M 0 32 64 50
 #+END_SRC
 
@@ -209,7 +208,7 @@ cd ~/workspace/rdma_anns
 
 ** Create overlapping partition loc files
 #+BEGIN_SRC
-$HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 ~/big-ann-benchmarks/data/bigann/10M/overlap_clusters_2/pipeann_10M
+$HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 ~/big-ann-benchmarks/data/bigann/10M/global_overlap_partitions_2/pipeann_10M
 #+END_SRC
 * Cloudlab setup
 

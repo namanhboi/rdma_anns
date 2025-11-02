@@ -20,6 +20,7 @@
 #include "points_io.h"
 #include "overlapping_partitioning.h"
 #include <unordered_set>
+#include "partitioning.h"
 
 namespace fs = std::filesystem;
 
@@ -531,11 +532,13 @@ void write_partitions_to_txt_files(
   }
 }
 
+
+template<typename T>
 void create_and_write_partitions_to_loc_files(
-    const std::string &graph_path, const std::string &output_index_path_prefix,
+    const std::string &base_file, const std::string &output_index_path_prefix,
     int num_partitions) {
-  if (!file_exists(graph_path)) {
-    throw std::invalid_argument("graph doesn't exist " + graph_path);
+  if (!file_exists(base_file)) {
+    throw std::invalid_argument("base_file doesn't exist " + base_file);
   }
 
   bool should_partition = false;
@@ -550,9 +553,12 @@ void create_and_write_partitions_to_loc_files(
   if (!should_partition)
     return;
 
-  std::vector<std::vector<int>> graph = load_graph_file(graph_path);
-  std::vector<std::vector<uint32_t>> partitions =
-    get_partitions_from_adjgraph(graph, num_partitions);
+  PointSet points = internal::ReadBytes<T>(base_file);
+  const double epsilon = 0.05;
+  // for some dumb reason it has to be num_partitions - 1
+  std::vector<std::vector<uint32_t>> partitions = ConvertPartitionToClusters(
+									     GraphPartitioning(points, num_partitions , epsilon, false));
+  
   for (auto &partition : partitions) {
     std::sort(partition.begin(), partition.end());
   }
@@ -740,8 +746,21 @@ void create_partition_assignment_file(
     }
   }
 
-  pipeann::save_bin<uint8_t>(partition_assignment_file, partition_map.data(),
-                             num_points, 1);
+  // pipeann::save_bin<uint8_t>(partition_assignment_file, partition_map.data(),
+                             // num_points, 1);
+  std::ofstream partition_out(partition_assignment_file, std::ios::binary);
+
+  uint8_t num_partitions_u8 = static_cast<uint8_t>(num_partitions);
+  partition_out.write(reinterpret_cast<char *>(&num_points), sizeof(num_points));
+  partition_out.write(reinterpret_cast<char *>(&num_partitions_u8),
+                      sizeof(num_partitions_u8));
+  for (const auto &home_partitions : partition_map) {
+    uint8_t num_home_partition_u8 = static_cast<uint8_t>(1);
+    partition_out.write(reinterpret_cast<char *>(&num_home_partition_u8),
+                        sizeof(num_home_partition_u8));
+    partition_out.write(reinterpret_cast<const char *>(&home_partitions),
+                        sizeof(uint8_t));
+  }  
 }
 
 template <typename T>
@@ -999,7 +1018,7 @@ void sort_and_rewrite_partition_loc_files(
 }
 
 
-void load_overlap_partition_assignment_file(
+void load_partition_assignment_file(
     const std::string &partition_assignment_file,
 					    std::vector<std::vector<uint8_t>> &partition_assignment,
 					    uint8_t &num_partitions) {
@@ -1010,6 +1029,8 @@ void load_overlap_partition_assignment_file(
   size_t num_points;
   input.read(reinterpret_cast<char *>(&num_points), sizeof(num_points));
   input.read(reinterpret_cast<char *>(&num_partitions), sizeof(num_partitions));
+  LOG(INFO) << "num_points " << num_points;
+  LOG(INFO) << "num_partitions " << (int)num_partitions;
   partition_assignment.resize(num_points);
   for (uint32_t i = 0; i < num_points; i++) {
     // partition_assignment[i].push_back()
@@ -1205,3 +1226,16 @@ template void create_and_write_overlap_partitions_to_loc_files<uint8_t>(
 template void create_and_write_overlap_partitions_to_loc_files<int8_t>(
     const std::string &base_file, int num_partitions, double overlap,
 								      const std::string &output_index_path_prefix);
+
+
+template void create_and_write_partitions_to_loc_files<float>(
+    const std::string &base_file, const std::string &output_index_path_prefix,
+							      int num_partitions);
+
+template void create_and_write_partitions_to_loc_files<uint8_t>(
+    const std::string &base_file, const std::string &output_index_path_prefix,
+								int num_partitions);
+
+template void create_and_write_partitions_to_loc_files<int8_t>(
+    const std::string &base_file, const std::string &output_index_path_prefix,
+							       int num_partitions);

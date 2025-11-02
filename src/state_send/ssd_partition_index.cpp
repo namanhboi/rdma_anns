@@ -11,6 +11,7 @@
 #include <thread>
 #include <unordered_map>
 #include "singleton_logger.h"
+#include "disk_utils.h"
 
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
@@ -310,16 +311,21 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
           ", but the cluster assignment bin file doesn't exist: " +
           cluster_file);
     }
-    // for testing right now to see what the overhead is of nodes with multiple clusters as home cluster
-    size_t ca_num_pts, ca_dim;
-    std::vector<uint8_t> tmp;
-    pipeann::load_bin<uint8_t>(cluster_file, tmp, ca_num_pts, ca_dim);
-    for (const auto &node_id : tmp) {
-      cluster_assignment.push_back({node_id});
-    }
-    if (ca_num_pts != this->global_graph_num_points) {
-      throw std::invalid_argument("Number of points differ between partition "
-                                  "assignment file and the disk index");
+    // for testing right now to see what the overhead is of nodes with multiple
+    // clusters as home cluster size_t ca_num_pts, ca_dim; std::vector<uint8_t>
+    // tmp; pipeann::load_bin<uint8_t>(cluster_file, tmp, ca_num_pts, ca_dim);
+    // for (const auto &node_id : tmp) {
+    // partition_assignment.push_back({node_id});
+    // }
+    uint8_t num_partitions;
+    load_partition_assignment_file(cluster_file, partition_assignment,
+                                   num_partitions);
+    for (auto &assignment : partition_assignment) {
+      auto it =
+        std::find(assignment.begin(), assignment.end(), my_partition_id);
+      if (it != assignment.end()) {
+	assignment = {my_partition_id};
+      }
     }
     LOG(INFO) << "cluster assignment file loaded successfully.";
   }
@@ -704,7 +710,7 @@ void SSDPartitionIndex<T, TagT>::send_state(
     return;
   }
   uint8_t receiver_partition_id =
-      this->get_cluster_assignment(search_state->frontier[0]);
+      this->get_random_partition_assignment(search_state->frontier[0]);
   assert(receiver_partition_id != this->my_partition_id);
   bool send_with_embedding;
 
@@ -812,7 +818,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
     SearchState<T, TagT> *state) {
-  uint64_t recipient_peer_id = parent->state_top_cand_partition(state);
+  uint64_t recipient_peer_id = parent->state_top_cand_random_partition(state);
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   if (!msg_queue.contains(recipient_peer_id)) {
     msg_queue[recipient_peer_id] =

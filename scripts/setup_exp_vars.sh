@@ -24,8 +24,9 @@ DIST_SEARCH_MODE=$5
 MODE=$6
 NUM_SEARCH_THREADS=$7
 MAX_BATCH_SIZE=$8
+OVERLAP=$9
 
-if [ $# -ne 8 ]; then
+if [ $# -ne 9 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
@@ -63,12 +64,23 @@ fi
 if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
     GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/pipeann_${DATASET_SIZE}"
 else
-    if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
-	PREFIX="global_partitions"
-	GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
+    if [[ $OVERLAP == "true" ]]; then
+	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
+	    PREFIX="global_overlap_partitions"
+	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
+	else
+	    PREFIX="overlap_clusters"
+	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
+	fi	
     else
-	PREFIX="clusters"
-	GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
+	
+	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
+	    PREFIX="global_partitions"
+	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
+	else
+	    PREFIX="clusters"
+	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
+	fi
     fi
     GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/${PREFIX}_${NUM_SERVERS}/${GRAPH_SUFFIX}"
 fi
@@ -148,7 +160,7 @@ MEM_L=10
 RECORD_STATS=true
 SEND_RATE=0
 
-EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_LVEC_${LVEC// /_}
+EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_LVEC_${LVEC// /_}
 # --- Export variables ---
 
 
