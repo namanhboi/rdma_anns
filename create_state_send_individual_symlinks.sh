@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euxo pipefail
+set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
     echo "Usage: ${BASH_SOURCE[0]} <source_index_path_prefix> <output_index_path_prefix> <partition_id>"
