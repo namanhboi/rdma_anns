@@ -26,15 +26,6 @@ void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
 }
 
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::state_reset(SearchState<T, TagT> *state) {
-  state->data_buf_idx = 0;
-  state->sector_idx = 0;
-  // state->visited.clear(); // does not deallocate memory.
-  state->full_retset.clear();
-  state->cur_list_size = state->cmps = state->k = 0;
-}
-
-template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
     SearchState<T, TagT> *state, const unsigned *node_ids,
     const uint64_t n_ids) {

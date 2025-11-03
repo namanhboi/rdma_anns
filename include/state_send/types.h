@@ -192,9 +192,9 @@ template <typename T> struct QueryEmbedding {
      for the first time.
    */
 
-  static std::shared_ptr<QueryEmbedding> deserialize(const char *buffer);
-  static std::vector<std::shared_ptr<QueryEmbedding>>
-  deserialize_queries(const char *buffer, size_t size);
+  static void deserialize(const char *buffer, QueryEmbedding *query);
+  static void deserialize_queries(const char *buffer, uint64_t num_queries,
+                                  QueryEmbedding **queries);
 
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
@@ -203,7 +203,10 @@ template <typename T> struct QueryEmbedding {
       const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
 
   static size_t get_serialize_size_queries(
-      const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
+					   const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
+
+
+  static void reset(QueryEmbedding<T>*);
 };
 
 template <typename T, typename TagT = uint32_t>
@@ -215,7 +218,7 @@ struct alignas(SECTOR_LEN) SearchState {
   T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
   float dist_scratch[512];
 
-  std::shared_ptr<QueryEmbedding<T>> query_emb;
+  QueryEmbedding<T> *query_emb = nullptr;
 
   uint64_t data_buf_idx = 0;
   uint64_t sector_idx = 0;
@@ -257,14 +260,16 @@ struct alignas(SECTOR_LEN) SearchState {
   /*
     deserialize one search state
    */
-  static SearchState *deserialize(const char *buffer);
+  static void deserialize(const char *buffer, SearchState* state);
 
   /**
      used by the handler to deserialize the blob into states to then send to
      the search threads
    */
-  static std::vector<SearchState *> deserialize_states(const char *buffer,
-                                                       size_t size);
+  static void deserialize_states(const char *buffer, uint64_t num_states,
+                                 uint64_t num_queries, SearchState **states,
+                                 QueryEmbedding<T> **queries);
+  
   /**
      write the serialized form of this state into the buffer.
      Data to be serialized:
@@ -279,8 +284,8 @@ struct alignas(SECTOR_LEN) SearchState {
        - beamwidth
        - cmps
    */
-  size_t write_serialize(char *buffer, bool with_embedding) const;
-  size_t get_serialize_size(bool with_embedding) const;
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
 
   static size_t write_serialize_states(
       char *buffer, const std::vector<std::pair<SearchState *, bool>> &states);
@@ -295,15 +300,18 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // void write_serialize_result(char *buffer) const;
   // void get_serialize_result_size(char *buffer) const;
+  static void reset(SearchState * state);
 };
 
 template <typename T> class PreallocatedQueue {
 private:
   moodycamel::BlockingConcurrentQueue<T *> queue;
   T *elements;
-
+  std::function<void(T *)> reset_element;
 public:
-  PreallocatedQueue(uint64_t num_elements) {
+  PreallocatedQueue(uint64_t num_elements,
+                    std::function<void(T *)> reset_element)
+  : reset_element(reset_element) {
     elements = new T[num_elements];
     for (uint64_t i = 0; i < num_elements; i++) {
       queue.enqueue(elements + i);
@@ -313,14 +321,10 @@ public:
   /*
     result must be allocated before hand
   */
-  void dequeue_exact(uint64_t num_elements, std::vector<T *> &result) {
-    if (result.size() < num_elements) {
-      throw std::invalid_argument("result vector too small: " +
-                                  std::to_string(result.size()));
-    }
-    size_t num_dequeued = queue.wait_dequeue_bulk(result.data(), num_elements);
+  void dequeue_exact(uint64_t num_elements, T** elements) {
+    size_t num_dequeued = queue.wait_dequeue_bulk(elements, num_elements);
     while (num_dequeued < num_elements) {
-      T **it = result.data() + num_dequeued;
+      T **it = elements + num_dequeued;
       size_t left = num_elements - num_dequeued;
       size_t new_deq = queue.wait_dequeue_bulk(it, left);
       num_dequeued += new_deq;
@@ -331,7 +335,12 @@ public:
      element must be in an "empty" state where its ready to be enqueued. for
      search state, it must be cleared.
   */
-  void enqueue(T *element) { queue.enqueue(element); }
+  void free(T *element) {
+    if (reset_element != nullptr) {
+      reset_element(element);
+    }
+    queue.enqueue(element);
+  }
 
   ~PreallocatedQueue() { delete[] elements; }
   PreallocatedQueue(const PreallocatedQueue &) = delete;

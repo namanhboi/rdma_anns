@@ -36,6 +36,10 @@
 
 #define MAX_SEARCH_THREADS 64
 
+
+constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 10000;
+constexpr uint64_t MAX_ELEMENTS_HANDLER = 256;
+
 namespace {
 inline void aggregate_coords(const unsigned *ids, const uint64_t n_ids,
                              const uint8_t *all_coords, const uint64_t ndims,
@@ -85,8 +89,7 @@ constexpr int max_requests = 1000;
 template <typename T, typename TagT = uint32_t> class SSDPartitionIndex {
 
   // concurernt hashmap
-  libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<QueryEmbedding<T>>>
-      query_emb_map;
+  libcuckoo::cuckoohash_map<uint64_t, QueryEmbedding<T>*> query_emb_map;
 public:
   /**
      state of a beam search execution
@@ -183,8 +186,6 @@ private:
 
     moodycamel::ConsumerToken search_thread_consumer_token;
 
-    moodycamel::ConcurrentQueue<SearchState<T, TagT> *> thread_state_queue;
-
     std::atomic<uint64_t> number_concurrent_queries = 0;
 
     std::atomic<uint64_t> number_own_states = 0;
@@ -208,7 +209,6 @@ private:
        issueing a query. Instead, wait on io requests
      */
     SearchThread(SSDPartitionIndex *parent, uint64_t thread_id);
-    void push_state(SearchState<T, TagT> *new_state);
     void start();
     void signal_stop();
     void join();
@@ -511,15 +511,13 @@ private:
   std::unique_ptr<P2PCommunicator> &communicator;
 
 private:
+  PreallocatedQueue<SearchState<T>> preallocated_state_queue;
+  PreallocatedQueue<QueryEmbedding<T>> preallocated_query_emb_queue;
+private:
   /**
      notify based on client peer id
    */
   void notify_client_tcp(SearchState<T, TagT> *search_state);
-  /**
-     writes results to the res_tags and res_dists that client specified and
-     increment completion count. Deallocates the search_state as well.
-  */
-  void notify_client_local(SearchState<T, TagT> *search_state);
 
   /**
      STATE WILL BE DELETED
@@ -536,6 +534,12 @@ private:
 
 private:
   std::atomic<uint64_t> msg_received_id = 0;
+
+  /*
+    used to store the pointers in handler
+   */
+  std::array<SearchState<T, TagT> *, MAX_ELEMENTS_HANDLER> state_scratch;
+  std::array<QueryEmbedding<T>*, MAX_ELEMENTS_HANDLER> query_scratch;
 public:
   /**
    * will be registered to the communicator by the server cpp file.
@@ -543,19 +547,4 @@ public:
    * from these handler
    */
   void receive_handler(const char* buffer, size_t size);
-
-public:
-  /**
-     right now we search the disk index directly without going through the in
-     mem index. After query is done, increment completion_count
-   */
-  void search_ssd_index_local(
-      const T *query_emb, const uint64_t query_id, const uint64_t k_search,
-      const uint32_t mem_L, const uint64_t l_search, TagT *res_tags,
-      float *res_dists, const uint64_t beam_width,
-			      std::shared_ptr<std::atomic<uint64_t>> completion_count);
-
-  // void search_ssd_index(const T *query_emb, const uint64_t k_search,
-                        // const uint32_t mem_L, const uint64_t l_search,
-                        // const uint64_t beam_width, const uint64_t peer_id);
 };

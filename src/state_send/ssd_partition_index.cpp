@@ -1,6 +1,5 @@
 #include "ssd_partition_index.h"
 #include "communicator.h"
-#include "parlay/type_traits.h"
 #include "query_buf.h"
 #include "types.h"
 #include "utils.h"
@@ -22,11 +21,15 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     uint64_t num_queries_balance, bool use_batching, uint64_t max_batch_size,
     bool use_counter_thread, std::string counter_csv, uint64_t counter_sleep_ms,
     bool use_logging, const std::string &log_file)
-: reader(fileReader), communicator(communicator),
+    : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
-      use_batching(use_batching), use_counter_thread(use_counter_thread) {
+      use_batching(use_batching), use_counter_thread(use_counter_thread),
+      preallocated_state_queue(MAX_PRE_ALLOC_ELEMENTS,
+                               SearchState<T, TagT>::reset),
+      preallocated_query_emb_queue(MAX_PRE_ALLOC_ELEMENTS,
+                                   QueryEmbedding<T>::reset) {
   use_logging = use_logging;
     // = spdlog::basic_logger_mt("logger", log_file);
   // logger->set_pattern("%v");
@@ -61,7 +64,6 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
                    "Changing distance to L2 to boost accuracy.";
       m = pipeann::Metric::L2;
       data_is_normalized = true;
-
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
                  << " This may result in erroneous results or poor recall."
@@ -101,6 +103,8 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     counter_thread =
       std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
   }
+
+  
 }
 
 template <typename T, typename TagT>
@@ -392,96 +396,6 @@ void SSDPartitionIndex<T, TagT>::compute_pq_dists(const uint32_t src,
                                             count);
 }
 
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::notify_client_local(
-    SearchState<T, TagT> *search_state) {
-  std::shared_ptr<search_result_t> result = search_state->get_search_result();
-  apply_tags_to_result(result);
-  // auto &full_retset = search_state->full_retset;
-  // std::sort(full_retset.begin(), full_retset.end(),
-  // [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
-  // return left < right;
-  // });
-
-  // uint64_t t = 0;
-  // for (uint64_t i = 0; i < full_retset.size() && t <
-  // search_state->k_search; i++) { if (i > 0 && full_retset[i].id ==
-  // full_retset[i - 1].id) { continue;  // deduplicate.
-  // }
-  // search_state->res_tags[t] = full_retset[i].id;  // use ID to replace
-  // tags if (search_state->res_dists != nullptr) {
-  // search_state->res_dists[t] = full_retset[i].distance;
-  // }
-  // t++;
-  // }
-  for (auto i = 0; i < result->num_res; i++) {
-    search_state->res_tags[i] = result->node_id[i];
-    if (search_state != nullptr) {
-      search_state->res_dists[i] = result->distance[i];
-    }
-  }
-  search_state->completion_count->fetch_add(1);
-  delete search_state;
-}
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::search_ssd_index_local(
-    const T *query_emb, const uint64_t query_id, const uint64_t k_search,
-    const uint32_t mem_L, const uint64_t l_search, TagT *res_tags,
-    float *res_dists, const uint64_t beam_width,
-    std::shared_ptr<std::atomic<uint64_t>> completion_count) {
-  if (beam_width != 1) {
-    throw std::invalid_argument("beam width has to be 1 because of the design");
-  }
-  assert(k_search != 0);
-  // need to create a state then issue io
-  SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
-  new_search_state->client_type = ClientType::LOCAL;
-  new_search_state->l_search = l_search;
-  new_search_state->k_search = k_search;
-  new_search_state->beam_width = beam_width;
-  new_search_state->res_tags = res_tags;
-  new_search_state->res_dists = res_dists;
-  new_search_state->completion_count = completion_count;
-  new_search_state->query_id = query_id;
-  new_search_state->partition_history.push_back(this->my_partition_id);
-
-  std::shared_ptr<QueryEmbedding<T>> q = std::make_shared<QueryEmbedding<T>>();
-  memcpy(q->query, query_emb, this->data_dim * sizeof(T));
-  pq_table.populate_chunk_distances(q->query, q->pq_dists);
-  q->query_id = query_id;
-  q->dim = this->data_dim;
-  q->num_chunks = this->n_chunks;
-
-  new_search_state->query_emb = q;
-
-  query_emb_map.insert_or_assign(query_id, q);
-
-  // memcpy(new_search_state->query, query_emb, this->data_dim * sizeof(T));
-  // float *pq_dists = new_search_state->pq_dists;
-  // pq_table.populate_chunk_distances(new_search_state->query, pq_dists);
-  state_reset(new_search_state);
-  // uint32_t best_medoid = medoids[0];
-  // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
-
-  // std::sort(new_search_state->retset.begin(),
-  // new_search_state->retset.begin() + new_search_state->cur_list_size);
-  uint64_t thread_id =
-      current_search_thread_id.fetch_add(1) % num_search_threads;
-
-#ifdef BALANCE_ALL
-  void *ctx = search_threads[thread_id]->ctx;
-  if (ctx == nullptr) {
-    std::stringstream err;
-    err << "[" << __func__ << "] tried to issue io but ctx = nullptr"
-        << std::endl;
-    throw std::runtime_error(err.str());
-  }
-  new_search_state->issue_next_io_batch(ctx);
-#else
-  search_threads[thread_id]->push_state(new_search_state);
-#endif
-}
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
@@ -557,10 +471,10 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client(
     SearchState<T, TagT> *search_state) {
-  if (search_state->client_type == ClientType::LOCAL) {
-    notify_client_local(search_state);
-  } else if (search_state->client_type == ClientType::TCP) {
+  if (search_state->client_type == ClientType::TCP) {
     notify_client_tcp(search_state);
+  } else {
+    throw std::invalid_argument("Weird client type value ");
   }
 }
 
@@ -577,15 +491,21 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                      get_timestamp_ns(), msg_id,
                                      message_type_to_string(msg_type));
   if (msg_type == MessageType::QUERIES) {
+    size_t num_queries;
+    std::memcpy(&num_queries, buffer + offset, sizeof(num_queries));
+    offset += sizeof(num_queries);
+    preallocated_query_emb_queue.dequeue_exact(num_queries,
+                                               query_scratch.data());
+
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
-    std::vector<std::shared_ptr<QueryEmbedding<T>>> queries =
-      QueryEmbedding<T>::deserialize_queries(buffer + offset, size);
+    QueryEmbedding<T>::deserialize_queries(buffer + offset, num_queries,
+                                           query_scratch.data());
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
-		 message_type_to_string(msg_type), queries.size());    
-    for (auto query : queries) {
+
+    for (uint64_t i = 0; i < num_queries; i++) {
+      QueryEmbedding<T> *query = query_scratch[i];
       // std::cout << "received new query "<< query->query_id << std::endl;
       // assert(query->dim == this->dim);
       query->num_chunks = this->n_chunks;
@@ -597,13 +517,15 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
                    msg_id, message_type_to_string(msg_type));
 
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(),
-                   msg_id, message_type_to_string(msg_type));
-      SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
+                                         get_timestamp_ns(), msg_id,
+                                         message_type_to_string(msg_type));
+      preallocated_state_queue.dequeue_exact(1, state_scratch.data());
+      SearchState<T, TagT> *new_search_state = state_scratch[0];
+      // SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE",
                                          get_timestamp_ns(), msg_id,
                                          message_type_to_string(msg_type));
-
       new_search_state->client_type = ClientType::TCP;
       new_search_state->mem_l = query->mem_l;
       new_search_state->l_search = query->l_search;
@@ -617,62 +539,59 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       if (query->record_stats) {
         new_search_state->stats = std::make_shared<QueryStats>();
       }
-      state_reset(new_search_state);
 
-      // uint32_t best_medoid = medoids[0];
-      // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
-      // state_print(new_search_state);
-#ifdef PER_THREAD_QUEUE
-      uint64_t thread_id =
-          current_search_thread_id.fetch_add(1) % num_search_threads;
-
-      search_threads[thread_id]->push_state(new_search_state);
-#else
       num_new_states_global_queue.fetch_add(1);
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));      
-#endif
     }
   } else if (msg_type == MessageType::STATES) {
+    size_t num_states, num_queries;
+    std::memcpy(&num_states, buffer + offset, sizeof(num_states));
+    offset += sizeof(num_states);    
+    std::memcpy(&num_queries, buffer + offset, sizeof(num_queries));
+    offset += sizeof(num_queries);
+    preallocated_state_queue.dequeue_exact(num_states, state_scratch.data());
+    preallocated_query_emb_queue.dequeue_exact(num_queries,
+                                               query_scratch.data());
+    
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
-    std::vector<SearchState<T, TagT> *> states =
-      SearchState<T, TagT>::deserialize_states(buffer + offset, size);
+    SearchState<T, TagT>::deserialize_states(buffer + offset, num_states,
+                                             num_queries, state_scratch.data(),
+                                             query_scratch.data());
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));        
     // LOG(INFO) << "States received " << states.size();
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
-		 message_type_to_string(msg_type), states.size());        
-    for (auto state : states) {
-      assert(state->cur_list_size > 0);
-      state->partition_history.push_back(my_partition_id);
-      if (state->query_emb != nullptr) {
-        if (query_emb_map.contains(state->query_id)) {
-          throw std::runtime_error(
-              "Query embedding map contains query_id already: " +
-              std::to_string(state->query_id));
-        }
-        
-        SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
-                     get_timestamp_ns(), msg_id,
-                     message_type_to_string(msg_type));
-        query_emb_map.insert_or_assign(state->query_id, state->query_emb);
-        SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
-                     msg_id, message_type_to_string(msg_type));
-      } else {
-        state->query_emb = query_emb_map.find(state->query_id);
+    SingletonLogger::get_logger().info(
+        "[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+				       message_type_to_string(msg_type), num_states);
+
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
+                                       get_timestamp_ns(), msg_id,
+                                       message_type_to_string(msg_type));
+    for (uint64_t i = 0; i < num_queries; i++) {
+      if (query_emb_map.contains(query_scratch[i]->query_id)) {
+        throw std::runtime_error(
+            "Query emb map already contains embedding for query id " +
+            std::to_string(query_scratch[i]->query_id));
       }
+      query_emb_map.insert_or_assign(query_scratch[i]->query_id,
+                                     query_scratch[i]);
     }
-    num_foreign_states_global_queue.fetch_add(states.size());
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
+                                       get_timestamp_ns(), msg_id,
+                                       message_type_to_string(msg_type));
+    num_foreign_states_global_queue.fetch_add(num_states);
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
-    global_state_queue.enqueue_bulk(server_state_prod_token, states.begin(),
-                                    states.size());
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));    
+    global_state_queue.enqueue_bulk(server_state_prod_token, state_scratch.data(),
+                                    num_states);
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE",
+                                       get_timestamp_ns(), msg_id,
+                                       message_type_to_string(msg_type));
   } else if (msg_type == MessageType::RESULT_ACK) {
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type), 1);
@@ -681,9 +600,13 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                  message_type_to_string(msg_type));
     ack a = ack::deserialize(buffer + offset);
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));            
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE", get_timestamp_ns(),
-                 msg_id, message_type_to_string(msg_type));
+                 message_type_to_string(msg_type));
+    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
+                                       get_timestamp_ns(), msg_id,
+                                       message_type_to_string(msg_type));
+    QueryEmbedding<T> *query = query_emb_map.find(a.query_id);
+    preallocated_query_emb_queue.free(query);
+    
     query_emb_map.erase(a.query_id);
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
                  msg_id, message_type_to_string(msg_type));
@@ -823,11 +746,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
-  // auto batch_time = std::chrono::microseconds(parent->batch_time_us);
-
   std::unique_lock<std::mutex> lock(msg_queue_mutex, std::defer_lock);
-  // std::unordered_map<uint64_t, std::chrono::steady_clock::time_point>
-  // wait_time_msgs;
 
   auto msg_queue_empty = [this]() {
     for (const auto &[peer_id, states] : this->msg_queue) {
@@ -906,29 +825,10 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         parent->communicator->send_to_peer(client_peer_id, r);
         num_sent += batch_size;
       }
-      for (auto &state : *states)
-        delete state;
+      for (auto &state : *states) {
+        parent->preallocated_state_queue.free(state);
+      }
     }
-
-    // for (auto &[client_peer_id, states] : results_to_send) {
-    //   Region r;
-    //   std::vector<std::shared_ptr<search_result_t>> results;
-    //   for (const auto &state : *states) {
-    //     results.emplace_back(state->get_search_result());
-    //   }
-    //   r.length = sizeof(MessageType) +
-    //              search_result_t::get_serialize_results_size(results);
-    //   r.addr = new char[r.length];
-    //   size_t offset = 0;
-    //   MessageType msg_type = MessageType::RESULT;
-    //   std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
-    //   offset += sizeof(msg_type);
-    //   search_result_t::write_serialize_results(r.addr + offset, results);
-    //   parent->communicator->send_to_peer(client_peer_id, r);
-
-    //   for (auto &state : *states)
-    //     delete state;
-    // }
 
     for (auto &[server_peer_id, states] : states_to_send) {
       uint64_t num_sent = 0;
@@ -957,28 +857,10 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         parent->communicator->send_to_peer(server_peer_id, r);
         num_sent += batch_size;
       }
-      for (auto &state : *states)
-        delete state;
+      for (auto &state : *states) {
+        parent->preallocated_state_queue.free(state);
+      }
     }
-    // for (auto &[server_peer_id, states] : states_to_send) {
-    //   Region r;
-    //   r.length = sizeof(MessageType::STATES);
-    //   std::vector<std::pair<SearchState<T, TagT>*, bool>> state_arr;
-    //   for (const auto &state : *states) {
-    //     state_arr.emplace_back(state, should_send_emb(state,
-    //     server_peer_id));
-    //   }
-    //   r.length += SearchState<T, TagT>::get_serialize_size_states(state_arr);
-    //   r.addr = new char[r.length];
-    //   MessageType msg_type = MessageType::STATES;
-
-    //   size_t offset = 0;
-    //   std::memcpy(r.addr, &msg_type, sizeof(msg_type));
-    //   offset += sizeof(msg_type);
-    //   SearchState<T, TagT>::write_serialize_states(r.addr + offset,
-    //   state_arr); parent->communicator->send_to_peer(server_peer_id, r); for
-    //   (auto &state: *states) delete state;
-    // }
   }
 }
 

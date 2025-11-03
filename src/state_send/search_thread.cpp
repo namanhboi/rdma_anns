@@ -15,58 +15,9 @@ SSDPartitionIndex<T, TagT>::SearchThread::SearchThread(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::start() {
   running = true;
-#ifdef BALANCE_ALL
-  real_thread = std::thread(
-			    &SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all, this);
-#else
   real_thread = std::thread(
 			    &SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch, this);
-#endif
 }
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_balance_all() {
-  this->parent->reader->register_thread();
-  ctx = this->parent->reader->get_ctx();
-  if (ctx == nullptr) {
-    throw std::runtime_error("ctx given by get_ctx is nullptr");
-  }
-  while (running) {
-    IORequest *req = this->parent->reader->poll_wait(ctx);
-    if (req->search_state == nullptr) {
-      std::cerr << "poison poll detected" << std::endl;
-      // this is a poison pill to shutdown the thread
-      break;
-    }
-    // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
-    // LOG(INFO) << "number of completions: " << ready;
-
-    SearchState<T, TagT> *state =
-      reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
-    // assert(state->io_finished(ctx));
-    // std::cout << "l and k are  " << state->l_search << " " << state->k_search << std::endl;
-    // std::cout << "k and cur_list_size " << state->k << " " << state->cur_list_size << std::endl;
-    SearchExecutionState s = parent->state_explore_frontier(state);
-    if (s == SearchExecutionState::FINISHED) {
-      // TODO:send results to client, delete the state
-      if (state->client_type == ClientType::LOCAL) {
-        this->parent->notify_client_local(state);
-      }
-    } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
-      // LOG(INFO) << "Issuing io";
-      bool read_issued = parent->state_issue_next_io_batch(state, ctx);
-      // assert(read_issued);
-      if (state->frontier.empty()) {
-        // weird case, when frontier empty, search is technically complete, no read just iterates k to l_search
-        this->parent->notify_client(state);
-      }
-    } else {
-      throw std::runtime_error("multiple partitions not yet implemented");
-    }
-  }
-  this->parent->reader->deregister_thread();
-}
-
 
 
 template <typename T, typename TagT>
@@ -84,16 +35,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
   running = false;
   IORequest *noop_req = new IORequest;
   this->parent->reader->send_noop(noop_req, this->ctx);
-#ifndef BALANCE_ALL
-  thread_state_queue.enqueue(nullptr);
-#endif  
-}
-
-template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::SearchThread::push_state(
-							  SearchState<T, TagT> *new_state) {
-  bool ret = thread_state_queue.enqueue(new_state);
-  assert(ret);
 }
 
 
@@ -114,15 +55,11 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     uint64_t num_states_to_dequeue = parent->num_queries_balance - number_concurrent_queries;
     // LOG(INFO) << "number of concurrent queries " << number_concurrent_queries;
     if (num_states_to_dequeue > 0) {
-#ifdef PER_THREAD_QUEUE      
-      size_t num_dequeued = thread_state_queue.try_dequeue_bulk(
-							 allocated_states.begin(), num_states_to_dequeue);
-#else
+      // size_t num_dequeued = thread_state_queue.try_dequeue_bulk(
+							 // allocated_states.begin(), num_states_to_dequeue);
       size_t num_dequeued = parent->global_state_queue.try_dequeue_bulk(
           search_thread_consumer_token, allocated_states.begin(),
 									num_states_to_dequeue);
-#endif
-
       for (size_t i = 0; i < num_dequeued; i++) {
         if (allocated_states[i] == nullptr) {
           assert(running == false);
