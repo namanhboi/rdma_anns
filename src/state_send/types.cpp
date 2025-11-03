@@ -229,6 +229,7 @@ template <typename T, typename TagT>
 SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
 
   SearchState *state = new SearchState;
+  state->full_retset.reserve(1024);  
   size_t offset = 0;
   std::memcpy(&state->query_id, buffer + offset, sizeof(state->query_id));
   offset += sizeof(state->query_id);
