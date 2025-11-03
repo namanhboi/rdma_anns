@@ -603,13 +603,29 @@ search_result_t::deserialize_results(const char *buffer) {
 template <typename T>
 std::shared_ptr<QueryEmbedding<T>>
 QueryEmbedding<T>::deserialize(const char *buffer) {
-  std::shared_ptr<QueryEmbedding<T>> query =
-      std::make_shared<QueryEmbedding<T>>();
   size_t offset = 0;
-  std::memcpy(&query->query_id, buffer + offset, sizeof(query->query_id));
-  offset += sizeof(query->query_id);
+  uint64_t query_id;
+  std::memcpy(&query_id, buffer + offset, sizeof(query_id));
+  offset += sizeof(query_id);
+  
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_QUERY",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query_id, "QUERY");  
+  
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ALLOCATE_QUERY",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query_id, "QUERY");  
+  std::shared_ptr<QueryEmbedding<T>> query =
+    std::make_shared<QueryEmbedding<T>>();
+  query->query_id = query_id;
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ALLOCATE_QUERY",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query_id, "QUERY");  
+
+
   std::memcpy(&query->client_peer_id, buffer + offset,
               sizeof(query->client_peer_id));
+
   offset += sizeof(query->client_peer_id);
   std::memcpy(&query->mem_l, buffer + offset, sizeof(query->mem_l));
   offset += sizeof(query->mem_l);
@@ -632,7 +648,10 @@ QueryEmbedding<T>::deserialize(const char *buffer) {
   offset += sizeof(T) * query->dim;
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_COPY_QUERY_EMB",
                                      SingletonLogger::get_timestamp_ns(),
-                                     query->query_id, "QUERY");  
+                                     query->query_id, "QUERY");
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_QUERY",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query_id, "QUERY");    
   return query;
 }
 
