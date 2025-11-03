@@ -600,6 +600,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(),
                    msg_id, message_type_to_string(msg_type));
       SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
+      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE",
+                                         get_timestamp_ns(), msg_id,
+                                         message_type_to_string(msg_type));
 
       new_search_state->client_type = ClientType::TCP;
       new_search_state->mem_l = query->mem_l;
@@ -615,8 +618,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
         new_search_state->stats = std::make_shared<QueryStats>();
       }
       state_reset(new_search_state);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE", get_timestamp_ns(),
-                   msg_id, message_type_to_string(msg_type));      
+
       // uint32_t best_medoid = medoids[0];
       // state_compute_and_add_to_retset(new_search_state, &best_medoid, 1);
       // state_print(new_search_state);
@@ -653,12 +655,6 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
               "Query embedding map contains query_id already: " +
               std::to_string(state->query_id));
         }
-        // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
-                     // msg_id, message_type_to_string(msg_type));
-        // pq_table.populate_chunk_distances(state->query_emb->query,
-                                          // state->query_emb->pq_dists);
-        // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE",
-        // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
         
         SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
                      get_timestamp_ns(), msg_id,
