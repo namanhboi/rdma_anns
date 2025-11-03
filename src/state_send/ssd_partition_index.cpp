@@ -591,11 +591,6 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));
-      pq_table.populate_chunk_distances(query->query, query->pq_dists);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), msg_id,
-                   message_type_to_string(msg_type));
       SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
                    message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
@@ -658,12 +653,13 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
               "Query embedding map contains query_id already: " +
               std::to_string(state->query_id));
         }
-        SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
-                     msg_id, message_type_to_string(msg_type));
-        pq_table.populate_chunk_distances(state->query_emb->query,
-                                          state->query_emb->pq_dists);
-        SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE", get_timestamp_ns(), 
-                     msg_id, message_type_to_string(msg_type));
+        // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_PQ_POPULATE", get_timestamp_ns(),
+                     // msg_id, message_type_to_string(msg_type));
+        // pq_table.populate_chunk_distances(state->query_emb->query,
+                                          // state->query_emb->pq_dists);
+        // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_PQ_POPULATE",
+        // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
+        
         SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
                      get_timestamp_ns(), msg_id,
                      message_type_to_string(msg_type));

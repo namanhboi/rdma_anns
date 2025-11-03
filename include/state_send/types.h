@@ -194,6 +194,7 @@ template <typename T> struct QueryEmbedding {
   uint32_t dim;
   uint32_t num_chunks;
   bool record_stats;
+  bool populated_pq_dists = false;
   T query[kMaxVectorDim];
   float pq_dists[32768];
 

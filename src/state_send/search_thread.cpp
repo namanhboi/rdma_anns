@@ -123,30 +123,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 									num_states_to_dequeue);
 #endif
 
-      // states are always pulled from only 1 producer queue so they are
-      // uniform, un comment below to test
-      // if (allocated_states[0] == nullptr) {
-      //   assr
-      //   break;
-      // }
-      // bool new_states = allocated_states[0]->cur_list_size == 0;
-      // if (new_states) {
-	// parent->num_new_states_global_queue -= new_states;
-      // } else {
-        // parent->num_foreign_states_global_queue -= new_states;
-      // }
-      // for (size_t i = 0; i < num_dequeued; i++) {
-      //   if (new_states) {
-      //     if (allocated_states[0]->cur_list_size != 0) {
-      // 	    throw std::runtime_error("states are not all new");
-      //     }
-      //   } else {
-      //     if (allocated_states[0]->cur_list_size == 0) {
-      // 	    throw std::runtime_error("states are not all foreign");
-      //     }
-      //   }
-      // }
-      // LOG(INFO) << "Dequeued " << num_dequeued;
       for (size_t i = 0; i < num_dequeued; i++) {
         if (allocated_states[i] == nullptr) {
           assert(running == false);
@@ -160,13 +136,22 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           allocated_states[i]->stats->n_4k++;
           allocated_states[i]->stats->n_ios++;
         }
+        if (allocated_states[i]->query_emb == nullptr) {
+          allocated_states[i]->query_emb =
+            parent->query_emb_map.find(allocated_states[i]->query_id);
+        }
 
+        if (!allocated_states[i]->query_emb->populated_pq_dists) {
+          parent->pq_table.populate_chunk_distances(
+              allocated_states[i]->query_emb->query,
+						    allocated_states[i]->query_emb->pq_dists);
+          allocated_states[i]->query_emb->populated_pq_dists = true;
+        }
+        // if (allocated_states[i]->query_emb->pq_dists
+        
         // initialize the result set: either with in mem index or by just using
         // the medoid
         // brand new state, must be sent from client
-
-
-
         if (allocated_states[i]->cur_list_size == 0) {
           number_concurrent_queries++;
           number_own_states++;
