@@ -227,21 +227,31 @@ size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
 
 template <typename T, typename TagT>
 SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
-  SearchState *state = new SearchState;
-  state->full_retset.reserve(1024);  
+  uint64_t query_id;
   size_t offset = 0;
-  std::memcpy(&state->query_id, buffer + offset, sizeof(state->query_id));
-  offset += sizeof(state->query_id);
+  std::memcpy(&query_id, buffer + offset, sizeof(query_id));
+  offset += sizeof(query_id);
+  
 
   // --- partition history ---
   size_t size_partition_history;
   std::memcpy(&size_partition_history, buffer + offset,
               sizeof(size_partition_history));
   offset += sizeof(size_partition_history);
-  uint64_t log_msg_id = state->query_id << 32 | static_cast<uint32_t>(size_partition_history);
+  uint64_t log_msg_id = query_id << 32 | static_cast<uint32_t>(size_partition_history);
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_STATE",
                                      SingletonLogger::get_timestamp_ns(),
                                      log_msg_id, "STATE");
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ALLOCATE_STATE",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");
+  SearchState *state = new SearchState;
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ALLOCATE_STATE",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     log_msg_id, "STATE");  
+  state->query_id = query_id;
+  state->full_retset.reserve(1024);  
+
 
   const uint8_t *start_partition_history =
       reinterpret_cast<const uint8_t *>(buffer + offset);
