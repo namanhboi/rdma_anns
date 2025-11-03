@@ -274,23 +274,19 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   size_t size_full_retset;
   std::memcpy(&size_full_retset, buffer + offset, sizeof(size_full_retset));
   offset += sizeof(size_full_retset);
-  state->full_retset.reserve(size_full_retset);
+  state->full_retset.resize(size_full_retset);
 
   for (size_t i = 0; i < size_full_retset; i++) {
-    unsigned id;
-    float distance;
-    bool f;
+    std::memcpy(&state->full_retset[i].id, buffer + offset,
+                sizeof(state->full_retset[i].distance));
+    offset += sizeof(state->full_retset[i].id);
 
-    std::memcpy(&id, buffer + offset, sizeof(id));
-    offset += sizeof(id);
+    std::memcpy(&state->full_retset[i].distance, buffer + offset, sizeof(state->full_retset[i].distance));
+    offset += sizeof(state->full_retset[i].distance);
 
-    std::memcpy(&distance, buffer + offset, sizeof(distance));
-    offset += sizeof(distance);
-
-    std::memcpy(&f, buffer + offset, sizeof(f));
-    offset += sizeof(f);
-
-    state->full_retset.emplace_back(id, distance, f);
+    std::memcpy(&state->full_retset[i].flag, buffer + offset,
+                sizeof(state->full_retset[i].flag));
+    offset += sizeof(state->full_retset[i].flag);
   }
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_FULL_RETSET",
                                      SingletonLogger::get_timestamp_ns(),
@@ -304,21 +300,14 @@ SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
   offset += sizeof(state->cur_list_size);
 
   for (size_t i = 0; i < state->cur_list_size; i++) {
-    unsigned id;
-    float distance;
-    bool f;
+    std::memcpy(&state->retset[i].id, buffer + offset, sizeof(state->retset[i].id));
+    offset += sizeof(state->retset[i].id);
 
-    std::memcpy(&id, buffer + offset, sizeof(id));
-    offset += sizeof(id);
+    std::memcpy(&state->retset[i].distance, buffer + offset, sizeof(state->retset[i].distance));
+    offset += sizeof(state->retset[i].distance);
 
-    std::memcpy(&distance, buffer + offset, sizeof(distance));
-    offset += sizeof(distance);
-
-    std::memcpy(&f, buffer + offset, sizeof(f));
-    offset += sizeof(f);
-    state->retset[i].id = id;
-    state->retset[i].distance = distance;
-    state->retset[i].flag = f;
+    std::memcpy(&state->retset[i].flag, buffer + offset, sizeof(state->retset[i].flag));
+    offset += sizeof(state->retset[i].flag);
     // state->retset[i] = {id, distance, f};
   }
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_RETSET",
