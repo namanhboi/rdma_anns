@@ -3,6 +3,7 @@
    serialization
  */
 #pragma once
+#include "blockingconcurrentqueue.h"
 #include "neighbor.h"
 #include "query_buf.h"
 #include "timer.h"
@@ -20,13 +21,11 @@ static constexpr int maxKSearch = 256;
 
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 
-
 enum class DistributedSearchMode : uint32_t {
   SCATTER_GATHER = 0,
   STATE_SEND = 1,
   SINGLE_SERVER = 2
 };
-
 
 inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
   if (mode == DistributedSearchMode::SCATTER_GATHER) {
@@ -34,13 +33,11 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
   } else if (mode == DistributedSearchMode::STATE_SEND) {
     return "STATE_SEND";
   } else if (mode == DistributedSearchMode::SINGLE_SERVER) {
-    return "SINGLE_SERVER";    
+    return "SINGLE_SERVER";
   } else {
     throw std::runtime_error("Weird dist search mode value");
   }
 }
-
-
 
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 
@@ -56,33 +53,30 @@ enum class MessageType : uint32_t {
   // deallocate the memory from query embedding
   RESULT_ACK,
 
-
   RESULTS,
   RESULTS_ACK,
-
 
   POISON // used to kill the batchig thread
 };
 
-
 inline std::string message_type_to_string(MessageType msg_type) {
   switch (msg_type) {
-    case MessageType::QUERIES:
-      return "QUERIES";
-    case MessageType::STATES:
-      return "STATES";
-    case MessageType::RESULT:
-      return "RESULT";
-    case MessageType::RESULT_ACK:
-      return "RESULT_ACK";
-    case MessageType::RESULTS:
-      return "RESULTS";
-    case MessageType::RESULTS_ACK:
-      return "RESULTS_ACK";
-    case MessageType::POISON:
-      return "POISON";
-    default:
-      return "UNKNOWN";
+  case MessageType::QUERIES:
+    return "QUERIES";
+  case MessageType::STATES:
+    return "STATES";
+  case MessageType::RESULT:
+    return "RESULT";
+  case MessageType::RESULT_ACK:
+    return "RESULT_ACK";
+  case MessageType::RESULTS:
+    return "RESULTS";
+  case MessageType::RESULTS_ACK:
+    return "RESULTS_ACK";
+  case MessageType::POISON:
+    return "POISON";
+  default:
+    return "UNKNOWN";
   }
 }
 /**
@@ -97,8 +91,7 @@ struct ack {
   size_t get_serialize_size() const;
 
   static ack deserialize(const char *buffer);
-};  
-
+};
 
 enum class SearchExecutionState {
   FINISHED,
@@ -163,21 +156,17 @@ struct search_result_t {
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
 
-
   static size_t write_serialize_results(
       char *buffer,
 
-					const std::vector<std::shared_ptr<search_result_t>> &results);
+      const std::vector<std::shared_ptr<search_result_t>> &results);
 
   static size_t get_serialize_results_size(
-					   const std::vector<std::shared_ptr<search_result_t>> &results);
+      const std::vector<std::shared_ptr<search_result_t>> &results);
 
   static std::vector<std::shared_ptr<search_result_t>>
   deserialize_results(const char *buffer);
-  
 };
-
-
 
 /**
    includes both full embeddings and pq representation of query. Client uses
@@ -293,12 +282,11 @@ struct alignas(SECTOR_LEN) SearchState {
   size_t write_serialize(char *buffer, bool with_embedding) const;
   size_t get_serialize_size(bool with_embedding) const;
 
-  static size_t
-  write_serialize_states(char *buffer,
-                         const std::vector<std::pair<SearchState *, bool>> &states);
+  static size_t write_serialize_states(
+      char *buffer, const std::vector<std::pair<SearchState *, bool>> &states);
 
-  static size_t
-  get_serialize_size_states(const std::vector<std::pair<SearchState *, bool>> &states);
+  static size_t get_serialize_size_states(
+      const std::vector<std::pair<SearchState *, bool>> &states);
 
   /**
      sort the full retset then create searchrseult
@@ -309,3 +297,56 @@ struct alignas(SECTOR_LEN) SearchState {
   // void get_serialize_result_size(char *buffer) const;
 };
 
+template <typename T> class PreallocatedQueue {
+private:
+  moodycamel::BlockingConcurrentQueue<T *> queue;
+  T *elements;
+
+public:
+  PreallocatedQueue(uint64_t num_elements) {
+    elements = new T[num_elements];
+    for (uint64_t i = 0; i < num_elements; i++) {
+      queue.enqueue(elements + i);
+    }
+  }
+
+  /*
+    result must be allocated before hand
+  */
+  void dequeue_exact(uint64_t num_elements, std::vector<T *> &result) {
+    if (result.size() < num_elements) {
+      throw std::invalid_argument("result vector too small: " +
+                                  std::to_string(result.size()));
+    }
+    size_t num_dequeued = queue.wait_dequeue_bulk(result.data(), num_elements);
+    while (num_dequeued < num_elements) {
+      T **it = result.data() + num_dequeued;
+      size_t left = num_elements - num_dequeued;
+      size_t new_deq = queue.wait_dequeue_bulk(it, left);
+      num_dequeued += new_deq;
+    }
+  }
+
+  /**
+     element must be in an "empty" state where its ready to be enqueued. for
+     search state, it must be cleared.
+  */
+  void enqueue(T *element) { queue.enqueue(element); }
+
+  ~PreallocatedQueue() { delete[] elements; }
+  PreallocatedQueue(const PreallocatedQueue &) = delete;
+  PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
+  PreallocatedQueue(PreallocatedQueue &&other) noexcept
+      : queue(std::move(other.queue)), elements(other.elements) {
+    other.elements = nullptr;
+  }
+  PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
+    if (this != &other) {
+      delete[] elements;
+      queue = std::move(other.queue);
+      elements = other.elements;
+      other.elements = nullptr;
+    }
+    return *this;
+  }
+};

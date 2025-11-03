@@ -766,3 +766,12 @@ template struct QueryEmbedding<int8_t>;
 template struct SearchState<float>;
 template struct SearchState<uint8_t>;
 template struct SearchState<int8_t>;
+
+
+template class PreallocatedQueue<QueryEmbedding<float>>;
+template class PreallocatedQueue<QueryEmbedding<uint8_t>>;
+template class PreallocatedQueue<QueryEmbedding<int8_t>>;
+
+template class PreallocatedQueue<SearchState<float>>;
+template class PreallocatedQueue<SearchState<uint8_t>>;
+template class PreallocatedQueue<SearchState<int8_t>>;
