@@ -227,7 +227,6 @@ size_t SearchState<T, TagT>::get_serialize_size(bool with_embedding) const {
 
 template <typename T, typename TagT>
 SearchState<T, TagT> *SearchState<T, TagT>::deserialize(const char *buffer) {
-
   SearchState *state = new SearchState;
   state->full_retset.reserve(1024);  
   size_t offset = 0;
@@ -625,9 +624,15 @@ QueryEmbedding<T>::deserialize(const char *buffer) {
   std::memcpy(&query->num_chunks, buffer + offset, sizeof(query->num_chunks));
   offset += sizeof(query->num_chunks);
   std::memcpy(&query->record_stats, buffer + offset, sizeof(query->record_stats));
-  offset += sizeof(query->record_stats);  
+  offset += sizeof(query->record_stats);
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_COPY_QUERY_EMB",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query->query_id, "QUERY");
   std::memcpy(&query->query, buffer + offset, sizeof(T) * query->dim);
   offset += sizeof(T) * query->dim;
+  SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_COPY_QUERY_EMB",
+                                     SingletonLogger::get_timestamp_ns(),
+                                     query->query_id, "QUERY");  
   return query;
 }
 
