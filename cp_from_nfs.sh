@@ -16,13 +16,15 @@ if [[ "$FOLDER_NAME" == *"partitions"* ]]; then
     
 elif [[ "$FOLDER_NAME" == *"clusters"* ]]; then
     SUFFIX="_cluster${ID}"
-    # Copy all files with the cluster suffix except those ending with _graph
-    for file in "${NFS_FILES_PREFIX}${SUFFIX}"*; do
-        if [[ ! "$file" == *"_graph" ]]; then
-            filename=$(basename "$file")
-            cp "$file" "${MYDATA_FILES_PREFIX}${SUFFIX}${filename#*${SUFFIX}}"
-        fi
-    done
+    # Copy specific cluster files
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_disk.index" "${MYDATA_FILES_PREFIX}${SUFFIX}_disk.index"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_disk.index.tags" "${MYDATA_FILES_PREFIX}${SUFFIX}_disk.index.tags"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_mem.index" "${MYDATA_FILES_PREFIX}${SUFFIX}_mem.index"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_mem.index.data" "${MYDATA_FILES_PREFIX}${SUFFIX}_mem.index.data"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_mem.index.tags" "${MYDATA_FILES_PREFIX}${SUFFIX}_mem.index.tags"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_pq_compressed.bin" "${MYDATA_FILES_PREFIX}${SUFFIX}_pq_compressed.bin"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}_pq_pivots.bin" "${MYDATA_FILES_PREFIX}${SUFFIX}_pq_pivots.bin"
+    cp "${NFS_FILES_PREFIX}${SUFFIX}.tags" "${MYDATA_FILES_PREFIX}${SUFFIX}.tags"
     
 else
     echo "Error: Folder name must contain 'partitions' or 'clusters'"
