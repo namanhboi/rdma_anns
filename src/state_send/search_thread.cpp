@@ -184,9 +184,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       if (state->stats != nullptr) {
         state->stats->total_us += (double)state->query_timer.elapsed();
       }
-      if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
-        parent->query_emb_map.erase(state->query_id);
-      }
       number_concurrent_queries--;
       if (state->partition_history.size() == 1) {
         number_own_states--;
