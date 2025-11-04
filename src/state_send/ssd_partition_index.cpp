@@ -30,6 +30,15 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
                                SearchState<T, TagT>::reset),
       preallocated_query_emb_queue(MAX_PRE_ALLOC_ELEMENTS,
                                    QueryEmbedding<T>::reset) {
+  LOG(INFO) << "Allocated "
+            << preallocated_state_queue.get_num_elements() *
+                   sizeof(SearchState<T, TagT>)
+  << " bytes for states";
+  LOG(INFO) << "Allocated "
+            << preallocated_query_emb_queue.get_num_elements() *
+                   sizeof(QueryEmbedding<T>)
+  << " bytes for queries";
+  
   use_logging = use_logging;
     // = spdlog::basic_logger_mt("logger", log_file);
   // logger->set_pattern("%v");
@@ -554,8 +563,10 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     std::memcpy(&num_queries, buffer + offset, sizeof(num_queries));
     offset += sizeof(num_queries);
     preallocated_state_queue.dequeue_exact(num_states, state_scratch.data());
-    preallocated_query_emb_queue.dequeue_exact(num_queries,
-                                               query_scratch.data());
+    if (num_queries > 0) {
+      preallocated_query_emb_queue.dequeue_exact(num_queries,
+                                                 query_scratch.data());
+    }
     
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
@@ -584,6 +595,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
                                        get_timestamp_ns(), msg_id,
                                        message_type_to_string(msg_type));
+    for (uint64_t i = 0; i < num_states; i++) {
+      state_scratch[i]->partition_history.push_back(my_partition_id);
+    }
     num_foreign_states_global_queue.fetch_add(num_states);
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
                message_type_to_string(msg_type));
@@ -598,16 +612,18 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     // LOG(INFO) << "ack received";
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
-    ack a = ack::deserialize(buffer + offset);
+    // ack a = ack::deserialize(buffer + offset);
+    uint64_t query_id;
+    std::memcpy(&query_id, buffer + offset, sizeof(query_id));
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
                  message_type_to_string(msg_type));
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
                                        get_timestamp_ns(), msg_id,
                                        message_type_to_string(msg_type));
-    QueryEmbedding<T> *query = query_emb_map.find(a.query_id);
+    QueryEmbedding<T> *query = query_emb_map.find(query_id);
     preallocated_query_emb_queue.free(query);
-    
-    query_emb_map.erase(a.query_id);
+
+    query_emb_map.erase(query_id);
     SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
                  msg_id, message_type_to_string(msg_type));
   } else {
@@ -900,7 +916,7 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
   cached_csv_output << "timestamp_ns" << ",";
   cached_csv_output << "num_states_global_queue" << ","
-         << "num_foreign_states_global_queue" << ","
+                    << "num_foreign_states_global_queue" << ","
   << "num_new_states_global_queue" << ",";
   for (auto i = 0; i < parent->num_search_threads; i++) {
     std::string thread_header_prefix = "thread" + std::to_string(i);

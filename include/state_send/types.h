@@ -212,10 +212,10 @@ template <typename T> struct QueryEmbedding {
 template <typename T, typename TagT = uint32_t>
 struct alignas(SECTOR_LEN) SearchState {
   // buffer.
-  char sectors[SECTOR_LEN * 128];
+  char sectors[SECTOR_LEN * 4];
   uint8_t pq_coord_scratch[32768 * 32];
 
-  T data_buf[ROUND_UP(1024 * kMaxVectorDim, 256)];
+  T data_buf[ROUND_UP(512 * kMaxVectorDim, 256)];
   float dist_scratch[512];
 
   QueryEmbedding<T> *query_emb = nullptr;
@@ -249,11 +249,6 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // client information to notify of completion
   ClientType client_type;
-
-  /// LOCAL
-  TagT *res_tags;
-  float *res_dists;
-  std::shared_ptr<std::atomic<uint64_t>> completion_count;
 
   // TCP
   uint64_t client_peer_id;
@@ -307,12 +302,14 @@ template <typename T> class PreallocatedQueue {
 private:
   moodycamel::BlockingConcurrentQueue<T *> queue;
   T *elements;
+  uint64_t num_elements;
   std::function<void(T *)> reset_element;
 public:
   PreallocatedQueue(uint64_t num_elements,
                     std::function<void(T *)> reset_element)
-  : reset_element(reset_element) {
+  : num_elements(num_elements), reset_element(reset_element) {
     elements = new T[num_elements];
+    LOG(INFO) << "Allocation successful";
     for (uint64_t i = 0; i < num_elements; i++) {
       queue.enqueue(elements + i);
     }
@@ -341,6 +338,7 @@ public:
     }
     queue.enqueue(element);
   }
+  uint64_t get_num_elements() const { return num_elements; }
 
   ~PreallocatedQueue() { delete[] elements; }
   PreallocatedQueue(const PreallocatedQueue &) = delete;

@@ -287,7 +287,7 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
   size_t offset = 0;
   MessageType msg_type;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
-  assert(msg_type == MessageType::RESULT);
+  assert(msg_type == MessageType::RESULT || msg_type == MessageType::RESULTS);
   offset += sizeof(msg_type);
   if (msg_type == MessageType::RESULT) {
 

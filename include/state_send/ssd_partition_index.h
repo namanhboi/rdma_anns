@@ -36,7 +36,6 @@
 
 #define MAX_SEARCH_THREADS 64
 
-
 constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 10000;
 constexpr uint64_t MAX_ELEMENTS_HANDLER = 256;
 

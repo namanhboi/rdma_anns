@@ -452,6 +452,16 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   // state->visited.clear(); // does not deallocate memory.
   state->full_retset.clear();
   state->cur_list_size = state->cmps = state->k = 0;
+  state->query_emb = nullptr;
+  state->frontier.clear();
+  state->frontier_nhoods.clear();
+  state->frontier_read_reqs.clear();
+  state->partition_history.clear();
+  state->query_id = std::numeric_limits<uint64_t>::max();
+  state->partition_history.clear();
+  state->stats = nullptr;
+  state->client_peer_id = std::numeric_limits<uint64_t>::max();
+  
 }
 
 
