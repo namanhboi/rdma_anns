@@ -479,7 +479,12 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client(
-    SearchState<T, TagT> *search_state) {
+					       SearchState<T, TagT> *search_state) {
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    QueryEmbedding<T> *query = query_emb_map.find(search_state->query_id);
+    preallocated_query_emb_queue.free(query);
+    query_emb_map.erase(search_state->query_id);
+  }
   if (search_state->client_type == ClientType::TCP) {
     notify_client_tcp(search_state);
   } else {
