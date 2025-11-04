@@ -121,12 +121,11 @@ fi
 if [[ "$MODE" == "distributed" ]]; then
     # Full list of available CloudLab hosts
     ALL_CLOUDLAB_HOSTS=(
-        "namanh@er088.utah.cloudlab.us"
-        "namanh@er084.utah.cloudlab.us"
-        "namanh@er075.utah.cloudlab.us"
-        "namanh@er068.utah.cloudlab.us"
-        "namanh@er102.utah.cloudlab.us"
-        "namanh@er118.utah.cloudlab.us"
+        "namanh@er099.utah.cloudlab.us"
+	"namanh@er001.utah.cloudlab.us"
+	"namanh@er058.utah.cloudlab.us"
+	"namanh@er107.utah.cloudlab.us"
+	"namanh@er104.utah.cloudlab.us"
     )
     
     # Only take NUM_SERVERS + 1 hosts (servers + client)

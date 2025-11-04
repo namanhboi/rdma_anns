@@ -15,6 +15,8 @@ if [[ "$FOLDER_NAME" == *"partitions"* ]]; then
     cp "${NFS_FILES_PREFIX}${SUFFIX}_disk.index" "${MYDATA_FILES_PREFIX}${SUFFIX}_disk.index"
     cp "${NFS_FILES_PREFIX}${SUFFIX}_ids_uint32.bin" "${MYDATA_FILES_PREFIX}${SUFFIX}_ids_uint32.bin"
     cp "${NFS_FILES_PREFIX}_partition_assignment.bin" "${MYDATA_FILES_PREFIX}_partition_assignment.bin"
+
+    
     
 elif [[ "$FOLDER_NAME" == *"clusters"* ]]; then
     SUFFIX="_cluster${ID}"
