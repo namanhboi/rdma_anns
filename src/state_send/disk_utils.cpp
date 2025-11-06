@@ -21,6 +21,9 @@
 #include "overlapping_partitioning.h"
 #include <unordered_set>
 #include "partitioning.h"
+#include <parlay/parallel.h>
+#include <parlay/primitives.h>
+#include <parlay/internal/file_map.h>
 
 namespace fs = std::filesystem;
 
@@ -1048,6 +1051,71 @@ void load_partition_assignment_file(
     }
   }
 }
+
+
+void allocate_graph(long max_deg, size_t num_points, std::vector<std::vector<uint32_t>> &graph) { 
+  graph.resize(num_points);
+  parlay::parallel_for(0, num_points,
+                       [&](uint32_t i) { graph[i].resize(max_deg); });
+}
+
+
+void load_parlayann_graph_file(const std::string &graph_file, std::vector<std::vector<uint32_t>> &graph) {
+  std::ifstream reader(graph_file);
+  if (!reader.is_open()) {
+    std::cout << "graph file " << graph_file << " not found" << std::endl;
+    abort();
+  }
+  //read num points and max degree
+  uint32_t num_points;
+  uint32_t max_deg;
+  reader.read((char*)(&num_points), sizeof(uint32_t));
+  reader.read((char*)(&max_deg), sizeof(uint32_t));
+  std::cout << "Graph: detected " << num_points << " points with max degree "
+  << max_deg << std::endl;
+
+  uint32_t *degrees_start = new uint32_t[num_points];
+  reader.read((char *)(degrees_start), sizeof(uint32_t) * num_points);
+
+  uint32_t *degrees_end = degrees_start + num_points;
+  parlay::slice<uint32_t*, uint32_t*> degrees0 =
+    parlay::make_slice(degrees_start, degrees_end);
+  auto degrees = parlay::tabulate(degrees0.size(), [&](size_t i) {
+    return static_cast<size_t>(degrees0[i]);
+  });
+  auto [o, total] = parlay::scan(degrees);
+  auto offsets = o;
+  std::cout << "Total edges read from file: " << total << std::endl;
+  offsets.push_back(total);
+
+  allocate_graph(max_deg, num_points, graph);
+  
+  //write 1000000 vertices at a time
+  size_t BLOCK_SIZE = 1000000;
+  size_t index = 0;
+  size_t total_size_read = 0;
+  while(index < num_points){
+    size_t g_floor = index;
+    size_t g_ceiling = g_floor + BLOCK_SIZE <= num_points ? g_floor + BLOCK_SIZE : num_points;
+    size_t total_size_to_read = offsets[g_ceiling] - offsets[g_floor];
+    uint32_t *edges_start = new uint32_t[total_size_to_read];
+    reader.read((char*) (edges_start), sizeof(uint32_t) * total_size_to_read);
+    uint32_t* edges_end = edges_start + total_size_to_read;
+    parlay::slice<uint32_t*, uint32_t*> edges =
+      parlay::make_slice(edges_start, edges_end);
+    parlay::parallel_for(g_floor, g_ceiling, [&](size_t i) {
+      // graph[i] = degrees[i];
+      for(size_t j = 0; j < degrees[i]; j++){
+        graph[i * (max_deg + 1) + 1 + j][j] =
+          edges[offsets[i] - total_size_read + j];
+      }
+    });
+    total_size_read += total_size_to_read;
+    index = g_ceiling;
+  }
+  
+}
+
 
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,

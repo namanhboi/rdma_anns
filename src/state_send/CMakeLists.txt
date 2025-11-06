@@ -57,6 +57,8 @@ target_compile_options(graph_partitioning_utils PRIVATE
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
 
+find_package(Parlay REQUIRED)
+
 
 target_compile_features(ssd_state_send PRIVATE cxx_std_20)
 target_include_directories(ssd_state_send PUBLIC ${COMMON_INCLUDE_DIR})
@@ -68,7 +70,7 @@ target_compile_options(ssd_state_send PRIVATE
 target_link_directories(ssd_state_send PUBLIC
 	${PROJECT_SOURCE_DIR}/extern/liburing/src
 )
-target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils Boost::program_options spdlog::spdlog_header_only)
+target_link_libraries(ssd_state_send uring communicator OpenMP::OpenMP_CXX ${BLAS_LIBRARIES} graph_partitioning_utils Boost::program_options spdlog::spdlog_header_only Parlay::parlay)
 
 if(BALANCE_ALL)
     target_compile_definitions(ssd_state_send PRIVATE BALANCE_ALL)
@@ -120,6 +122,14 @@ target_compile_options(build_disk_index PRIVATE
 add_executable(create_pq_data create_pq_data.cpp)
 target_link_libraries(create_pq_data ssd_state_send)
 target_compile_options(create_pq_data PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
+
+add_executable(create_partition_loc_files create_partition_loc_files.cpp)
+target_link_libraries(create_partition_loc_files ssd_state_send)
+target_compile_options(create_partition_loc_files PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
