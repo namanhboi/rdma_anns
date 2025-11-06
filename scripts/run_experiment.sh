@@ -296,38 +296,73 @@ sleep 5
 
 echo "All processes stopped successfully!"
 
+# # --- Copy logs back to local machine ---
+# echo
+# echo "========================================"
+# echo " Organizing logs"
+# echo "========================================"
+
+# # Create local log directory with timestamp
+
+# if [[ "$MODE" == "distributed" ]]; then
+
+#     echo "Local log directory: $LOCAL_LOG_DIR"
+#     echo
+
+#     echo "Running in DISTRIBUTED mode - copying logs from remote hosts..."
+    
+#     # Copy logs from each CloudLab host
+#     for i in "${!CLOUDLAB_HOSTS[@]}"; do
+#         CLOUDLAB_HOST="${CLOUDLAB_HOSTS[$i]}"
+#         echo "  Copying logs from $CLOUDLAB_HOST..."
+        
+#         # Use tar over SSH
+#         ssh $SSH_OPTS "$CLOUDLAB_HOST" "cd ${REMOTE_LOG_DIR} 2>/dev/null && tar cf - . 2>/dev/null" | tar xf - -C "$LOCAL_LOG_DIR/" 2>/dev/null && {
+#             echo "    ✓ Logs saved to: $LOCAL_LOG_DIR"
+#         } || {
+#             echo "    ⚠ Could not copy logs from $CLOUDLAB_HOST"
+#         }
+#     done
+# fi
+
+# echo
+# echo "All logs organized successfully!"
+# echo "Logs location: $LOCAL_LOG_DIR"
+# echo
+# echo "Done!"
+
+
+
 # --- Copy logs back to local machine ---
 echo
 echo "========================================"
 echo " Organizing logs"
 echo "========================================"
 
-# Create local log directory with timestamp
-
 if [[ "$MODE" == "distributed" ]]; then
 
     echo "Local log directory: $LOCAL_LOG_DIR"
     echo
 
-    echo "Running in DISTRIBUTED mode - copying logs from remote hosts..."
+    echo "Running in DISTRIBUTED mode - copying client.log from last CloudLab host..."
     
-    # Copy logs from each CloudLab host
-    for i in "${!CLOUDLAB_HOSTS[@]}"; do
-        CLOUDLAB_HOST="${CLOUDLAB_HOSTS[$i]}"
-        echo "  Copying logs from $CLOUDLAB_HOST..."
-        
-        # Use tar over SSH
-        ssh $SSH_OPTS "$CLOUDLAB_HOST" "cd ${REMOTE_LOG_DIR} 2>/dev/null && tar cf - . 2>/dev/null" | tar xf - -C "$LOCAL_LOG_DIR/" 2>/dev/null && {
-            echo "    ✓ Logs saved to: $LOCAL_LOG_DIR"
-        } || {
-            echo "    ⚠ Could not copy logs from $CLOUDLAB_HOST"
-        }
-    done
+    # Get the last CloudLab host (where the client runs)
+    LAST_HOST_INDEX=$((${#CLOUDLAB_HOSTS[@]} - 1))
+    LAST_CLOUDLAB_HOST="${CLOUDLAB_HOSTS[$LAST_HOST_INDEX]}"
+    
+    echo "  Copying client.log from $LAST_CLOUDLAB_HOST..."
+    
+    # Copy only client.log from the last host
+    scp $SSH_OPTS "$LAST_CLOUDLAB_HOST:${REMOTE_LOG_DIR}/client.log" "$LOCAL_LOG_DIR/client.log" && {
+        echo "    ✓ client.log saved to: $LOCAL_LOG_DIR/client.log"
+    } || {
+        echo "    ⚠ Could not copy client.log from $LAST_CLOUDLAB_HOST"
+    }
 fi
 
 echo
-echo "All logs organized successfully!"
-echo "Logs location: $LOCAL_LOG_DIR"
+echo "Client log saved successfully!"
+echo "Log location: $LOCAL_LOG_DIR/client.log"
 echo
 echo "Done!"
 
