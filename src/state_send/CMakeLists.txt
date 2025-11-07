@@ -150,3 +150,12 @@ target_compile_options(convert_old_partition_assignment PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
+
+
+
+add_executable(create_base_file_from_loc_file create_base_file_from_loc_file.cpp)
+target_link_libraries(create_base_file_from_loc_file ssd_state_send)
+target_compile_options(create_base_file_from_loc_file PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
