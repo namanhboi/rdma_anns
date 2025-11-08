@@ -746,30 +746,35 @@ namespace pipeann {
     size_t train_size, train_dim;
     float *train_data;  // maximum: 256000 * dim * data_size, 1GB for 1024-dim float vector.
 
+    double p_val = ((double)training_set_size / (double)points_num);
+    if (!file_exists(pq_pivots_path)) {
+      auto start = std::chrono::high_resolution_clock::now();
+      // generates random sample and sets it to train_data and updates train_size
+      gen_random_slice<T>(normalized_file_path, p_val, train_data, train_size, train_dim);
+
+      LOG(INFO) << "Generating PQ pivots with training data of size: " << train_size
+      << " num PQ chunks: " << num_pq_chunks;
+      generate_pq_pivots(train_data, train_size, (uint32_t) dim, 256, (uint32_t) num_pq_chunks, NUM_KMEANS,
+			 pq_pivots_path);
+      auto end = std::chrono::high_resolution_clock::now();
+
+      LOG(INFO) << "Pivots generated in "
+      << std::chrono::duration<double>(end - start).count() << "s.";
+    }
+    if (!file_exists(pq_compressed_vectors_path)) {
+      auto start = std::chrono::high_resolution_clock::now();
+      generate_pq_data_from_pivots<T>(normalized_file_path, 256, (uint32_t) num_pq_chunks, pq_pivots_path,
+                                      pq_compressed_vectors_path);  // 64MB.
+      delete[] train_data;
+      train_data = nullptr;
+      auto end = std::chrono::high_resolution_clock::now();
+      LOG(INFO) << "Compressed data generated and written in: "
+      << std::chrono::duration<double>(end - start).count() << "s.";
+    }
     auto start = std::chrono::high_resolution_clock::now();
-    double p_val = ((double) training_set_size / (double) points_num);
-    // generates random sample and sets it to train_data and updates train_size
-    gen_random_slice<T>(normalized_file_path, p_val, train_data, train_size, train_dim);
-
-    LOG(INFO) << "Generating PQ pivots with training data of size: " << train_size
-              << " num PQ chunks: " << num_pq_chunks;
-    generate_pq_pivots(train_data, train_size, (uint32_t) dim, 256, (uint32_t) num_pq_chunks, NUM_KMEANS,
-                       pq_pivots_path);
-    auto end = std::chrono::high_resolution_clock::now();
-
-    LOG(INFO) << "Pivots generated in " << std::chrono::duration<double>(end - start).count() << "s.";
-    start = std::chrono::high_resolution_clock::now();
-    generate_pq_data_from_pivots<T>(normalized_file_path, 256, (uint32_t) num_pq_chunks, pq_pivots_path,
-                                    pq_compressed_vectors_path);  // 64MB.
-    delete[] train_data;
-    train_data = nullptr;
-    end = std::chrono::high_resolution_clock::now();
-    LOG(INFO) << "Compressed data generated and written in: " << std::chrono::duration<double>(end - start).count()
-              << "s.";
-    start = std::chrono::high_resolution_clock::now();
     pipeann::build_merged_vamana_index<T>(normalized_file_path, _compareMetric, single_file_index, L, R, p_val,
                                           indexing_ram_budget, mem_index_path, medoids_path, centroids_path, tag_file);
-    end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
     LOG(INFO) << "Vamana index built in: " << std::chrono::duration<double>(end - start).count() << "s.";
 
     if (tag_file == nullptr) {
