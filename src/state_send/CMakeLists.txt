@@ -167,3 +167,19 @@ target_compile_options(convert_parlayann_graph_file PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
+
+add_executable(gen_random_slice gen_random_slice.cpp)
+target_link_libraries(gen_random_slice ssd_state_send)
+target_compile_options(gen_random_slice PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
+
+
+add_executable(build_memory_index build_memory_index.cpp)
+target_link_libraries(build_memory_index ssd_state_send)
+target_compile_options(build_memory_index PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)

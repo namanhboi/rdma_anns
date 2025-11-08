@@ -1368,3 +1368,25 @@ template void create_and_write_partitions_to_loc_files<uint8_t>(
 template void create_and_write_partitions_to_loc_files<int8_t>(
     const std::string &base_file, const std::string &output_index_path_prefix,
 							       int num_partitions);
+
+
+template int build_in_memory_index<uint8_t>(
+    const std::string &data_path, const std::string &tags_file,
+    const unsigned R, const unsigned L, const float alpha,
+    const std::string &save_path, const unsigned num_threads,
+					    bool dynamic_index, bool single_file_index, pipeann::Metric distMetric);
+
+template int build_in_memory_index<float>(
+    const std::string &data_path, const std::string &tags_file,
+    const unsigned R, const unsigned L, const float alpha,
+    const std::string &save_path, const unsigned num_threads,
+					    bool dynamic_index, bool single_file_index, pipeann::Metric distMetric);
+
+
+template int build_in_memory_index<int8_t>(
+    const std::string &data_path, const std::string &tags_file,
+    const unsigned R, const unsigned L, const float alpha,
+    const std::string &save_path, const unsigned num_threads,
+					   bool dynamic_index, bool single_file_index, pipeann::Metric distMetric);
+
+

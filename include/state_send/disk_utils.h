@@ -189,3 +189,12 @@ void write_graph_file_from_parlayann_graph_file(
     const std::string &parlayann_graph_file, const std::vector<uint32_t> &ids,
 						const std::string &output_graph_file);
 
+
+
+template <typename T>
+int build_in_memory_index(const std::string &data_path,
+                          const std::string &tags_file, const unsigned R,
+                          const unsigned L, const float alpha,
+                          const std::string &save_path,
+                          const unsigned num_threads, bool dynamic_index,
+                          bool single_file_index, pipeann::Metric distMetric);
