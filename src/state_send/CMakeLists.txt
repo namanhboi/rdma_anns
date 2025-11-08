@@ -183,3 +183,12 @@ target_compile_options(build_memory_index PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
+
+
+
+add_executable(build_disk_index_from_bin_graph build_disk_index_from_bin_graph.cpp)
+target_link_libraries(build_disk_index_from_bin_graph ssd_state_send)
+target_compile_options(build_disk_index_from_bin_graph PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
