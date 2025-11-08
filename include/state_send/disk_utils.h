@@ -184,3 +184,8 @@ void sort_and_rewrite_partition_loc_files(
 void load_parlayann_graph_file(const std::string &graph_file,
                                std::vector<std::vector<uint32_t>> &graph);
 
+
+void write_graph_file_from_parlayann_graph_file(
+    const std::string &parlayann_graph_file, const std::vector<uint32_t> &ids,
+						const std::string &output_graph_file);
+
