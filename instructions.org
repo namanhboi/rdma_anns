@@ -4,7 +4,6 @@
 #+BEGIN_SRC
 
 sudo apt update -y
-sudo apt upgrade -y
 sudo apt-get install -y autoconf automake libtool pkg-config
 sudo apt install -y make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
 
@@ -324,6 +323,21 @@ cd ~/workspace/rdma_anns
 #+BEGIN_SRC
 $HOME/workspace/rdma_anns/build/src/state_send/create_overlap_partition_loc_files ~/big-ann-benchmarks/data/bigann/10M/base.1B.u8bin.crop_nb_10000000 uint8 2 0.2 ~/big-ann-benchmarks/data/bigann/10M/global_overlap_partitions_2/pipeann_10M
 #+END_SRC
+
+
+** Create bin file for a partition
+#+BEGIN_SRC
+cd ~/workspace/rdma_anns
+./build/src/state_send/create_base_file_from_loc_file uint8 /mydata/local/anngraphs/bigann/1B/base.1B.u8bin /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0.bin
+
+#+END_SRC
+
+
+** Create graph file for a global partition
+#+BEGIN_SRC
+cd ~/workspace/rdma_anns
+./build/src/state_send/convert_parlayann_graph_file /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2 /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition0.bin /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_graph
+#+END_SRC
 * Cloudlab setup
 
 ** nfs
@@ -379,7 +393,6 @@ ls -la /nfs
 sudo mkdir /mydata
 sudo /usr/local/etc/emulab/mkextrafs.pl -f /mydata
 sudo chown -R namanh:parlayann-PG0 /mydata
-mkdir
 #+END_SRC
 
 ** Copy data from nfs
