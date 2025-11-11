@@ -1,4 +1,5 @@
 * Installation guide for cloudlab machines
+
 ** WITH SUDO 
 
 #+BEGIN_SRC
@@ -68,6 +69,9 @@ make -j
 cd ~/workspace/rdma_anns/extern/gp-ann
 git submodule update --init --recursive
 sudo apt-get install libsparsehash-dev
+
+
+
 
 cd ~/workspace/rdma_anns
 git clone https://github.com/gabime/spdlog.git
@@ -282,6 +286,11 @@ cmake --build build -j
 
 
 
+
+** scp the ssh keys
+#+BEGIN_SRC
+./scp_ssh.sh
+#+END_SRC
 * Making clusters
 
 ** Build main disk index
@@ -336,7 +345,22 @@ cd ~/workspace/rdma_anns
 ** Create graph file for a global partition
 #+BEGIN_SRC
 cd ~/workspace/rdma_anns
-./build/src/state_send/convert_parlayann_graph_file /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2 /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition0.bin /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_graph
+./build/src/state_send/convert_parlayann_graph_file /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2 /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition0_ids_uint32.bin /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition0_graph
+#+END_SRC
+
+** Create in mem index
+#+BEGIN_SRC
+cd ~/workspace/rdma_anns
+./build/src/state_send/gen_random_slice uint8 /ssd2/ben/bigann/base.1B.u8bin /ssd2/ben/bigann/pipeann_1B_SAMPLE_RATE_0.01 0.01
+
+./build/src/state_send/build_memory_index uint8 /mydata/local/anngraphs/bigann/1B/clusters_10/pipeann_1B_cluster5_SAMPLE_RATE_0.01_data.bin /mydata/local/anngraphs/bigann/1B/clusters_10/pipeann_1B_cluster5_SAMPLE_RATE_0.01_ids.bin 32 64 1.2 /mydata/local/anngraphs/bigann/1B/clusters_10/pipeann_1B_cluster5_mem.index 56 l2
+
+#+END_SRC
+
+** Create disk index from bin file and graph file
+#+BEGIN_SRC
+./build/src/state_send/build_disk_index_from_bin_graph uint8 /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5.bin /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5_graph /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5_disk.index
+
 #+END_SRC
 * Cloudlab setup
 
@@ -393,6 +417,11 @@ ls -la /nfs
 sudo mkdir /mydata
 sudo /usr/local/etc/emulab/mkextrafs.pl -f /mydata
 sudo chown -R namanh:parlayann-PG0 /mydata
+mkdir -p /mydata/local/anngraphs/bigann/100M
+mkdir -p /mydata/local/anngraphs/bigann/1B
+mkdir -p /mydata/local/anngraphs/deep1b/100M
+mkdir -p /mydata/local/anngraphs/deep1b/1B
+
 #+END_SRC
 
 ** Copy data from nfs
@@ -403,14 +432,27 @@ cp /nfs/anngraphs/bigann/100M/base.1B.u8bin.crop_nb_100000000 /mydata/local/anng
 cp /nfs/anngraphs/bigann/100M/bigann-100M /mydata/local/anngraphs/bigann/100M/
 cp /nfs/anngraphs/bigann/100M/pipeann_100M_* /mydata/local/anngraphs/bigann/100M/
 cp /nfs/anngraphs/bigann/100M/query.public.10K.u8bin /mydata/local/anngraphs/bigann/100M/
+
+
+mkdir -p /mydata/local/anngraphs/bigann/100M
+mkdir -p /mydata/local/anngraphs/bigann/1B
+mkdir -p /mydata/local/anngraphs/deep1b/100M
+mkdir -p /mydata/local/anngraphs/deep1b/1B
+cd /mydata/local/anngraphs/bigann/1B/
+cp /nfs/anngraphs/bigann/1B/{base.1B.u8bin,vamana_64_128_1.2} .
+
+
+
+
+
+
+
 #+END_SRC
 
 * Proxy jump for file transfer
 #+BEGIN_SRC
 scp -o ProxyJump=user@server1 user@server2:/path/to/bigfile user@server1:/path/to/destination
 #+END_SRC
-
-
 
 
 * Running experiments
