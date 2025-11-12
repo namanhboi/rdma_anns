@@ -1,7 +1,11 @@
 #!/bin/bash
+
 # assuming that the data is in namanh@nfs:/mydata/local/anngraphs/{dataset_name}/{scale}
 # this file will create the indices for both the scatter gather and state send
 # approach from the partition file and put them in the specified folders
+
+set -euxo pipefail
+
 DATASET_NAME=$1
 DATASET_SIZE=$2
 DATA_TYPE=$3
@@ -114,6 +118,7 @@ fi
 SCATTER_GATHER_SLICE_PREFIX="${SCATTER_GATHER_INDEX_PREFIX}_SAMPLE_RATE_${MEM_INDEX_SAMPLING_RATE}"
 if [[ (! -f "${SCATTER_GATHER_SLICE_PREFIX}_data.bin") && (! -f "${SCATTER_GATHER_SLICE_PREFIX}_ids.bin") ]]; then
     "${WORKDIR}/build/src/state_send/gen_random_slice" \
+	"${DATA_TYPE}"
 	"${PARTITION_BASE_FILE_PATH}" \
 	"${SCATTER_GATHER_SLICE_PREFIX}" \
 	"${MEM_INDEX_SAMPLING_RATE}"
