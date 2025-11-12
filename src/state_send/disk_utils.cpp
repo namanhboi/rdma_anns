@@ -1118,24 +1118,24 @@ void load_parlayann_graph_file(const std::string &graph_file, std::vector<std::v
 
 void write_graph_file_from_parlayann_graph_file(
     const std::string &parlayann_graph_file, const std::vector<uint32_t> &ids,
-						const std::string &output_graph_file) {
+    const std::string &output_graph_file) {
   
-  std::ifstream reader(parlayann_graph_file);
+  std::ifstream reader(parlayann_graph_file, std::ios::binary);
   if (!reader.is_open()) {
     std::cout << "graph file " << parlayann_graph_file << " not found" << std::endl;
     abort();
   }
-  //read num points and max degree
+  
+  // Read num points and max degree
   uint32_t num_points;
   uint32_t max_deg;
   reader.read((char*)(&num_points), sizeof(uint32_t));
   reader.read((char*)(&max_deg), sizeof(uint32_t));
   std::cout << "Graph: detected " << num_points << " points with max degree "
-  << max_deg << std::endl;
-
+            << max_deg << std::endl;
+  
   uint32_t *degrees_start = new uint32_t[num_points];
   reader.read((char *)(degrees_start), sizeof(uint32_t) * num_points);
-
   uint32_t *degrees_end = degrees_start + num_points;
   parlay::slice<uint32_t*, uint32_t*> degrees0 =
     parlay::make_slice(degrees_start, degrees_end);
@@ -1146,14 +1146,20 @@ void write_graph_file_from_parlayann_graph_file(
   auto offsets = o;
   std::cout << "Total edges read from file: " << total << std::endl;
   offsets.push_back(total);
-
+  
   size_t header_and_nnbrs_size =
     sizeof(uint32_t) * 2 + sizeof(uint32_t) * num_points;
   auto get_node_nbr_offset = [&](uint32_t node_id) {
-    return header_and_nnbrs_size + offsets[node_id];
+    return header_and_nnbrs_size + offsets[node_id] * sizeof(uint32_t);
   };
+  
   std::ofstream graph_writer(output_graph_file, std::ios::binary);
-
+  if (!graph_writer.is_open()) {
+    std::cout << "Failed to open output file " << output_graph_file << std::endl;
+    delete[] degrees_start;
+    abort();
+  }
+  
   uint64_t output_file_size = 24;
   uint32_t output_max_degree = 0, output_num_points = ids.size();
   uint64_t output_num_frozen_points = 0;
@@ -1162,8 +1168,19 @@ void write_graph_file_from_parlayann_graph_file(
   graph_writer.write((char *)&output_num_points, sizeof(output_num_points));
   graph_writer.write((char *)&output_num_frozen_points,
                      sizeof(output_num_frozen_points));
-  uint32_t * buffer = new uint32_t[1024];
+  
+  // Allocate buffer based on max_deg to prevent overflow
+  uint32_t *buffer = new uint32_t[max_deg];
+  
   for (uint32_t node_id : ids) {
+    // Validate node_id
+    if (node_id >= num_points) {
+      std::cerr << "Invalid node_id: " << node_id << " (max: " << num_points - 1 << ")" << std::endl;
+      delete[] degrees_start;
+      delete[] buffer;
+      abort();
+    }
+    
     uint32_t nnbrs = degrees0[node_id];
     reader.seekg(get_node_nbr_offset(node_id), reader.beg);
     reader.read((char *)buffer, sizeof(uint32_t) * nnbrs);
@@ -1172,11 +1189,19 @@ void write_graph_file_from_parlayann_graph_file(
     output_file_size += sizeof(uint32_t) * (nnbrs + 1);
     output_max_degree = std::max(output_max_degree, nnbrs);
   }
+  
+  // Update header with final values
   graph_writer.seekp(0, graph_writer.beg);
   graph_writer.write((char *)&output_file_size, sizeof(output_file_size));
   graph_writer.write((char *)&output_max_degree, sizeof(output_max_degree));
+  
+  // Cleanup
+  delete[] degrees_start;
+  delete[] buffer;
+  
+  reader.close();
+  graph_writer.close();
 }
-
 
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,
