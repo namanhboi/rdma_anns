@@ -180,7 +180,7 @@ if [[ ! -f "${STATE_SEND_INDEX_PREFIX}_disk.index" ]]; then
     "${DATA_TYPE}" \
     "${PARTITION_BASE_FILE_PATH}" \
     "${PARTITION_STATE_SEND_GRAPH_FILE}" \
-    "${STATE_SEND_INDEX_PREFIX}"
+    "${STATE_SEND_INDEX_PREFIX}_disk.index"
 fi
 
 # Handle memory index - check if global one exists, otherwise create it
