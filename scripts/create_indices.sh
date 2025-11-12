@@ -153,6 +153,12 @@ if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
 	0
 fi
 
+
+PARTITION_SCATTER_GATHER_TAG_FILE="${SCATTER_GATHER_INDEX_PREFIX}_disk.index.tags"
+if [[ ! -f ${PARTITION_SCATTER_GATHER_TAG_FILE} ]]; then
+    ln -s ${PARTITION_FILE} ${PARTITION_SCATTER_GATHER_TAG_FILE}
+fi
+
 echo "Scatter-gather index creation complete!"
 
 # Now create STATE_SEND indices
