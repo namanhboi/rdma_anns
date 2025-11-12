@@ -87,7 +87,11 @@ void LinuxAlignedFileReader::register_thread(int flag) {
     return;
   }
   io_uring* ctx = new io_uring();
-  io_uring_queue_init(MAX_EVENTS, ctx, flag);
+  int ret = io_uring_queue_init(MAX_EVENTS, ctx, flag);
+  if (ret < 0) {
+    throw std::runtime_error("Failed to create ring " +
+                             std::string(strerror(-ret)));
+  }
   ctx_map[my_id] = ctx;
   ctx_submission_mutex_map[reinterpret_cast<void *>(ctx)] = std::make_unique<std::mutex>();
   assert(ctx_map.size() == ctx_submission_mutex_map.size());
