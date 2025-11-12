@@ -244,4 +244,15 @@ else
     ln -sf "${PQ_PIVOT_PATH}" "${PARTITION_STATE_SEND_PQ_PIVOT_PATH}"
 fi
 
+
+PARTITION_ASSIGNMENT_PATH="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_partition_assignment.bin"
+PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH="${STATE_SEND_INDEX_PREFIX}_partition_assignment.bin"
+if [[ -f ${PARTITION_ASSIGNMENT_PATH} ]]; then
+    ln -s ${PARTITION_ASSIGNMENT_PATH} ${PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH}
+else
+    echo "file doesn't exist, need to cp from nfs: ${PARTITION_ASSIGNMENT_PATH}"
+    exit 1
+fi
+
+
 echo "All index creation complete!"
