@@ -15,7 +15,7 @@ PARLAYANN_GRAPH_FILE=$6
 SCATTER_GATHER_OUTPUT=$7
 SCATTER_GATHER_R=$8
 SCATTER_GATHER_L=$9
-STATE_SEND_OUTPUT=$10
+STATE_SEND_OUTPUT=${10}
 
 if [ $# -ne 10 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <parlayann_graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output>"
