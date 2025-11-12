@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
     create_and_write_partitions_to_loc_files<uint8_t>(
 						      base_file, output_index_path_prefix, num_partitions);
   }
+  create_partition_assignment_file(output_index_path_prefix, num_partitions);
   return 0;
 }
 
