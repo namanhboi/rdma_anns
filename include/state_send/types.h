@@ -10,6 +10,7 @@
 #include "tsl/robin_set.h"
 #include "utils.h"
 #include <chrono>
+#include <limits>
 
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -146,11 +147,13 @@ get_mean_stats(std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
 struct search_result_t {
   uint64_t query_id;
   uint64_t client_peer_id;
-  uint64_t num_res;
+  uint32_t k_search;
+  uint32_t num_res;
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
   std::vector<uint8_t> partition_history;
   std::shared_ptr<QueryStats> stats = nullptr;
+  bool is_final = false;
 
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
   size_t write_serialize(char *buffer) const;
@@ -167,6 +170,37 @@ struct search_result_t {
   static std::vector<std::shared_ptr<search_result_t>>
   deserialize_results(const char *buffer);
 };
+
+
+constexpr uint32_t MAX_NUM_RESULTS = 512;
+
+struct combined_search_results_t {
+  uint32_t num_expected_results = std::numeric_limits<uint32_t>::max();
+  uint32_t num_current_results = 0;
+  std::array<std::shared_ptr<search_result_t>, MAX_NUM_RESULTS> results;
+  std::array<std::chrono::steady_clock::time_point, MAX_NUM_RESULTS>
+      receive_time;
+
+  combined_search_results_t() {}
+
+
+  combined_search_results_t(
+			    std::initializer_list<std::shared_ptr<search_result_t>> res_list, uint32_t num_expected_results) : num_expected_results(num_expected_results)
+  {
+    num_current_results = 0;
+    for (const auto &res : res_list) {
+      results[num_current_results] = res;
+      receive_time[num_current_results] = std::chrono::steady_clock::now();
+      num_current_results++;
+    }
+  }
+  void add_result(std::shared_ptr<search_result_t> result);
+
+  std::shared_ptr<search_result_t> merge_results();
+};  
+
+
+
 
 /**
    includes both full embeddings and pq representation of query. Client uses
@@ -297,6 +331,13 @@ struct alignas(SECTOR_LEN) SearchState {
   // void get_serialize_result_size(char *buffer) const;
   static void reset(SearchState * state);
 };
+
+
+
+
+
+
+
 
 template <typename T> class PreallocatedQueue {
 private:

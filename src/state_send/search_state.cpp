@@ -223,6 +223,58 @@ bool SSDPartitionIndex<T, TagT>::state_is_top_cand_off_server(
   return true;
 }
 
+template <typename T, typename TagT>
+std::shared_ptr<search_result_t>
+SSDPartitionIndex<T, TagT>::state_get_search_result(SearchState<T, TagT> *state) {
+  std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
+  result->client_peer_id = state->client_peer_id;
+  result->partition_history = state->partition_history;
+  result->query_id = state->query_id;
+  result->stats = state->stats;
+  result->k_search = state->k_search;
+
+  if (this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER ||
+      this->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
+    auto &full_retset = state->full_retset;
+    std::sort(full_retset.begin(), full_retset.end(),
+              [](const pipeann::Neighbor &left,
+                 const pipeann::Neighbor &right) { return left < right; });
+    uint64_t num_res = 0;
+    // static uint32_t res_id[256];
+    // static uint32_t res_dist[256];
+
+    for (uint64_t i = 0; i < full_retset.size() && num_res < state->k_search; i++) {
+      if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
+	continue;  // deduplicate.
+      }
+      // write_data(char *buffer, const char *data, size_t size, size_t &offset)
+      result->node_id[num_res] = full_retset[i].id; // use ID to replace tags
+      result->distance[num_res] = full_retset[i].distance;
+      num_res++;
+    }
+    result->num_res = num_res;
+    result->is_final = true;
+  } else if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    // we are trying something new. For the state send, don't send back sorted
+    // result, just send the full result set. The client side will sort all
+    // results from all the state switches
+    // If the search state has concluded, the result must have is_final = true
+    // so that the client knows to sort what has been sent
+    result->num_res = state->full_retset.size();
+    for (uint64_t i = 0; i < state->full_retset.size(); i++) {
+      result->node_id[i] = state->full_retset[i].id;
+      result->distance[i] = state->full_retset[i].distance;
+    }
+    if (state_search_ends(state)) {
+      result->is_final = true;
+    }
+    result->is_final = false;
+  }
+  result->stats = state->stats;
+  return result;
+}
+
+
 std::string neighbors_to_string(pipeann::Neighbor *neighbors,
                                 uint32_t num_neighbors) {
   std::stringstream str;
@@ -233,11 +285,6 @@ std::string neighbors_to_string(pipeann::Neighbor *neighbors,
   }
   return str.str();
 }
-
-
-
-
-
 
 template <typename T, typename TagT>
 std::string state_visited_to_string(SearchState<T, TagT> *state) {

@@ -15,20 +15,29 @@ private:
   std::atomic<uint64_t> num_results_received={0};
 
 
+
+  // sub results used to combined the actual results together
+  libcuckoo::cuckoohash_map<uint64_t,
+                            std::shared_ptr<combined_search_results_t>>
+      combined_search_results;
+
+  // final result that the client get
   libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<search_result_t>> results;
 
 
-  /////// used for scatter gather only
-  libcuckoo::cuckoohash_map<
-      uint64_t,
-      std::vector<std::pair<uint8_t, std::chrono::steady_clock::time_point>>>
-      sub_query_result_time;
-  libcuckoo::cuckoohash_map<
-      uint64_t,
-      std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>>
-      sub_query_results;
-  ///////////
+  
+  
 
+  /////// used for scatter gather only
+  // libcuckoo::cuckoohash_map<
+      // uint64_t,
+      // std::vector<std::pair<uint8_t, std::chrono::steady_clock::time_point>>>
+      // sub_query_result_time;
+  // libcuckoo::cuckoohash_map<
+      // uint64_t,
+      // std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>>
+      // sub_query_results;
+  ///////////
 
 
   // id in the communicator json file containing all the ip addresses
@@ -37,9 +46,10 @@ private:
 
   std::atomic<uint64_t> current_round_robin_peer_index{0};
 
-  std::atomic<uint64_t>
-      query_id={0}; // the search thread gets the query id via this
+  std::atomic<uint64_t> query_id = {
+    0}; // the search thread gets the query id via this
 
+  
 private:
   class ClientThread {
   private:

@@ -381,7 +381,6 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result() {
   std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
   result->client_peer_id = this->client_peer_id;
   result->partition_history = this->partition_history;
-
   auto &full_retset = this->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
             [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
@@ -409,6 +408,68 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result() {
   result->stats = stats;
   return result;
 }
+
+
+void combined_search_results_t::add_result(
+					   std::shared_ptr<search_result_t> result) {
+  this->num_current_results++;
+  results[num_current_results] = result;
+  receive_time[num_current_results] = std::chrono::steady_clock::now();
+}
+
+
+std::shared_ptr<search_result_t>
+combined_search_results_t::merge_results() {
+  assert (num_expected_results == results.size());
+  std::shared_ptr<search_result_t> combined_result =
+    std::make_shared<search_result_t>();
+  combined_result->query_id = results[0]->query_id;
+  std::vector<std::pair<uint32_t, float>> all_neighbors;
+  all_neighbors.reserve(512);
+  uint32_t k_search = results[0]->k_search;
+  for (uint64_t i = 0; i < results.size(); i++) {
+    for (uint32_t j = 0; j < results[i]->num_res; j++) {
+      all_neighbors.emplace_back(results[i]->node_id[j], results[i]->distance[j]);
+    }
+  }
+  std::sort(all_neighbors.begin(), all_neighbors.end(),
+            [](auto &left, auto &right) { return left.second < right.second; });
+  combined_result->num_res = k_search;
+  for (uint64_t i = 0; i < k_search; i++) {
+    combined_result->node_id[i] = all_neighbors[i].first;
+    combined_result->distance[i] = all_neighbors[i].second;
+  }
+  combined_result->stats = std::make_shared<QueryStats>();
+  
+  size_t count = 0;
+
+  for (const auto &res : results) {
+    if (res->stats != nullptr) {
+      count++;
+      combined_result->stats->total_us += res->stats->total_us;
+      combined_result->stats->n_4k += res->stats->n_4k;
+      combined_result->stats->n_ios += res->stats->n_ios;
+      combined_result->stats->io_us += res->stats->io_us;
+      combined_result->stats->head_us += res->stats->head_us;
+      combined_result->stats->cpu_us += res->stats->cpu_us;
+      combined_result->stats->n_cmps += res->stats->n_cmps;
+      combined_result->stats->n_hops += res->stats->n_hops;
+    }
+  }
+
+  if (count > 0) {
+    combined_result->stats->total_us /= count;
+    combined_result->stats->n_4k /= count;
+    combined_result->stats->n_ios /= count;
+    combined_result->stats->io_us /= count;
+    combined_result->stats->head_us /= count;
+    combined_result->stats->cpu_us /= count;
+    combined_result->stats->n_cmps /= count;
+    combined_result->stats->n_hops /= count;
+  }
+  return combined_result;
+}
+
 
 
 template <typename T, typename TagT>
@@ -478,6 +539,9 @@ search_result_t::deserialize(const char *buffer) {
               sizeof(res->client_peer_id));
   offset += sizeof(res->client_peer_id);
 
+  std::memcpy(&res->k_search, buffer + offset, sizeof(res->k_search));
+  offset += sizeof(res->k_search);
+
   std::memcpy(&res->num_res, buffer + offset, sizeof(res->num_res));
   offset += sizeof(res->num_res);
 
@@ -504,6 +568,8 @@ search_result_t::deserialize(const char *buffer) {
     res->stats = QueryStats::deserialize(buffer + offset);
     offset += res->stats->get_serialize_size();
   }
+  std::memcpy(&res->is_final, buffer + offset, sizeof(is_final));
+  offset += sizeof(record_stats);
   return res;
 }
 
@@ -513,6 +579,8 @@ size_t search_result_t::write_serialize(char *buffer) const {
              sizeof(this->query_id), offset);
   write_data(buffer, reinterpret_cast<const char *>(&this->client_peer_id),
              sizeof(this->client_peer_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&this->k_search),
+             sizeof(this->k_search), offset);
   write_data(buffer, reinterpret_cast<const char *>(&this->num_res),
              sizeof(this->num_res), offset);
   write_data(buffer, reinterpret_cast<const char *>(this->node_id),
@@ -532,18 +600,20 @@ size_t search_result_t::write_serialize(char *buffer) const {
   if (record_stats) {
     offset += stats->write_serialize(buffer + offset);
   }
+  write_data(buffer, reinterpret_cast<const char *>(is_final), sizeof(is_final), offset);
   return offset;
 }
 
 size_t search_result_t::get_serialize_size() const {
   size_t num_bytes = 0;
-  num_bytes += sizeof(query_id) + sizeof(client_peer_id) + sizeof(num_res) +
-               sizeof(uint32_t) * num_res + sizeof(float) * num_res +
-               sizeof(size_t) + sizeof(uint8_t) * partition_history.size() +
-               sizeof(bool);
+  num_bytes += sizeof(query_id) + sizeof(client_peer_id) + sizeof(k_search) +
+               sizeof(num_res) + sizeof(uint32_t) * num_res +
+               sizeof(float) * num_res + sizeof(size_t) +
+               sizeof(uint8_t) * partition_history.size() + sizeof(bool);
   if (stats != nullptr) {
     num_bytes+= stats->get_serialize_size();
   }
+  num_bytes += sizeof(is_final);
   return num_bytes;
 }
 

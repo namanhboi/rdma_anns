@@ -48,7 +48,8 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 
     QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
                                                batch_of_queries);
-    if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND || parent->dist_search_mode== DistributedSearchMode::SINGLE_SERVER) {
+    if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND ||
+        parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
       uint32_t server_peer_id =
           parent->current_round_robin_peer_index.fetch_add(1) %
           parent->other_peer_ids.size();
@@ -224,62 +225,6 @@ StateSendClient<T>::get_query_result_time(const uint64_t query_id) {
   return query_result_time.find(query_id);
 }
 
-std::shared_ptr<search_result_t> combine_results(
-    const std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
-        &vec_res) {
-  std::shared_ptr<search_result_t> combined_res =
-      std::make_shared<search_result_t>();
-  combined_res->query_id = vec_res[0].second->query_id;
-  // dumb heristic but this is the only way to know K?
-  uint64_t max_num_res = 0;
-  std::vector<std::pair<uint32_t, float>> node_id_dist;
-  for (const auto &[cluster_id, res] : vec_res) {
-    for (auto i = 0; i < res->num_res; i++) {
-      node_id_dist.emplace_back(res->node_id[i], res->distance[i]);
-      // LOG(INFO) << res ->node_id[i];
-    }
-    max_num_res = std::max(max_num_res, res->num_res);
-  }
-  std::sort(node_id_dist.begin(), node_id_dist.end(),
-            [](auto &left, auto &right) { return left.second < right.second; });
-  combined_res->num_res = max_num_res;
-  for (auto i = 0; i < max_num_res; i++) {
-
-    combined_res->node_id[i] = node_id_dist[i].first;
-    combined_res->distance[i] = node_id_dist[i].second;
-  }
-  // need to combine stats as well, for now lets just do the mean of each
-  // category
-  combined_res->stats = std::make_shared<QueryStats>();
-  size_t count = 0;
-
-  for (const auto &[cluster_id, res] : vec_res) {
-    if (res->stats != nullptr) {
-      count++;
-      combined_res->stats->total_us += res->stats->total_us;
-      combined_res->stats->n_4k += res->stats->n_4k;
-      combined_res->stats->n_ios += res->stats->n_ios;
-      combined_res->stats->io_us += res->stats->io_us;
-      combined_res->stats->head_us += res->stats->head_us;
-      combined_res->stats->cpu_us += res->stats->cpu_us;
-      combined_res->stats->n_cmps += res->stats->n_cmps;
-      combined_res->stats->n_hops += res->stats->n_hops;
-    }
-  }
-
-  if (count > 0) {
-    combined_res->stats->total_us /= count;
-    combined_res->stats->n_4k /= count;
-    combined_res->stats->n_ios /= count;
-    combined_res->stats->io_us /= count;
-    combined_res->stats->head_us /= count;
-    combined_res->stats->cpu_us /= count;
-    combined_res->stats->n_cmps /= count;
-    combined_res->stats->n_hops /= count;
-  }
-  return combined_res;
-}
-
 template <typename T>
 void StateSendClient<T>::receive_result_handler(const char *buffer,
                                                 size_t size) {
@@ -377,42 +322,64 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
       // LOG(INFO) << "result received ";
       // sub_query_result_time.insert_or_assign(res->query_id,
       // std::chrono::steady_clock::now());
-      parent->sub_query_result_time.upsert(
-          res->query_id,
-          [res](std::vector<std::pair<
-                    uint8_t, std::chrono::steady_clock::time_point>> &vec) {
-            vec.push_back(
-                {res->partition_history[0], std::chrono::steady_clock::now()});
+      // parent->sub_query_result_time.upsert(
+      //     res->query_id,
+      //     [res](std::vector<std::pair<
+      //               uint8_t, std::chrono::steady_clock::time_point>> &vec) {
+      //       vec.push_back(
+      //           {res->partition_history[0], std::chrono::steady_clock::now()});
 
-            return false;
-          },
-          std::vector<
-              std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
-              {res->partition_history[0], std::chrono::steady_clock::now()}});
-      size_t num_res = 1;
-      parent->sub_query_results.upsert(
-          res->query_id,
-          [res, &num_res](
-              std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
-                  &vec) {
-            vec.push_back({res->partition_history[0], res});
-            num_res = vec.size();
-            return false;
-          },
-          std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
-              {res->partition_history[0], res}});
+      //       return false;
+      //     },
+      //     std::vector<
+      //         std::pair<uint8_t, std::chrono::steady_clock::time_point>>{
+      //         {res->partition_history[0],
+      //         std::chrono::steady_clock::now()}});
+      // size_t num_res = 1;
+      // parent->sub_query_results.upsert(
+      //     res->query_id,
+      //     [res, &num_res](
+      //         std::vector<std::pair<uint8_t,
+      //         std::shared_ptr<search_result_t>>>
+      //             &vec) {
+      //       vec.push_back({res->partition_history[0], res});
+      //       num_res = vec.size();
+      //       return false;
+      //     },
+      //     std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
+      //         {res->partition_history[0], res}});
 
       
-      if (num_res == parent->other_peer_ids.size()) {
-        std::shared_ptr<search_result_t> combined_res =
-            combine_results(parent->sub_query_results.find(res->query_id));
-        parent->results.insert_or_assign(combined_res->query_id, combined_res);
+      // if (num_res == parent->other_peer_ids.size()) {
+      //   std::shared_ptr<search_result_t> combined_res =
+      //       combine_results(parent->sub_query_results.find(res->query_id));
+      //   parent->results.insert_or_assign(combined_res->query_id, combined_res);
 
-        parent->query_result_time.insert_or_assign(
-            res->query_id, std::chrono::steady_clock::now());
-        parent->num_results_received.fetch_add(1);
+      //   parent->query_result_time.insert_or_assign(
+      //       res->query_id, std::chrono::steady_clock::now());
+      //   parent->num_results_received.fetch_add(1);
+      // }
+      bool all_results_arrived = false;
+      parent->combined_search_results.upsert(
+          res->query_id,
+          [res, &all_results_arrived](
+              std::shared_ptr<combined_search_results_t> &combined_results) {
+            combined_results->add_result(res);
+            if (combined_results->num_current_results ==
+                combined_results->num_expected_results) {
+              all_results_arrived = true;
+            }
+          },
+          std::shared_ptr<combined_search_results_t>(
+              new combined_search_results_t({res},
+                                            parent->other_peer_ids.size())));
+      if (all_results_arrived) {
+        std::shared_ptr<search_result_t> combined =
+            parent->combined_search_results.find(res->query_id)
+                ->merge_results();
+        parent->results.insert_or_assign(res->query_id, combined);
       }
-    } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND || parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
+    } else if (parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
       // LOG(INFO) << "result received " << res->query_id;
       parent->results.insert_or_assign(res->query_id, res);
       // for (auto i = 0; i < res->num_res; i++) {
@@ -423,6 +390,37 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
           res->query_id, std::chrono::steady_clock::now());
       parent->num_results_received.fetch_add(1);
       parent->send_acks(res);
+    } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+      // need to way to record all the states that had been sent by all servers
+      // across all steps and also need to sort it at the end
+      bool all_results_arrived = false;
+      parent->combined_search_results.upsert(
+          res->query_id,
+          [res, &all_results_arrived](
+              std::shared_ptr<combined_search_results_t> &combined_results) {
+            combined_results->add_result(res);
+            if (res->is_final == true) {
+              combined_results->num_expected_results = res->partition_history.size();
+            }
+            if (combined_results->num_current_results ==
+                combined_results->num_expected_results) {
+              all_results_arrived = true;
+            }
+          },
+          std::shared_ptr<combined_search_results_t>(
+              new combined_search_results_t(
+					    {res}, std::numeric_limits<uint32_t>::max())));
+
+      if (all_results_arrived) {
+        std::shared_ptr<search_result_t> combined =
+            parent->combined_search_results.find(res->query_id)
+                ->merge_results();
+        parent->results.insert_or_assign(res->query_id, combined);
+        parent->query_result_time.insert_or_assign(
+						   res->query_id, std::chrono::steady_clock::now());
+        parent->num_results_received.fetch_add(1);
+        parent->send_acks(combined);
+      }
     } else {
       throw std::invalid_argument("Weird DistributedSearchMode value");
     }

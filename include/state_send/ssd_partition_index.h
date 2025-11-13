@@ -129,11 +129,12 @@ public:
   //                                   const uint64_t l_search,
   //                                   const uint64_t beam_width, char *buffer)
   //                                   {
-  // 
+  //
   // }
 
   uint8_t state_top_cand_random_partition(SearchState<T, TagT> *state);
   bool state_is_top_cand_off_server(SearchState<T, TagT> *state);
+  std::shared_ptr<search_result_t> state_get_search_result(SearchState<T, TagT> *state);
 
   void state_print_detailed(SearchState<T, TagT> *state);
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
@@ -260,7 +261,17 @@ private:
     friend class CounterThread;
   public:
     BatchingThread(SSDPartitionIndex *parent);
+    /**
+       for state_send, push the final result to the client.
+       is_final set to true
+     */
     void push_result_to_batch(SearchState<T, TagT> *state);
+
+    /**
+       for state_send, send the state to the designated server as well as the
+       partial result to the client
+       is_final set to false
+     */
     void push_state_to_batch(SearchState<T, TagT> *state);
     void start();
     void join();
