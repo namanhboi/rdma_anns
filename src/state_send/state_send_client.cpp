@@ -16,11 +16,16 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
   std::vector<std::shared_ptr<QueryEmbedding<T>>> batch_of_queries;
   constexpr int max_batch_size = 1;
   batch_of_queries.reserve(max_batch_size + 1);
+  auto timeout = std::chrono::microseconds(100);
   // std::cout << "main loop started for client thread " << std::endl;
   while (running) {
     batch_of_queries.resize(max_batch_size + 1);
-    size_t num_dequeued = concurrent_query_queue.wait_dequeue_bulk(
-        batch_of_queries.begin(), max_batch_size);
+    size_t num_dequeued =
+        parent->concurrent_query_queue.wait_dequeue_bulk_timed(
+							       batch_of_queries.begin(), max_batch_size, timeout);
+    if (num_dequeued == 0)
+      continue;
+
     batch_of_queries.resize(num_dequeued);
     assert(num_dequeued == batch_of_queries.size());
     // check for poison pill
@@ -30,10 +35,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
         break;
       }
     }
-    if (batch_of_queries.size() == 0) {
-      assert(running == false);
-      break;
-    }
+
     size_t region_size =
         sizeof(MessageType::QUERIES) +
         QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
@@ -85,14 +87,6 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 }
 
 template <typename T>
-void StateSendClient<T>::ClientThread::push_query(
-    std::shared_ptr<QueryEmbedding<T>> query) {
-
-  // std::cout << "pushed query " << query->query_id << std::endl;
-  concurrent_query_queue.enqueue(query);
-}
-
-template <typename T>
 uint64_t
 StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
                            const uint64_t mem_l, const uint64_t l_search,
@@ -110,9 +104,7 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   query->num_chunks = 0;
   query->record_stats = record_stats;
   std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
-  uint64_t next_client_thread_id =
-      current_client_thread_id.fetch_add(1) % num_client_threads;
-  client_threads[next_client_thread_id]->push_query(query);
+  concurrent_query_queue.enqueue(query);
   return query_id;
 }
 
@@ -123,7 +115,7 @@ template <typename T> void StateSendClient<T>::ClientThread::start() {
 
 template <typename T> void StateSendClient<T>::ClientThread::signal_stop() {
   running = false;
-  concurrent_query_queue.enqueue(nullptr);
+  // concurrent_query_queue.enqueue(nullptr);
 }
 
 template <typename T> void StateSendClient<T>::ClientThread::join() {

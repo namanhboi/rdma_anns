@@ -45,14 +45,12 @@ private:
   private:
     std::thread real_thread;
     uint64_t my_thread_id; // used for round robin querying the server
-    moodycamel::BlockingConcurrentQueue<std::shared_ptr<QueryEmbedding<T>>>
-        concurrent_query_queue;
+
     void main_loop();
     StateSendClient *parent;
     std::atomic<bool> running{false};
   public:
     ClientThread(uint64_t id, StateSendClient *parent);
-    void push_query(std::shared_ptr<QueryEmbedding<T>> query);
     void start();
     void signal_stop();
     void join();
@@ -61,8 +59,15 @@ private:
   std::vector<std::unique_ptr<ClientThread>> client_threads;
   int num_client_threads;
 
-  std::atomic<uint64_t> current_client_thread_id={0};
+  std::atomic<uint64_t> current_client_thread_id = {0};
 
+private:
+  moodycamel::BlockingConcurrentQueue<std::shared_ptr<QueryEmbedding<T>>>
+      concurrent_query_queue;
+
+private:
+  
+  
 private:
   class ResultReceiveThread {
   private:
@@ -92,7 +97,7 @@ public:
   StateSendClient(const uint64_t id, const std::string &communicator_json,
                   int num_client_thread, DistributedSearchMode dist_search_mode,
                   uint64_t dim);
-
+  
   StateSendClient(const uint64_t id, const std::vector<std::string> &address_list,
                   int num_client_thread, DistributedSearchMode dist_search_mode,
                   uint64_t dim);  
