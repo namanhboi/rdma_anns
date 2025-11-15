@@ -1,6 +1,7 @@
 #include "ssd_partition_index.h"
 #include "types.h"
 #include <cstdint>
+#include <stdexcept>
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_compute_dists(
@@ -28,7 +29,12 @@ void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
     SearchState<T, TagT> *state, const unsigned *node_ids,
-    const uint64_t n_ids) {
+								 const uint64_t n_ids) {
+
+  // will overflow the dist_scratch buffer
+  if (unlikely(n_ids > MAX_NUM_NEIGHBORS)) {
+    throw std::invalid_argument("n_ids larger than max capacity for dist_scratch");
+  }
   state_compute_dists(state, node_ids, n_ids, state->dist_scratch);
   for (uint64_t i = 0; i < n_ids; ++i) {
     auto &item = state->retset[state->cur_list_size];
@@ -46,6 +52,7 @@ bool SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(
     SearchState<T, TagT> *state, void *ctx) {
   // read nhoods of frontier ids
   if (!state->frontier.empty()) {
+    state->sector_idx = 0;
     for (uint64_t i = 0; i < state->frontier.size(); i++) {
       uint32_t loc = id2loc(state->frontier[i]);
       uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
@@ -84,9 +91,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     uint64_t nnbrs = (uint64_t)(*node_buf);
     T *node_fp_coords = this->offset_to_node_coords(node_disk_buf);
 
-    T *node_fp_coords_copy =
-        state->data_buf + (state->data_buf_idx * this->aligned_dim);
-    state->data_buf_idx++;
+    T *node_fp_coords_copy = state->data_buf;
     memcpy(node_fp_coords_copy, node_fp_coords, this->data_dim * sizeof(T));
     float cur_expanded_dist =
         this->dist_cmp->compare(state->query_emb->query, node_fp_coords_copy,

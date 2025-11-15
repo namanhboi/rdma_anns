@@ -12,10 +12,9 @@ namespace pipeann {
     unsigned id;
     float distance;
     bool flag;
-    bool visited;
 
     Neighbor() = default;
-    Neighbor(unsigned id, float distance, bool f) : id{id}, distance{distance}, flag(f), visited(false) {
+    Neighbor(unsigned id, float distance, bool f) : id{id}, distance{distance}, flag(f) {
     }
 
     inline bool operator<(const Neighbor &other) const {

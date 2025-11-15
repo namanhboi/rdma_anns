@@ -10,7 +10,7 @@
 #include "tsl/robin_set.h"
 #include "utils.h"
 #include <chrono>
-
+#include <variant>
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
@@ -19,12 +19,23 @@
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
 
+
+// max for statesend and scatter gather that uses inter query balacing impl (that I
+// made) called balance batch
+// later when/if i implement the comparison to pipeann methods then the beam
+// width of those will be higher but we don't care since it won't be using
+// states
+constexpr uint32_t BALANCE_BATCH_MAX_BEAMWIDTH = 1;
+constexpr uint32_t MAX_NUM_NEIGHBORS = 128;
+constexpr uint32_t MAX_NUM_PQ_CHUNKS = 128;
+
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 
 enum class DistributedSearchMode : uint32_t {
   SCATTER_GATHER = 0,
   STATE_SEND = 1,
-  SINGLE_SERVER = 2
+  SINGLE_SERVER = 2,
+  DISTRIBUTED_ANN = 3
 };
 
 inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
@@ -55,6 +66,10 @@ enum class MessageType : uint32_t {
 
   RESULTS,
   RESULTS_ACK,
+
+
+  DISTRIBUTED_ANN_RESULTS,
+  SCORING_QUERIES,
 
   POISON // used to kill the batchig thread
 };
@@ -184,6 +199,7 @@ template <typename T> struct QueryEmbedding {
   uint32_t num_chunks;
   bool record_stats;
   bool populated_pq_dists = false;
+  void* distributed_ann_state_ptr = nullptr;
   T query[kMaxVectorDim];
   float pq_dists[32768];
 
@@ -211,16 +227,18 @@ template <typename T> struct QueryEmbedding {
 
 template <typename T, typename TagT = uint32_t>
 struct alignas(SECTOR_LEN) SearchState {
-  // buffer.
-  char sectors[SECTOR_LEN * 4];
-  uint8_t pq_coord_scratch[32768 * 32];
-
-  T data_buf[ROUND_UP(512 * kMaxVectorDim, 256)];
-  float dist_scratch[512];
+  // buffer to copy disk sector data into
+  char sectors[SECTOR_LEN * BALANCE_BATCH_MAX_BEAMWIDTH];
+  uint8_t pq_coord_scratch[MAX_NUM_NEIGHBORS * MAX_NUM_PQ_CHUNKS];
+  
+  // copy full embedding here to do dist comparison with full emb query
+  T data_buf[kMaxVectorDim];
+  
+  float dist_scratch[MAX_NUM_NEIGHBORS];
 
   QueryEmbedding<T> *query_emb = nullptr;
 
-  uint64_t data_buf_idx = 0;
+  // max is the beam width, for beam width 1 this will always be 0
   uint64_t sector_idx = 0;
 
   // search state.
@@ -255,7 +273,7 @@ struct alignas(SECTOR_LEN) SearchState {
   /*
     deserialize one search state
    */
-  static void deserialize(const char *buffer, SearchState* state);
+  static void deserialize(const char *buffer, SearchState *state);
 
   /**
      used by the handler to deserialize the blob into states to then send to
@@ -264,24 +282,19 @@ struct alignas(SECTOR_LEN) SearchState {
   static void deserialize_states(const char *buffer, uint64_t num_states,
                                  uint64_t num_queries, SearchState **states,
                                  QueryEmbedding<T> **queries);
-  
+
   /**
-     write the serialized form of this state into the buffer.
-     Data to be serialized:
-     - full_retset
-       - retset
-       - visited nodes
-       - frontier
-       - cur_list_size
-       - k
-       - k_search
-       - l_search
-       - beamwidth
-       - cmps
+     this doesn't serialize the query embedding but does serialize the stats
    */
   size_t write_serialize(char *buffer) const;
+  /**
+     gets the serialize size without query embedding
+   */
   size_t get_serialize_size() const;
 
+  /**
+     [num states] [num_queries] [states] [queries]
+   */
   static size_t write_serialize_states(
       char *buffer, const std::vector<std::pair<SearchState *, bool>> &states);
 
@@ -295,7 +308,7 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // void write_serialize_result(char *buffer) const;
   // void get_serialize_result_size(char *buffer) const;
-  static void reset(SearchState * state);
+  static void reset(SearchState *state);
 };
 
 template <typename T> class PreallocatedQueue {
@@ -304,12 +317,13 @@ private:
   T *elements;
   uint64_t num_elements;
   std::function<void(T *)> reset_element;
+
 public:
+  PreallocatedQueue() : num_elements(0), reset_element(nullptr) {};
   PreallocatedQueue(uint64_t num_elements,
                     std::function<void(T *)> reset_element)
-  : num_elements(num_elements), reset_element(reset_element) {
+      : num_elements(num_elements), reset_element(reset_element) {
     elements = new T[num_elements];
-    LOG(INFO) << "Allocation successful";
     for (uint64_t i = 0; i < num_elements; i++) {
       queue.enqueue(elements + i);
     }
@@ -318,7 +332,7 @@ public:
   /*
     result must be allocated before hand
   */
-  void dequeue_exact(uint64_t num_elements, T** elements) {
+  void dequeue_exact(uint64_t num_elements, T **elements) {
     size_t num_dequeued = queue.wait_dequeue_bulk(elements, num_elements);
     while (num_dequeued < num_elements) {
       T **it = elements + num_dequeued;
@@ -357,3 +371,119 @@ public:
     return *this;
   }
 };
+
+
+
+
+/**
+   RAII wrapper for a single item taken from a preallocated queue
+*/
+template <typename T> class PreallocSingleManager {
+private:
+  PreallocatedQueue<T> &_queue;
+  T *item;
+  PreallocSingleManager(const PreallocSingleManager<T> &);
+  PreallocSingleManager &operator=(const PreallocSingleManager<T> &);
+public:
+  PreallocSingleManager(PreallocatedQueue<T> &queue) : _queue(queue) {
+    T* arr[1];
+    _queue.dequeue_exact(1, arr);
+    item = arr[0];
+  }
+
+  T *get_item() {
+    return item;
+  }
+
+  ~PreallocSingleManager() { _queue.free(this->item); }
+};
+
+
+
+
+namespace distributedann {
+  constexpr uint32_t MAX_BEAM_WIDTH_DISTRIBUTED_ANN = 64;
+  constexpr uint32_t MAX_L_DISTRIBUTED_ANN = 1024; // 64 nodes * 64 neighbors each
+  
+template <typename T> struct scoring_query_t {
+  uint64_t query_id; // scoring for which query
+  uint32_t num_node_ids;
+  uint32_t node_ids[256];
+  float threshold;
+  uint32_t L;
+  QueryEmbedding<T> *query_emb = nullptr;
+  void* distributed_ann_state_ptr = nullptr; // NEED TO DO THIS HABIBI
+
+  // don't deserialize the query_emb
+  static void deserialize(const char *buffer, scoring_query_t *);
+
+  
+  static void deserialize_scoring_queries(const char *buffer,
+                                          uint64_t num_scoring_queries,
+                                          uint64_t num_query_embs,
+                                          scoring_query_t **scoring_queries,
+                                          QueryEmbedding<T> **queries);
+  
+
+  // doesnt serialize the query embedding
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
+
+  static size_t write_serialize_scoring_queries(
+      char *buffer,
+      const std::vector<std::pair<scoring_query_t *, bool>> &queries);
+
+  static size_t get_serialize_size_scoring_queries(
+						   const std::vector<std::pair<scoring_query_t *, bool>> &queries);
+
+  static void reset(scoring_query_t *);
+};
+
+
+
+/**
+   used to store result for both the head index and also the scoring service
+ */
+template <typename T> struct result_t {
+  uint64_t query_id;
+  size_t num_full_nbrs;
+  std::pair<uint32_t, float> sorted_full_nbrs[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
+  size_t num_pq_nbrs;
+  std::pair<uint32_t, float> sorted_pq_nbrs[MAX_L_DISTRIBUTED_ANN];
+  std::shared_ptr<QueryStats> stats = nullptr;
+  void *distributed_ann_state_ptr = nullptr;
+
+
+  static void deserialize(const char *buffer, result_t *);
+  static void deserialize_results(const char *buffer, uint64_t num_results,
+                                  result_t **results);
+
+  size_t write_serialize(char *buffer) const;
+  size_t get_serialize_size() const;
+
+  static size_t
+  get_serialize_size_results(const std::vector<result_t *> &results);
+
+  static size_t write_serialize_results(char * buffer, const std::vector<result_t *> &results);
+  // static size_t get_serialize_size_results();
+  static void reset(result_t<T> *);
+};
+
+
+template <typename T, typename TagT = uint32_t>
+struct DistributedANNState : SearchState<T, TagT> {
+  moodycamel::BlockingConcurrentQueue<result_t<T> *> result_queue;
+
+
+  static void reset(DistributedANNState<T, TagT>* state);
+};
+
+
+  enum DistributedANNTaskType { HEAD_INDEX, SCORING_QUERY };
+  
+  template <typename T> struct DistributedANNTask {
+    DistributedANNTaskType task_type;
+    std::variant<std::shared_ptr<QueryEmbedding<T>>, scoring_query_t<T>> task;
+  };
+
+}; // namespace distributedann
