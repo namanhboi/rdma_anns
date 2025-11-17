@@ -362,6 +362,13 @@ cd ~/workspace/rdma_anns
 ./build/src/state_send/build_disk_index_from_bin_graph uint8 /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5.bin /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5_graph /mydata/local/anngraphs/bigann/1B/global_partitions_10/pipeann_1B_partition5_disk.index
 
 #+END_SRC
+
+** Create partition loc files and partition assignment file
+#+BEGIN_SRC
+./build/src/state_send/create_partition_loc_files uint8 /ssd2/ben/bigann/base.1B.u8bin 10 /ssd2/ben/bigann/global_partitions_10/pipeann_1B
+
+
+#+END_SRC
 * Cloudlab setup
 
 ** nfs

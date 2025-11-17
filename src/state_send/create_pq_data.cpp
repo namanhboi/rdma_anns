@@ -1,4 +1,5 @@
 #include "disk_utils.h"
+#include "types.h"
 #include <stdexcept>
 
 
@@ -12,9 +13,14 @@ int main(int argc, char **argv) {
   uint64_t num_pq_chunks = std::stoull(argv[5]);
   pipeann::Metric m =
     dist_metric == "cosine" ? pipeann::Metric::COSINE : pipeann::Metric::L2;
-    if (dist_metric != "l2" && m == pipeann::Metric::L2) {
-      std::cout << "Metric " << dist_metric << " is not supported. Using L2" << std::endl;
-    } 
+  if (dist_metric != "l2" && m == pipeann::Metric::L2) {
+    std::cout << "Metric " << dist_metric << " is not supported. Using L2" << std::endl;
+  }
+
+  if (num_pq_chunks > MAX_NUM_PQ_CHUNKS) {
+    throw std::invalid_argument("max pq chunk is " +
+                                std::to_string(MAX_NUM_PQ_CHUNKS));
+  }
 
   if (data_type == "float") {
     create_pq_data<float>(base_file, index_path_prefix, num_pq_chunks, m);

@@ -38,6 +38,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::signal_stop() {
 }
 
 
+
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
   LOG(INFO) << "executing main_loop_batch";
@@ -107,6 +108,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 allocated_states[i], mem_tags.data(),
                 std::min((unsigned)allocated_states[i]->mem_l,
                          (unsigned)allocated_states[i]->l_search));
+            LOG(INFO) << "==== HEADINDEX" << allocated_states[i]->query_id
+            << "======";
+            print_neighbor_vec({allocated_states[i]->retset,
+                                allocated_states[i]->retset +
+                                allocated_states[i]->cur_list_size});
+            
             assert(allocated_states[i]->cur_list_size > 0);
             // parent->state_print_detailed(allocated_states[i]);
           } else {

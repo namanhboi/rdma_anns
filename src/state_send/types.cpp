@@ -5,6 +5,17 @@
 #include <chrono>
 #include <limits>
 
+
+void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs) {
+  for (const auto &nbr : nbrs) {
+    LOG(INFO) << nbr.id << " " << nbr.distance;
+  }
+}
+// template <typename T>  {
+
+// }
+
+
 inline size_t write_data(char *buffer, const char *data, size_t size,
                          size_t &offset) {
   std::memcpy(buffer + offset, data, size);
@@ -751,15 +762,18 @@ size_t scoring_query_t<T>::write_serialize(char *buffer) const {
   write_data(buffer, (char *)node_ids, sizeof(uint32_t) * num_node_ids, offset);
   write_data(buffer, (char *)&threshold, sizeof(threshold), offset);
   write_data(buffer, (char *)&L, sizeof(L), offset);
+  write_data(buffer, (char *)&record_stats, sizeof(record_stats), offset);
   write_data(buffer, (char *)&distributed_ann_state_ptr,
-             sizeof(distributed_ann_state_ptr), offset);
+             sizeof(distributed_ann_state_ptr), offset); 
+  write_data(buffer, (char *)&client_peer_id,
+             sizeof(client_peer_id), offset); 
   return offset;
 }
 
 template <typename T> size_t scoring_query_t<T>::get_serialize_size() const {
   return sizeof(query_id) + sizeof(num_node_ids) +
          sizeof(uint32_t) * num_node_ids + sizeof(threshold) + sizeof(L) +
-         sizeof(distributed_ann_state_ptr);
+         sizeof(record_stats) + sizeof(distributed_ann_state_ptr) + sizeof(client_peer_id);
 }
 
 template <typename T>
@@ -816,6 +830,14 @@ void scoring_query_t<T>::deserialize(const char *buffer,
   offset += sizeof(query->threshold);
   std::memcpy(&query->L, buffer + offset, sizeof(query->L));
   offset += sizeof(query->L);
+  std::memcpy(&query->record_stats, buffer + offset, sizeof(query->record_stats));
+  offset += sizeof(query->record_stats);
+  std::memcpy(&query->distributed_ann_state_ptr, buffer + offset,
+              sizeof(query->distributed_ann_state_ptr));
+  offset += sizeof(query->distributed_ann_state_ptr);
+  std::memcpy(&query->client_peer_id, buffer + offset,
+              sizeof(query->client_peer_id));
+  offset += sizeof(query->client_peer_id);
 }
 
 template <typename T>
@@ -842,8 +864,10 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
   query->threshold = 0;
   query->L = 0;
   query->query_emb = nullptr;
+  query->record_stats = false;
+  query->distributed_ann_state_ptr = nullptr;
+  query->client_peer_id = std::numeric_limits<uint64_t>::max();
 }
-
 
 
   template <typename T> size_t result_t<T>::write_serialize(char *buffer) const {
@@ -863,6 +887,7 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
     }
     write_data(buffer, (char *)&distributed_ann_state_ptr,
                sizeof(distributed_ann_state_ptr), offset);
+    write_data(buffer, (char *)&client_peer_id, sizeof(client_peer_id), offset);
     return offset;
   }
 
@@ -878,16 +903,20 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
       num_bytes += stats->get_serialize_size();
     }
     num_bytes += sizeof(distributed_ann_state_ptr);
+    num_bytes += sizeof(client_peer_id);
     return num_bytes;
   }
 
   template <typename T>
   void result_t<T>::deserialize(const char *buffer, result_t<T> *result) {
+    static_assert(
+        sizeof(std::pair<uint32_t, float>) == 8,
+        "std::pair<uint32_t, float> must be 8 bytes for serialization");
     size_t offset = 0;
     std::memcpy(&result->query_id, buffer + offset, sizeof(result->query_id));
     offset += sizeof(result->query_id);
 
-    std::memcpy(&result->num_full_nbrs, buffer + offset, sizeof(num_full_nbrs));
+    std::memcpy(&result->num_full_nbrs, buffer + offset, sizeof(result->num_full_nbrs));
     offset += sizeof(num_full_nbrs);
     std::memcpy(result->sorted_full_nbrs, buffer + offset,
                 result->num_full_nbrs * (sizeof(float) + sizeof(uint32_t)));
@@ -908,6 +937,10 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
     }
     std::memcpy(&result->distributed_ann_state_ptr, buffer + offset,
                 sizeof(result->distributed_ann_state_ptr));
+    offset += sizeof(result->distributed_ann_state_ptr);
+    std::memcpy(&result->client_peer_id, buffer + offset,
+                sizeof(result->client_peer_id));
+    offset += sizeof(result->client_peer_id);
   }
 
   template <typename T>
@@ -952,6 +985,7 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
     result->num_pq_nbrs = 0;
     result->stats = nullptr;
     result->distributed_ann_state_ptr = nullptr;
+    result->client_peer_id = std::numeric_limits<uint64_t>::max();
   }
   
 
@@ -1006,5 +1040,4 @@ template class PreallocSingleManager<
 				     distributedann::DistributedANNState<uint8_t>>;
 template class PreallocSingleManager<
 				     distributedann::DistributedANNState<int8_t>>;
-
 

@@ -16,8 +16,21 @@
 #define MAX_PQ_CHUNKS 128
 #define SECTOR_LEN 4096
 
+
+void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs);
+
+template <typename T> std::string list_to_string(T *start, uint32_t num) {
+  std::string str = "";
+  for (uint32_t i = 0; i < num; i++) {
+    str += std::to_string(start[i]) + " " ;
+  }
+  return str;
+}
+
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
+// need to enforce this shit
+static constexpr uint32_t MAX_L_SEARCH = 512;
 
 
 // max for statesend and scatter gather that uses inter query balacing impl (that I
@@ -27,7 +40,7 @@ static constexpr int maxKSearch = 256;
 // states
 constexpr uint32_t BALANCE_BATCH_MAX_BEAMWIDTH = 1;
 constexpr uint32_t MAX_NUM_NEIGHBORS = 128;
-constexpr uint32_t MAX_NUM_PQ_CHUNKS = 128;
+constexpr uint32_t MAX_NUM_PQ_CHUNKS = 64;
 
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
 
@@ -45,6 +58,8 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
     return "STATE_SEND";
   } else if (mode == DistributedSearchMode::SINGLE_SERVER) {
     return "SINGLE_SERVER";
+  } else if (mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+    return "DISTRIBUTED_ANN";
   } else {
     throw std::runtime_error("Weird dist search mode value");
   }
@@ -88,6 +103,10 @@ inline std::string message_type_to_string(MessageType msg_type) {
     return "RESULTS";
   case MessageType::RESULTS_ACK:
     return "RESULTS_ACK";
+  case MessageType::DISTRIBUTED_ANN_RESULTS:
+    return "DISTRIBUTED_ANN_RESULTS";
+  case MessageType::SCORING_QUERIES:
+    return "SCORING_QUERIES";
   case MessageType::POISON:
     return "POISON";
   default:
@@ -314,7 +333,7 @@ struct alignas(SECTOR_LEN) SearchState {
 template <typename T> class PreallocatedQueue {
 private:
   moodycamel::BlockingConcurrentQueue<T *> queue;
-  T *elements;
+  T *elements = nullptr;
   uint64_t num_elements;
   std::function<void(T *)> reset_element;
 
@@ -358,15 +377,25 @@ public:
   PreallocatedQueue(const PreallocatedQueue &) = delete;
   PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
   PreallocatedQueue(PreallocatedQueue &&other) noexcept
-      : queue(std::move(other.queue)), elements(other.elements) {
+  : queue(std::move(other.queue)), 
+  elements(other.elements),
+  num_elements(other.num_elements),
+  reset_element(std::move(other.reset_element)) {
     other.elements = nullptr;
+    other.num_elements = 0;
+    other.reset_element = nullptr;
   }
   PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
     if (this != &other) {
       delete[] elements;
       queue = std::move(other.queue);
       elements = other.elements;
+      num_elements = other.num_elements;
+      reset_element = std::move(other.reset_element);
+    
       other.elements = nullptr;
+      other.num_elements = 0;
+      other.reset_element = nullptr;
     }
     return *this;
   }
@@ -376,7 +405,8 @@ public:
 
 
 /**
-   RAII wrapper for a single item taken from a preallocated queue
+   RAII wrapper for a single item taken from a preallocated queue of pointers to
+   that type
 */
 template <typename T> class PreallocSingleManager {
 private:
@@ -408,11 +438,13 @@ namespace distributedann {
 template <typename T> struct scoring_query_t {
   uint64_t query_id; // scoring for which query
   uint32_t num_node_ids;
-  uint32_t node_ids[256];
+  uint32_t node_ids[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
   float threshold;
   uint32_t L;
+  bool record_stats = false;
   QueryEmbedding<T> *query_emb = nullptr;
-  void* distributed_ann_state_ptr = nullptr; // NEED TO DO THIS HABIBI
+  void *distributed_ann_state_ptr = nullptr; // NEED TO DO THIS HABIBI
+  uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
 
   // don't deserialize the query_emb
   static void deserialize(const char *buffer, scoring_query_t *);
@@ -446,12 +478,13 @@ template <typename T> struct scoring_query_t {
  */
 template <typename T> struct result_t {
   uint64_t query_id;
-  size_t num_full_nbrs;
+  size_t num_full_nbrs = 0;
   std::pair<uint32_t, float> sorted_full_nbrs[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
-  size_t num_pq_nbrs;
+  size_t num_pq_nbrs = 0;
   std::pair<uint32_t, float> sorted_pq_nbrs[MAX_L_DISTRIBUTED_ANN];
   std::shared_ptr<QueryStats> stats = nullptr;
   void *distributed_ann_state_ptr = nullptr;
+  uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
 
 
   static void deserialize(const char *buffer, result_t *);
@@ -483,7 +516,7 @@ struct DistributedANNState : SearchState<T, TagT> {
   
   template <typename T> struct DistributedANNTask {
     DistributedANNTaskType task_type;
-    std::variant<std::shared_ptr<QueryEmbedding<T>>, scoring_query_t<T>> task;
+    std::variant<QueryEmbedding<T> *, scoring_query_t<T> *> task;
   };
 
 }; // namespace distributedann

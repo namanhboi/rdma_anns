@@ -99,7 +99,8 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
 
     pipeann::Neighbor n(id, cur_expanded_dist, true);
     state->full_retset.push_back(n);
-
+    // LOG(INFO) << id << " " << cur_expanded_dist;
+    
     unsigned *node_nbrs = (node_buf + 1);
     state->cpu_timer.reset();
     // compute node_nbrs <-> query dist in PQ space
@@ -109,6 +110,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
       state->stats->cpu_us += (double)state->cpu_timer.elapsed();
     }
     state->cpu_timer.reset();
+    LOG(INFO) << id << " " << nnbrs << ": " << list_to_string<unsigned>(node_nbrs, nnbrs);
     // process prefetch-ed nhood
     for (uint64_t m = 0; m < nnbrs; ++m) {
       unsigned id = node_nbrs[m];

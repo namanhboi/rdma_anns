@@ -34,7 +34,7 @@
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 #define READ_UNSIGNED(stream, val) stream.read((char *)&val, sizeof(unsigned))
 
-#define MAX_SEARCH_THREADS 64
+#define MAX_WORKER_THREADS 64
 
 constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 15000;
 constexpr uint64_t MAX_ELEMENTS_HANDLER = 256;
@@ -219,7 +219,7 @@ private:
   moodycamel::ProducerToken server_state_prod_token;
 
   std::vector<std::unique_ptr<SearchThread>> search_threads;
-  uint32_t num_search_threads;
+  uint32_t num_worker_threads;
   std::atomic<int> current_search_thread_id = 0;
 
 private:
@@ -402,10 +402,6 @@ public:
                                  this->medoids + this->num_medoids);
   }
 
-  // computes PQ dists between src->[ids] into fp_dists (merge, insert)
-  void compute_pq_dists(const uint32_t src, const uint32_t *ids,
-                        float *fp_dists, const uint32_t count,
-                        uint8_t *aligned_scratch = nullptr);
 
   std::pair<uint8_t *, uint32_t> get_pq_config() {
     return std::make_pair(this->data.data(), (uint32_t)this->n_chunks);
@@ -415,6 +411,11 @@ public:
 
   uint64_t get_frozen_loc() { return this->frozen_location; }
 
+
+  /**
+     need the random for the overlap case (which turns out to not help as much
+     as I thought)
+   */
   uint8_t get_random_partition_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND)
       return my_partition_id;
@@ -538,12 +539,98 @@ private:
     used to store the pointers in handler
    */
   std::array<SearchState<T, TagT> *, MAX_ELEMENTS_HANDLER> state_scratch;
-  std::array<QueryEmbedding<T>*, MAX_ELEMENTS_HANDLER> query_scratch;
+  std::array<QueryEmbedding<T> *, MAX_ELEMENTS_HANDLER> query_scratch;
 public:
+
   /**
    * will be registered to the communicator by the server cpp file.
    * Need to construct the states and enqueue them onto the search thread
    * from these handler
    */
-  void receive_handler(const char* buffer, size_t size);
+  void receive_handler(const char *buffer, size_t size);
+
+private:
+  void compute_pq_dists(float *pq_dists, uint8_t *pq_coord_scratch,
+                        const unsigned *ids, const uint64_t n_ids,
+                        float *dists_out) {
+    ::aggregate_coords(ids, n_ids, this->data.data(), this->n_chunks,
+                       pq_coord_scratch);
+    ::pq_dist_lookup(pq_coord_scratch, n_ids, this->n_chunks, pq_dists,
+                     dists_out);
+  }
+  std::array<distributedann::DistributedANNTask<T>, MAX_ELEMENTS_HANDLER>
+      distributed_ann_task_scratch;
+  
+  std::array<distributedann::scoring_query_t<T> *, MAX_ELEMENTS_HANDLER>
+      scoring_query_scratch;
+//   /**
+//      use for distributed ann impl
+//    */
+  moodycamel::BlockingConcurrentQueue<distributedann::DistributedANNTask<T>>
+      distributed_ann_task_queue;
+
+//   // have 2 types for more balance since there is fair queueing
+  moodycamel::ProducerToken distributed_ann_head_index_ptok;
+  moodycamel::ProducerToken distributed_ann_scoring_ptok;
+
+  
+//   // handles both the head index and scoring queries, just take from the global
+//   // task queue2
+  class DistributedANNWorkerThread {
+  private:
+    void* ctx; // for iouring    
+    moodycamel::ConsumerToken thread_ctok;
+    std::thread real_thread;
+    std::atomic<bool> running{false};
+    SSDPartitionIndex *parent;
+    void compute_head_index_query(QueryEmbedding<T> *query,
+                                  distributedann::result_t<T> *result);
+    void
+    compute_scoring_query(distributedann::scoring_query_t<T> *scoring_query,
+                          distributedann::result_t<T> *result);
+    void main_loop();
+  public:
+    DistributedANNWorkerThread(SSDPartitionIndex *parent);
+    void start();
+    void signal_stop();
+    void join();
+  };
+  // uint32_t num_distributedann_worker_threads;
+  std::vector<std::unique_ptr<DistributedANNWorkerThread>> distributedann_worker_threads;
+
+  class DistributedANNBatchingThread {
+  private:
+    SSDPartitionIndex *parent;
+    std::thread real_thread;
+    std::atomic<bool> running = false;
+
+    std::unordered_map<
+        uint64_t, std::unique_ptr<std::vector<distributedann::result_t<T>*>>>
+        result_queue;
+    std::condition_variable result_queue_cv;
+    std::mutex result_queue_mutex;
+
+    void main_loop();
+  public:
+    DistributedANNBatchingThread(SSDPartitionIndex *parent);
+    void push_result_to_batch(distributedann::result_t<T> *result);
+    void start();
+    void join();
+    void signal_stop();
+  };
+  std::unique_ptr<DistributedANNBatchingThread> distributedann_batching_thread;
+      
+
+  PreallocatedQueue<distributedann::result_t<T>> prealloc_distributedann_result;
+  PreallocatedQueue<distributedann::scoring_query_t<T>>
+      prealloc_distributedann_scoring_query;
+public:
+
+//   /**
+//      distributed ann handler (will receive query embedding + scoring queries
+//      from the orchestration service/client).
+//      Need to handle scoring qurey, query embedding (for head index) and acks
+
+//    */
+  void distributed_ann_receive_handler(const char *buffer, size_t size);
 };

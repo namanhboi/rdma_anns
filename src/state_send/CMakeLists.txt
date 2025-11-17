@@ -18,6 +18,7 @@ set (CPP_FILES
   partition_and_pq.cpp
   math_utils.cpp
   disk_utils.cpp
+  distributedann_impl.cpp
 )
 
 

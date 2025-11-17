@@ -57,11 +57,19 @@ public:
       ssd_partition_index->load_mem_index(
           m, ssd_partition_index->get_data_dim(), mem_index_path);
     }
-    communicator->register_receive_handler(
-        [index_ptr = (ssd_partition_index.get())](const char *buffer,
-                                                  size_t size) {
-          index_ptr->receive_handler(buffer, size);
-        });
+    if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+      communicator->register_receive_handler(
+          [index_ptr = (ssd_partition_index.get())](const char *buffer,
+                                                    size_t size) {
+            index_ptr->distributed_ann_receive_handler(buffer, size);
+          });      
+    }else {
+      communicator->register_receive_handler(
+          [index_ptr = (ssd_partition_index.get())](const char *buffer,
+                                                    size_t size) {
+            index_ptr->receive_handler(buffer, size);
+          });
+    }
     std::cout << "done with constructor" << std::endl;
   }
   void start() {
@@ -83,6 +91,7 @@ void run_server(std::unique_ptr<StateSendServer<T>> server) {
   while (should_kill_server == false) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
+  LOG(INFO) << "SIGNALING STOP";
   server->signal_stop();
 }
 
@@ -201,6 +210,8 @@ int main(int argc, char **argv) {
     dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
   } else if (dist_search_mode_str == "SINGLE_SERVER") {
     dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
+  } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
+    dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
   } else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);

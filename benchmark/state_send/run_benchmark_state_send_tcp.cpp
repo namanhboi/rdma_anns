@@ -34,10 +34,17 @@ void write_results_csv(
          << "," << "completion_time_us" << "," << "n_hops" << ","
          << "partition_history" << "\n";
   for (auto i = 0; i < results.size(); i++) {
-    output << results[i]->query_id << "," <<send_timestamp[i] << ","
-           << receive_timestamp[i] << "," << results[i]->stats->total_us << ","
-           << results[i]->stats->n_hops << ","
-    << partition_history_to_str(results[i]) << "\n";
+    output << results[i]->query_id << "," << send_timestamp[i] << ","
+    << receive_timestamp[i] << ",";
+    if (results[i]->stats) {
+      output << results[i]->stats->total_us << "," << results[i]->stats->n_hops
+      << ",";
+    } else {
+      output << 0 << "," << 0
+      << ",";
+    }
+    
+    output << partition_history_to_str(results[i]) << "\n";
   }
 }
 
@@ -51,7 +58,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
                       const std::vector<std::string> &address_list,
-                      const std::string &result_output_folder) {
+                      const std::string &result_output_folder,
+                      const std::string& partition_assignment_file) {
 
   uint64_t microsecond_sleep_time = 0;
   if (send_rate_per_second != 0) {
@@ -63,19 +71,23 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
 
   DistributedSearchMode dist_search_mode;
 
-  if (beam_width != 1) {
-    throw std::invalid_argument(
-        "beam_width should be 1, other sizes not yet impl");
-  }
+
   if (dist_search_mode_str == "STATE_SEND") {
     dist_search_mode = DistributedSearchMode::STATE_SEND;
   } else if (dist_search_mode_str == "SCATTER_GATHER") {
     dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
   }else if (dist_search_mode_str == "SINGLE_SERVER") {
     dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
+  } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
+    dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
   } else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);
+  }
+
+  if (beam_width != 1 && dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN) {
+    throw std::invalid_argument(
+        "beam_width should be 1, other sizes not yet impl");
   }
 
   std::vector<std::vector<uint32_t>> query_result_ids(Lvec.size());
@@ -83,9 +95,10 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
   StateSendClient<T> client(client_peer_id, address_list, num_client_thread,
-                            dist_search_mode, dim);
-  client.start_result_thread();
-  client.start_client_threads();
+                            dist_search_mode, dim, partition_assignment_file);
+  // client.start_result_thread();
+  // client.start_client_threads();
+  client.start();
 
   // std::ifstream communincator_ifstream(communicator_json);
   // json communicator_data = json::parse(communincator_ifstream);
@@ -108,6 +121,12 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     }
     calc_recall_flag = true;
   }
+
+  
+  // for debugging purposes
+  // size_t num_queries_to_run = 1;
+  // query_num = std::min(num_queries_to_run, query_num);
+
   auto run_tests = [&](uint32_t test_id, bool output) {
     uint64_t L = Lvec[test_id];
 
@@ -285,6 +304,7 @@ int main(int argc, char **argv) {
   uint64_t send_rate_per_second;
   std::vector<std::string> address_list;
   std::string result_output_folder;
+  std::string partition_assignment_file;
 
   desc.add_options()("help,h", "show help message")(
       "num_client_thread",
@@ -315,7 +335,12 @@ int main(int argc, char **argv) {
       "data_type", po::value<std::string>(&data_type)->required(),
       "data type")("result_output_folder",
                    po::value<std::string>(&result_output_folder)->required(),
-                   "path to save result csv");
+                   "path to save result csv")(
+      "partition_assignment_file",
+      po::value<std::string>(&partition_assignment_file)->default_value(""),
+      "path to partition_assignment_file for distributedann orchestration "
+      "service");
+
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
   if (vm.count("help")) {
@@ -324,21 +349,32 @@ int main(int argc, char **argv) {
   }
   po::notify(vm);
 
+  if (dist_search_mode_str == "DISTRIBUTED_ANN" &&
+      !file_exists(partition_assignment_file)) {
+    throw std::invalid_argument(
+        "partition_assignment_file has to exist if mode is distributed ann: " +
+        partition_assignment_file);
+  }
+
   if (data_type == "uint8") {
     search_disk_index<uint8_t>(num_client_thread, dim, query_bin, truthset_bin,
                                Lvec, beam_width, K, mem_L, record_stats,
                                dist_search_mode_str, client_peer_id,
-                               send_rate_per_second, address_list, result_output_folder);
+                               send_rate_per_second, address_list,
+                               result_output_folder, partition_assignment_file);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(num_client_thread, dim, query_bin, truthset_bin,
                               Lvec, beam_width, K, mem_L, record_stats,
                               dist_search_mode_str, client_peer_id,
-                              send_rate_per_second, address_list, result_output_folder);
+                              send_rate_per_second, address_list,
+                              result_output_folder, partition_assignment_file);
+    
   } else if (data_type == "float") {
     search_disk_index<float>(num_client_thread, dim, query_bin, truthset_bin,
                              Lvec, beam_width, K, mem_L, record_stats,
                              dist_search_mode_str, client_peer_id,
-                             send_rate_per_second, address_list, result_output_folder);
+                             send_rate_per_second, address_list,
+                             result_output_folder, partition_assignment_file);
   } else {
     throw std::invalid_argument(
         "data type in json file is not uint8, int8, float " + data_type);
