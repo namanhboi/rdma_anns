@@ -64,19 +64,19 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       uint32_t server_peer_id =
         parent->current_round_robin_peer_index.fetch_add(1) %
         parent->other_peer_ids.size();
-      for (const auto &query : batch_of_queries) {
-        parent->query_send_time.insert_or_assign(
-						 query->query_id, std::chrono::steady_clock::now());
-      }
+      // for (const auto &query : batch_of_queries) {
+        // parent->query_send_time.insert_or_assign(
+						 // query->query_id, std::chrono::steady_clock::now());
+      // }
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                          r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
 
-      for (const auto &query : batch_of_queries) {
-        parent->query_send_time.insert_or_assign(
-						 query->query_id, std::chrono::steady_clock::now());
-      }
+      // for (const auto &query : batch_of_queries) {
+        // parent->query_send_time.insert_or_assign(
+						 // query->query_id, std::chrono::steady_clock::now());
+      // }
       for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
         if (i == parent->other_peer_ids.size() - 1) {
           // don't need to make an additional copy of r
@@ -116,8 +116,8 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
   concurrent_query_queue.enqueue(query);
   // LOG(INFO) << "QUERIED";
-  // query_send_time.insert_or_assign(query->query_id,
-                                   // std::chrono::steady_clock::now());
+  query_send_time.insert_or_assign(query->query_id,
+                                   std::chrono::steady_clock::now());
   return query_id;
 }
 
