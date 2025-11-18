@@ -64,19 +64,19 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       uint32_t server_peer_id =
         parent->current_round_robin_peer_index.fetch_add(1) %
         parent->other_peer_ids.size();
-      for (const auto &query : batch_of_queries) {
-        parent->query_send_time.insert_or_assign(
-						 query->query_id, std::chrono::steady_clock::now());
-      }
+      // for (const auto &query : batch_of_queries) {
+        // parent->query_send_time.insert_or_assign(
+						 // query->query_id, std::chrono::steady_clock::now());
+      // }
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                          r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
 
-      for (const auto &query : batch_of_queries) {
-        parent->query_send_time.insert_or_assign(
-						 query->query_id, std::chrono::steady_clock::now());
-      }
+      // for (const auto &query : batch_of_queries) {
+        // parent->query_send_time.insert_or_assign(
+						 // query->query_id, std::chrono::steady_clock::now());
+      // }
       for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
         if (i == parent->other_peer_ids.size() - 1) {
           // don't need to make an additional copy of r
@@ -116,6 +116,8 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   std::memcpy(query->query, query_emb, sizeof(T) * query->dim);
   concurrent_query_queue.enqueue(query);
   // LOG(INFO) << "QUERIED";
+  query_send_time.insert_or_assign(query->query_id,
+                                   std::chrono::steady_clock::now());
   return query_id;
 }
 
@@ -490,7 +492,7 @@ size_t StateSendClient<T>::OrchestrationThread::send_scoring_queries(
       scoring_query.query_emb = query.get();
     }
     scoring_query.query_id = state->query_id;
-
+    scoring_query.record_stats = true;
     scoring_query.threshold = threshold;
     scoring_query.L = state->l_search;
     scoring_query.distributed_ann_state_ptr = (void *)(state);
@@ -544,10 +546,13 @@ StateSendClient<T>::OrchestrationThread::search_query(
   std::array<distributedann::result_t<T>*,
              distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN>
   result_scratch;
-  // LOG(INFO) << "Entered search query";
-  // std::shared_ptr<search_result_t> result =
-  // std::make_shared<search_result_t>(); distributedann::DistributedANNState<T>
-  // *states[1]; parent->prealloc_states.dequeue_exact(1, states);
+
+
+  std::shared_ptr<QueryStats> stats;
+  if (query->record_stats) {
+    stats = std::make_shared<QueryStats>();
+  }
+  
   PreallocSingleManager<distributedann::DistributedANNState<T>> manager(
 									parent->prealloc_states);
   distributedann::DistributedANNState<T> *state = manager.get_item();
@@ -596,8 +601,6 @@ StateSendClient<T>::OrchestrationThread::search_query(
     return nullptr;
   }
   
-  
-  
   if (head_index_result->query_id != state->query_id) {
     throw std::runtime_error("result received doesn't match query id " +
                              std::to_string(state->query_id) + " " +
@@ -621,9 +624,10 @@ StateSendClient<T>::OrchestrationThread::search_query(
     return false;
   };
 
-  int num_hops = 0;
   while (state->k < state->cur_list_size && running) {
-    num_hops++;
+    if (stats != nullptr) {
+      stats->n_hops++;
+    }
     auto nk = state->cur_list_size;
     float threshold = state->retset[state->cur_list_size - 1].distance;
     state->frontier.clear();
@@ -676,15 +680,20 @@ StateSendClient<T>::OrchestrationThread::search_query(
     // need to merge results back into retset and full retset
     for (uint64_t i = 0; i < num_scoring_results; i++) {
       auto result = result_scratch[i];
+      if (stats != nullptr) {
+        if (result->stats == nullptr) {
+	  throw std::runtime_error("scoring result can't be nullptr");
+        }
+        stats->n_cmps += result->stats->n_cmps;
+        stats->n_ios += result->stats->n_ios;
+        stats->n_4k += result->stats->n_4k;
+      }
       // LOG(INFO) << "NUM FULL NBRS " << result->num_full_nbrs;
       for (auto j = 0; j < result->num_full_nbrs; j++) {
         state->full_retset.push_back({result->sorted_full_nbrs[j].first,
                                       result->sorted_full_nbrs[j].second,
                                       false});
-        // LOG(INFO) << result->sorted_full_nbrs[j].first << " " << result->sorted_full_nbrs[j].second;
       }
-      // LOG(INFO) << " NUM PQ NBRS " << result->num_pq_nbrs;
-
       // batch insertion version
       if (result->sorted_pq_nbrs[0].second >=
           state->retset[state->cur_list_size - 1].distance) {
@@ -699,33 +708,6 @@ StateSendClient<T>::OrchestrationThread::search_query(
       if (lowest_insertion_idx < nk) {
 	nk = lowest_insertion_idx;
       }
-
-      // slow version, can be better with batch insertion since the list is
-      // already sorted 
-      // for (auto j = 0; j < result->num_pq_nbrs; j++) {
-      //   // need to check if the id is already in the beam
-
-      //   if (is_in_retset(result->sorted_pq_nbrs[j].first)) {
-      //     continue;
-      //   }
-      //   float dist = result->sorted_pq_nbrs[j].second;
-      //   if (dist >= state->retset[state->cur_list_size - 1].distance &&
-      //       (state->cur_list_size == state->l_search)) {
-      // 	  continue;
-      //   }
-      //   // LOG(INFO) << result->sorted_pq_nbrs[j].first << " "
-      //   // << result->sorted_pq_nbrs[j].second;
-      //   pipeann::Neighbor nn(result->sorted_pq_nbrs[j].first,
-      //                        result->sorted_pq_nbrs[j].second, true);
-        
-      //   auto r = InsertIntoPool(state->retset, state->cur_list_size, nn);
-      //   if (state->cur_list_size < state->l_search) {
-      //     state->cur_list_size++;
-      //   }
-      //   if (r < nk) {
-      // 	  nk = r;
-      //   }
-      // }
       parent->prealloc_result.free(result);
     }
 
@@ -737,6 +719,7 @@ StateSendClient<T>::OrchestrationThread::search_query(
   }
   state->partition_history = partitions_with_emb;
   std::shared_ptr<search_result_t> result = state->get_search_result();
+  result->stats = stats;
   return result;
 }
 
@@ -751,8 +734,6 @@ void StateSendClient<T>::OrchestrationThread::main_loop() {
     if (!dequeued) {
       continue;
     }
-    parent->query_send_time.insert_or_assign(query->query_id,
-                                              std::chrono::steady_clock::now());
 
     std::shared_ptr<search_result_t> result = search_query(query);
     if (result == nullptr) {

@@ -562,12 +562,12 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     preallocated_query_emb_queue.dequeue_exact(num_queries,
                                                query_scratch.data());
 
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
     QueryEmbedding<T>::deserialize_queries(buffer + offset, num_queries,
                                            query_scratch.data());
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
 
     for (uint64_t i = 0; i < num_queries; i++) {
       QueryEmbedding<T> *query = query_scratch[i];
@@ -576,21 +576,21 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
-                   message_type_to_string(msg_type));      
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
+                   // message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
-                   msg_id, message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+                   // msg_id, message_type_to_string(msg_type));
 
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
-                                         get_timestamp_ns(), msg_id,
-                                         message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
+                                         // get_timestamp_ns(), msg_id,
+                                         // message_type_to_string(msg_type));
       preallocated_state_queue.dequeue_exact(1, state_scratch.data());
       SearchState<T, TagT> *new_search_state = state_scratch[0];
       // SearchState<T, TagT> *new_search_state = new SearchState<T, TagT>;
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE",
-                                         get_timestamp_ns(), msg_id,
-                                         message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_CREATE_STATE",
+                                         // get_timestamp_ns(), msg_id,
+                                         // message_type_to_string(msg_type));
       new_search_state->client_type = ClientType::TCP;
       new_search_state->mem_l = query->mem_l;
       new_search_state->l_search = query->l_search;
@@ -606,11 +606,11 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       }
 
       num_new_states_global_queue.fetch_add(1);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               // message_type_to_string(msg_type));
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));      
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               // message_type_to_string(msg_type));      
     }
   } else if (msg_type == MessageType::STATES) {
     size_t num_states, num_queries;
@@ -624,21 +624,21 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                                  query_scratch.data());
     }
     
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
     SearchState<T, TagT>::deserialize_states(buffer + offset, num_states,
                                              num_queries, state_scratch.data(),
                                              query_scratch.data());
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));        
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));        
     // LOG(INFO) << "States received " << states.size();
-    SingletonLogger::get_logger().info(
-        "[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
-				       message_type_to_string(msg_type), num_states);
+    // SingletonLogger::get_logger().info(
+        // "[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+				       // message_type_to_string(msg_type), num_states);
 
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     for (uint64_t i = 0; i < num_queries; i++) {
       if (query_emb_map.contains(query_scratch[i]->query_id)) {
         throw std::runtime_error(
@@ -648,40 +648,40 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       query_emb_map.insert_or_assign(query_scratch[i]->query_id,
                                      query_scratch[i]);
     }
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     for (uint64_t i = 0; i < num_states; i++) {
       state_scratch[i]->partition_history.push_back(my_partition_id);
     }
     num_foreign_states_global_queue.fetch_add(num_states);
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
-               message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+               // message_type_to_string(msg_type));
     global_state_queue.enqueue_bulk(server_state_prod_token, state_scratch.data(),
                                     num_states);
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
   } else if (msg_type == MessageType::RESULT_ACK) {
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type), 1);
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
     // ack a = ack::deserialize(buffer + offset);
     uint64_t query_id;
     std::memcpy(&query_id, buffer + offset, sizeof(query_id));
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     QueryEmbedding<T> *query = query_emb_map.find(query_id);
     preallocated_query_emb_queue.free(query);
 
     query_emb_map.erase(query_id);
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
-                 msg_id, message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(),
+                 // msg_id, message_type_to_string(msg_type));
   } else {
     throw std::runtime_error("Weird message type value");
   }
@@ -715,13 +715,13 @@ void SSDPartitionIndex<T, TagT>::distributed_ann_receive_handler(
     preallocated_query_emb_queue.dequeue_exact(num_queries,
                                                query_scratch.data());
 
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
     QueryEmbedding<T>::deserialize_queries(buffer + offset, num_queries,
                                            query_scratch.data());
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
 
     for (uint64_t i = 0; i < num_queries; i++) {
       QueryEmbedding<T> *query = query_scratch[i];
@@ -730,14 +730,14 @@ void SSDPartitionIndex<T, TagT>::distributed_ann_receive_handler(
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
-                   message_type_to_string(msg_type));      
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
+                   // message_type_to_string(msg_type));      
       query_emb_map.insert_or_assign(query->query_id, query);
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
-                   msg_id, message_type_to_string(msg_type));
-      SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
-                                         get_timestamp_ns(), msg_id,
-                                         message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(),
+                   // msg_id, message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
+                                         // get_timestamp_ns(), msg_id,
+                                         // message_type_to_string(msg_type));
       distributed_ann_task_scratch[i] = {
         distributedann::DistributedANNTaskType::HEAD_INDEX, query};
     }
@@ -760,20 +760,20 @@ void SSDPartitionIndex<T, TagT>::distributed_ann_receive_handler(
                                                  query_scratch.data());
     }
 
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     distributedann::scoring_query_t<T>::deserialize_scoring_queries(
         buffer + offset, num_scoring_queries, num_query_embs,
 								    scoring_query_scratch.data(), query_scratch.data());
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
 
 
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_INSERT",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     for (uint64_t i = 0; i < num_query_embs; i++) {
       if (query_emb_map.contains(query_scratch[i]->query_id)) {
         throw std::runtime_error(
@@ -783,13 +783,13 @@ void SSDPartitionIndex<T, TagT>::distributed_ann_receive_handler(
       query_emb_map.insert_or_assign(query_scratch[i]->query_id,
                                      query_scratch[i]);
     }
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
 
-    SingletonLogger::get_logger().info(
-        "[{}] [{}] [{}]:BEGIN_ENQUEUE_SCORING_QUERY", get_timestamp_ns(),
-				       msg_id, message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info(
+        // "[{}] [{}] [{}]:BEGIN_ENQUEUE_SCORING_QUERY", get_timestamp_ns(),
+				       // msg_id, message_type_to_string(msg_type));
 
     for (auto i = 0; i < num_scoring_queries; i++) {
       distributed_ann_task_scratch[i] = {
@@ -799,30 +799,30 @@ void SSDPartitionIndex<T, TagT>::distributed_ann_receive_handler(
     distributed_ann_task_queue.enqueue_bulk(distributed_ann_scoring_ptok,
                                             distributed_ann_task_scratch.data(),
                                             num_scoring_queries);
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_SCORING_QUERY",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));    
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_SCORING_QUERY",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));    
   } else if (msg_type == MessageType::RESULT_ACK) {
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type), 1);
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:NUM_MSG {}", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type), 1);
     // LOG(INFO) << "ack received";
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
     // ack a = ack::deserialize(buffer + offset);
     uint64_t query_id;
     std::memcpy(&query_id, buffer + offset, sizeof(query_id));
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
-                 message_type_to_string(msg_type));
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE", get_timestamp_ns(), msg_id,
+                 // message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_QUERY_MAP_ERASE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
     QueryEmbedding<T> *query = query_emb_map.find(query_id);
     preallocated_query_emb_queue.free(query);
 
     query_emb_map.erase(query_id);
-    SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE",
-                                       get_timestamp_ns(), msg_id,
-                                       message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE",
+                                       // get_timestamp_ns(), msg_id,
+                                       // message_type_to_string(msg_type));
   } else {
     throw std::runtime_error("Weird msg_type value " +
                              message_type_to_string(msg_type));

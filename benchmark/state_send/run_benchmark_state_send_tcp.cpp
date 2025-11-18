@@ -27,21 +27,22 @@ void write_results_csv(
     str << "]";
     return str.str();
   };
-  
+
   output << "query_id"
          << "," << "send_timestamp_ns"
          << "," << "receive_timestamp_ns"
-         << "," << "completion_time_us" << "," << "n_hops" << ","
-         << "partition_history" << "\n";
+         << "," << "completion_time_us" << "," << "n_hops" << "," << "n_ios"
+         << "," << "n_cmps" << ","
+  << "partition_history" << "\n";
   for (auto i = 0; i < results.size(); i++) {
     output << results[i]->query_id << "," << send_timestamp[i] << ","
     << receive_timestamp[i] << ",";
     if (results[i]->stats) {
       output << results[i]->stats->total_us << "," << results[i]->stats->n_hops
-      << ",";
+             << "," << results[i]->stats->n_ios << ","
+      << results[i]->stats->n_cmps << ",";
     } else {
-      output << 0 << "," << 0
-      << ",";
+      output << 0 << "," << 0 << "," << 0 << "," << 0 << ",";
     }
     
     output << partition_history_to_str(results[i]) << "\n";
@@ -228,13 +229,22 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_ios : 0;
         });
+    float mean_cmps = (float)get_mean_stats(
+        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+          return stats ? stats->n_cmps : 0;
+        });
 
     // double mean_query_completion_time =
     // sum_query_completion_time / query_completion_time.size();
     double mean_e2e_latency = sum_e2e_latencies / e2e_latencies.size();
     // auto latency_999 = latencies[(uint64_t)(latencies.size() * 0.999)];
     // float mean_ios = 0, mean_hops = 0;
+    size_t p50_idx = e2e_latencies.size() / 2;
+    double p50_latency = e2e_latencies[p50_idx];
 
+    // 99th percentile
+    size_t p999_idx = static_cast<size_t>(e2e_latencies.size() * 0.999);
+    double p999_latency = e2e_latencies[p999_idx];
     if (output) {
       float recall = 0;
       if (calc_recall_flag) {
@@ -246,9 +256,9 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       }
 
       std::cout << std::setw(6) << L << std::setw(12) << beam_width
-                << std::setw(12) << qps << std::setw(12) << mean_latency
-                << std::setw(12) << latency_999 << std::setw(12) << mean_hops
-                << std::setw(12) << mean_ios;
+                << std::setw(12) << qps << std::setw(12) << mean_e2e_latency
+                << std::setw(12) << p999_latency << std::setw(12) << mean_hops
+      << std::setw(12) << mean_ios << std::setw(12) << mean_cmps;
       if (calc_recall_flag) {
         std::cout << std::setw(12) << recall << std::endl;
       }
@@ -269,13 +279,13 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::cout << std::setw(6) << "L" << std::setw(12) << "I/O Width"
             << std::setw(12) << "QPS" << std::setw(12) << "AvgLat(us)"
             << std::setw(12) << "P99 Lat" << std::setw(12) << "Mean Hops"
-            << std::setw(12) << "Mean IOs" << std::setw(12);
+            << std::setw(12) << "Mean IOs" << std::setw(12) << "Mean cmps" << std::setw(12);
   if (calc_recall_flag) {
     std::cout << std::setw(12) << recall_string << std::endl;
   } else
     std::cout << std::endl;
   std::cout << "=============================================="
-               "==========================================="
+               "======================================================="
             << std::endl;
 
   for (uint32_t test_id = 0; test_id < Lvec.size(); test_id++) {

@@ -98,8 +98,18 @@ void SSDPartitionIndex<T, TagT>::DistributedANNWorkerThread::
   retset.clear();
   retset.reserve(distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN * MAX_NUM_NEIGHBORS);
   
-  static thread_local std::vector<char> sectors;
-  sectors.resize(SECTOR_LEN * distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN);
+  // static thread_local std::vector<char> sectors;
+  // sectors.resize(SECTOR_LEN * distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN);
+  static thread_local char* sectors = nullptr;
+  static thread_local size_t sectors_size = 0;
+
+  size_t needed_size = SECTOR_LEN * distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN;
+  if (!sectors || sectors_size < needed_size) {
+    if (sectors) free(sectors);
+    sectors = static_cast<char*>(aligned_alloc(4096, needed_size));
+    sectors_size = needed_size;
+  }
+
   
   static thread_local std::vector<uint8_t> pq_coord_scratch;
   pq_coord_scratch.resize(distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN * 
@@ -130,9 +140,8 @@ void SSDPartitionIndex<T, TagT>::DistributedANNWorkerThread::
  
   std::vector<fnhood_t> frontier_nhoods;
   std::vector<IORequest> frontier_read_reqs;
-  std::shared_ptr<QueryStats> stats;
   if (scoring_query->record_stats) {
-    stats = std::make_shared<QueryStats>();
+    result->stats = std::make_shared<QueryStats>();
   }
   
 
@@ -143,7 +152,7 @@ void SSDPartitionIndex<T, TagT>::DistributedANNWorkerThread::
     if (sector_scratch_idx >= distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN) {
       throw std::runtime_error("sector_scratch idx too large");
     }
-    auto sector_buf = sectors.data() + sector_scratch_idx * parent->size_per_io;
+    auto sector_buf = sectors + sector_scratch_idx * parent->size_per_io;
     fnhood_t fnhood = std::make_tuple(node_id, loc, sector_buf);
     sector_scratch_idx++;
     frontier_nhoods.push_back(fnhood);
@@ -151,9 +160,9 @@ void SSDPartitionIndex<T, TagT>::DistributedANNWorkerThread::
         IORequest(offset, parent->size_per_io, sector_buf,
                   parent->u_loc_offset(loc), parent->max_node_len));
 
-    if (stats != nullptr) {
-      stats->n_4k++;
-      stats->n_ios++; 
+    if (result->stats != nullptr) {
+      result->stats->n_4k++;
+      result->stats->n_ios++; 
     }
   }
   parent->reader->read(frontier_read_reqs, this->ctx);
@@ -184,6 +193,9 @@ void SSDPartitionIndex<T, TagT>::DistributedANNWorkerThread::
       unsigned id = node_nbrs[m];
 
       float dist = pq_dist_scratch[m];
+      if (result->stats != nullptr) {
+        result->stats->n_cmps++;
+      }
       // worry about stats here
       if (dist <= scoring_query->threshold) {
         // LOG(INFO) << scoring_query->threshold;
