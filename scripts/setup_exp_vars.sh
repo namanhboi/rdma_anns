@@ -25,23 +25,33 @@ MODE=$6
 NUM_SEARCH_THREADS=$7
 MAX_BATCH_SIZE=$8
 OVERLAP=$9
+BEAM_WIDTH=${10}
+NUM_CLIENT_THREADS=${11}
+USE_COUNTER_THREAD=${12}
+USE_LOGGING=${13}
 
-if [ $# -ne 9 ]; then
-    echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size>"
+
+if [ $# -ne 13 ]; then
+    echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
-    echo "  dataset_size: 10M or 100M"
-    echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"
+    echo "  dataset_size: 10M or 100M or 1B"
+    echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER or SINGLE_SERVER or DISTRIBUTED_ANN"
     echo "  mode: local or distributed"
     echo "  num_search_thread: number"
     echo "  max_batch_size: number"
+    echo "  overlap: true or false"
+    echo "  beamwidth : must be 1 for anything except DISTRIBUTEDANN"
+    echo "  num_client_threads : 1 for anything except Distributedann, for distributedann, this is the number of ochestration threads"
+    echo "  use_counter_thread : use the counter thread or not. Right now counter thread is not yet implemented for distributedann"
+    echo "  use_logging : logging is to get the message sizes in the handler and the serialization time rn. Need to remove the serialization time stuff"
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
 
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" ]] && { echo "Error: dataset_name must be 'bigann'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" ]] && { echo "Error: dataset_size must be 10M or 100M"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" ]] && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" ]] && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
 # Numeric validation
@@ -65,7 +75,7 @@ if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
     GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/pipeann_${DATASET_SIZE}"
 else
     if [[ $OVERLAP == "true" ]]; then
-	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
+	if [ "$DIST_SEARCH_MODE" == "STATE_SEND"  ]; then
 	    PREFIX="global_overlap_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else
@@ -74,7 +84,7 @@ else
 	fi	
     else
 	
-	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" ]; then
+	if [[ ("$DIST_SEARCH_MODE" == "STATE_SEND") || ("$DIST_SEARCH_MODE" == "DISTRIBUTED_ANN") ]]; then
 	    PREFIX="global_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else
@@ -87,7 +97,15 @@ fi
 
 # --- Query and truthset paths ---
 QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.u8bin"
-TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/bigann-${DATASET_SIZE}"
+if [[ "${DATASET_SIZE}" == "1B" ]]; then
+    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/GT.public.1B.ibin"
+else
+    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/bigann-${DATASET_SIZE}"
+fi
+
+
+DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/${PREFIX}_${NUM_SERVERS}/${GRAPH_SUFFIX}_assignment.bin"
+
 
 # --- User configuration ---
 USER_LOCAL=nam
@@ -112,24 +130,30 @@ else
         echo "Error: IP range overflow (needs $((NUM_SERVERS+1)) IPs starting at $SERVER_STARTING_ADDRESS)"
         [ $SOURCED -eq 1 ] && return 1 || exit 1
     fi
-    for ((i=0; i<=NUM_SERVERS; i++)); do
+    for ((i=0; i<NUM_SERVERS; i++)); do
         PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+i)):$BASE_PORT")
     done
+    PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+NUM_SERVERS-1)):$((BASE_PORT+1))")
 fi
 
 # --- CloudLab external hostnames for SSH from laptop ---
 if [[ "$MODE" == "distributed" ]]; then
     # Full list of available CloudLab hosts
     ALL_CLOUDLAB_HOSTS=(
-        "namanh@er099.utah.cloudlab.us"
-	"namanh@er001.utah.cloudlab.us"
-	"namanh@er058.utah.cloudlab.us"
-	"namanh@er107.utah.cloudlab.us"
+        "namanh@er039.utah.cloudlab.us"
+	"namanh@er082.utah.cloudlab.us"
+	"namanh@er076.utah.cloudlab.us"
+	"namanh@er050.utah.cloudlab.us"
 	"namanh@er104.utah.cloudlab.us"
+	"namanh@er124.utah.cloudlab.us"
+	"namanh@er001.utah.cloudlab.us"
+	"namanh@er040.utah.cloudlab.us"
+	"namanh@er032.utah.cloudlab.us"
+	"namanh@er126.utah.cloudlab.us"					
     )
     
     # Only take NUM_SERVERS + 1 hosts (servers + client)
-    NEEDED_HOSTS=$((NUM_SERVERS + 1))
+    NEEDED_HOSTS=$((NUM_SERVERS))
     
     if [ $NEEDED_HOSTS -gt ${#ALL_CLOUDLAB_HOSTS[@]} ]; then
         echo "Error: Need $NEEDED_HOSTS CloudLab hosts but only ${#ALL_CLOUDLAB_HOSTS[@]} available"
@@ -146,20 +170,18 @@ USE_MEM_INDEX=true
 NUM_QUERIES_BALANCE=8
 USE_BATCHING=true
 
-USE_COUNTER_THREAD=true
-USE_LOGGING=true
-COUNTER_SLEEP_MS=10
+
+COUNTER_SLEEP_MS=100
 # --- Client parameters ---
-NUM_CLIENT_THREADS=1
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
-LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
-BEAM_WIDTH=1
+LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
+# LVEC="200"
 K_VALUE=10
 MEM_L=10
 RECORD_STATS=true
 SEND_RATE=0
 
-EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_LVEC_${LVEC// /_}
+EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_BEAMWIDTH_${BEAM_WIDTH}
 # --- Export variables ---
 
 
@@ -173,6 +195,7 @@ export USER
 export EXPERIMENT_NAME
 export USE_LOGGING
 export MASTER_LOG_FOLDER_NAME
+export DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE
 
 
 if [[ "$MODE" == "distributed" ]]; then

@@ -11,7 +11,7 @@ echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Now source relative to script location
-source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9
+source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13}
 
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"
@@ -184,7 +184,7 @@ echo "========================================"
 if [[ "$MODE" == "local" ]]; then
     CLIENT_SSH_HOST="$USER@127.0.0.1"
 else
-    CLIENT_SSH_HOST="${CLOUDLAB_HOSTS[$CLIENT_ID]}"
+    CLIENT_SSH_HOST="${CLOUDLAB_HOSTS[$((CLIENT_ID-1))]}"
 fi
 
 echo "  Client via $CLIENT_SSH_HOST"
@@ -207,7 +207,8 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --send_rate=$SEND_RATE \
   --address_list $ADDRESS_LIST_STR \
   --data_type=$DATA_TYPE \
-  --result_output_folder=$REMOTE_LOG_DIR"
+  --result_output_folder=$REMOTE_LOG_DIR \
+  --partition_assignment_file=${DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE}"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH
@@ -246,7 +247,7 @@ cleanup() {
 pkill -2 -f 'state_send_server' 2>/dev/null
 pkill -2 -f 'run_benchmark_state_send_tcp' 2>/dev/null
 sleep 1
-# If still running, force kill
+# If still running, force kill 
 pkill -9 -f 'state_send_server' 2>/dev/null
 pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
 EOF
