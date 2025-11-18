@@ -5,6 +5,7 @@
 #include <vector>
 #include <limits>
 #include "utils.h"
+#include <array>
 
 namespace pipeann {
 
