@@ -1026,8 +1026,8 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         std::vector<std::shared_ptr<search_result_t>> results;
         results.reserve(parent->max_batch_size);
         for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
-          LOG(INFO) << "=====" << states->at(i)->query_id << "=====";
-          print_neighbor_vec(states->at(i)->full_retset);
+          // LOG(INFO) << "=====" << states->at(i)->query_id << "=====";
+          // print_neighbor_vec(states->at(i)->full_retset);
           std::shared_ptr<search_result_t> res =
             states->at(i)->get_search_result();
           parent->apply_tags_to_result(res);
