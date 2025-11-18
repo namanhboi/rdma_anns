@@ -6,11 +6,11 @@
 #include <limits>
 
 
-void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs) {
-  for (const auto &nbr : nbrs) {
-    LOG(INFO) << nbr.id << " " << nbr.distance;
-  }
-}
+// void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs) {
+  // for (const auto &nbr : nbrs) {
+    // LOG(INFO) << nbr.id << " " << nbr.distance;
+  // }
+// }
 // template <typename T>  {
 
 // }

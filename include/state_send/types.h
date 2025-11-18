@@ -17,15 +17,15 @@
 #define SECTOR_LEN 4096
 
 
-void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs);
+// void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs);
 
-template <typename T> std::string list_to_string(T *start, uint32_t num) {
-  std::string str = "";
-  for (uint32_t i = 0; i < num; i++) {
-    str += std::to_string(start[i]) + " " ;
-  }
-  return str;
-}
+// template <typename T> std::string list_to_string(T *start, uint32_t num) {
+  // std::string str = "";
+  // for (uint32_t i = 0; i < num; i++) {
+    // str += std::to_string(start[i]) + " " ;
+  // }
+  // return str;
+// }
 
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
