@@ -32,12 +32,21 @@ void execute_io(void *context, int fd, std::vector<IORequest> &reqs,
         ret = io_uring_wait_cqe(ring, &cqe);
       } while (ret == -EINTR);
 
-      if (ret < 0 || cqe->res < 0) {
+      if (ret < 0) {
         fail = true;
-        LOG(ERROR) << "Failed " << strerror(-ret) << " " << ring << " " << j
-                   << " " << reqs[j].buf << " " << reqs[j].len << " "
-                   << reqs[j].offset;
-        break; // CQE broken.
+        LOG(ERROR) << "io_uring_wait_cqe failed: " << strerror(-ret)
+                   << " ring=" << ring << " request=" << j;
+        break;
+      }
+      
+      if (cqe->res < 0) {
+        fail = true;
+        LOG(ERROR) << "I/O operation failed: " << strerror(-cqe->res)
+                   << " ring=" << ring << " request=" << j
+                   << " buf=" << reqs[j].buf 
+                   << " len=" << reqs[j].len 
+                   << " offset=" << reqs[j].offset;
+        break;
       }
       io_uring_cqe_seen(ring, cqe);
     }
