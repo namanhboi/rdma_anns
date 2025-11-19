@@ -29,9 +29,9 @@ BEAM_WIDTH=${10}
 NUM_CLIENT_THREADS=${11}
 USE_COUNTER_THREAD=${12}
 USE_LOGGING=${13}
+SEND_RATE=${14}
 
-
-if [ $# -ne 13 ]; then
+if [ $# -ne 14 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
@@ -45,13 +45,14 @@ if [ $# -ne 13 ]; then
     echo "  num_client_threads : 1 for anything except Distributedann, for distributedann, this is the number of ochestration threads"
     echo "  use_counter_thread : use the counter thread or not. Right now counter thread is not yet implemented for distributedann"
     echo "  use_logging : logging is to get the message sizes in the handler and the serialization time rn. Need to remove the serialization time stuff"
+    echo "  send_rate : this is the number of queries you want to send per second. "
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
 
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" ]] && { echo "Error: dataset_name must be 'bigann'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" ]] && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
 # Numeric validation
@@ -175,11 +176,11 @@ COUNTER_SLEEP_MS=100
 # --- Client parameters ---
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
 LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
-# LVEC="200"
+# LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
 K_VALUE=10
 MEM_L=10
 RECORD_STATS=true
-SEND_RATE=0
+
 
 EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_BEAMWIDTH_${BEAM_WIDTH}
 # --- Export variables ---

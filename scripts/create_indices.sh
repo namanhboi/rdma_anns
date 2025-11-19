@@ -69,9 +69,6 @@ fi
 
 
 
-
-
-
 # Extract partition number early - we'll need it later
 filename=$(basename "$PARTITION_FILE" .bin)
 if [[ "$filename" =~ partition([0-9]+) ]]; then
@@ -83,13 +80,16 @@ else
     exit 1
 fi
 
+dirname=$(basename "$STATE_SEND_OUTPUT")
+# NUM_SERVERS=${dirname##*_}
+# NUM_SERVERS=${num%/}
 
 
 STATE_SEND_INDEX_PREFIX="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_${PARTITION_ID}"
 SCATTER_GATHER_INDEX_PREFIX="${SCATTER_GATHER_OUTPUT}/pipeann_${DATASET_SIZE}_cluster${PARTITION_NUM}"
 
 # making directory to store all the bin files
-PARTITION_BASE_FILE_FOLDER="${DATA_FOLDER}/base_files/"
+PARTITION_BASE_FILE_FOLDER="${DATA_FOLDER}/base_files/${dirname}"
 mkdir -p "${PARTITION_BASE_FILE_FOLDER}"
 PARTITION_BASE_FILE_PATH="${PARTITION_BASE_FILE_FOLDER}/pipeann_${DATASET_SIZE}_${PARTITION_ID}.bin"
 
