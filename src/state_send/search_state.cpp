@@ -102,14 +102,14 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     // LOG(INFO) << id << " " << cur_expanded_dist;
     
     unsigned *node_nbrs = (node_buf + 1);
-    state->cpu_timer.reset();
+    // state->cpu_timer.reset();
     // compute node_nbrs <-> query dist in PQ space
     state_compute_dists(state, node_nbrs, nnbrs, state->dist_scratch);
-    if (state->stats != nullptr) {
-      state->stats->n_cmps += (double)nnbrs;
-      state->stats->cpu_us += (double)state->cpu_timer.elapsed();
-    }
-    state->cpu_timer.reset();
+    // if (state->stats != nullptr) {
+      // state->stats->n_cmps += (double)nnbrs;
+      // state->stats->cpu_us += (double)state->cpu_timer.elapsed();
+    // }
+    // state->cpu_timer.reset();
     // LOG(INFO) << id << " " << nnbrs << ": " << list_to_string<unsigned>(node_nbrs, nnbrs);
     // process prefetch-ed nhood
     for (uint64_t m = 0; m < nnbrs; ++m) {
@@ -152,9 +152,9 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
       }
       // }
     }
-    if (state->stats != nullptr) {
-      state->stats->cpu_us += (double)state->cpu_timer.elapsed();
-    }
+    // if (state->stats != nullptr) {
+      // state->stats->cpu_us += (double)state->cpu_timer.elapsed();
+    // }
   }
 
   if (nk <= state->k) {

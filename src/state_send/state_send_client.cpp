@@ -268,17 +268,6 @@ std::shared_ptr<search_result_t> combine_results(
       combined_res->stats->n_hops += res->stats->n_hops;
     }
   }
-
-  if (count > 0) {
-    combined_res->stats->total_us /= count;
-    combined_res->stats->n_4k /= count;
-    combined_res->stats->n_ios /= count;
-    combined_res->stats->io_us /= count;
-    combined_res->stats->head_us /= count;
-    combined_res->stats->cpu_us /= count;
-    combined_res->stats->n_cmps /= count;
-    combined_res->stats->n_hops /= count;
-  }
   return combined_res;
 }
 
