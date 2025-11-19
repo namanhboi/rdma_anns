@@ -168,7 +168,7 @@ PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${
 
 
 if [[ ! -f "${PARTITION_STATE_SEND_GRAPH_FILE}" ]]; then
-    "${WORKDIR}/build/src/state_send/convert_partition_graph_file" \
+    "${WORKDIR}/build/src/state_send/create_partition_graph_file" \
 	"${GRAPH_FILE}" \
 	"${PARTITION_FILE}" \
 	"${PARTITION_STATE_SEND_GRAPH_FILE}"
