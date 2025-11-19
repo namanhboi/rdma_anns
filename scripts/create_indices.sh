@@ -199,7 +199,7 @@ else
     echo "Creating new memory index..."
     SLICE_PREFIX="${INDEX_PREFIX}_SAMPLE_RATE_${MEM_INDEX_SAMPLING_RATE}"
     "${WORKDIR}/build/src/state_send/gen_random_slice" \
-	"${DATA_TYPE}"
+	"${DATA_TYPE}" \
         "${BASE_FILE}" \
         "${SLICE_PREFIX}" \
         "${MEM_INDEX_SAMPLING_RATE}"
