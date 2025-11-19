@@ -31,7 +31,9 @@ void create_base_from_tag(const std::string &base_file,
                           const std::string &tag_file,
                           const std::string &output_base_file);
 
-
+void create_graph_from_tag(const std::string &source_graph_path,
+                           const std::string &tag_file,
+                           const std::string &output_graph_path);
 /**
    check that num_clusters tag files exists . Then
    from each tag file and the basefile, create the base files for the clusters.

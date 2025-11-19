@@ -193,3 +193,18 @@ target_compile_options(build_disk_index_from_bin_graph PRIVATE
   $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
   $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
 )
+
+add_executable(create_graph_file_from_disk_index create_graph_file_from_disk_index.cpp)
+target_link_libraries(create_graph_file_from_disk_index ssd_state_send)
+target_compile_options(create_graph_file_from_disk_index PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
+
+
+add_executable(create_partition_graph_file create_partition_graph_file.cpp)
+target_link_libraries(create_partition_graph_file ssd_state_send)
+target_compile_options(create_partition_graph_file PRIVATE
+  $<$<CONFIG:Debug>:-g -O0 -Wall -fopenmp -fopenmp-simd>
+  $<$<CONFIG:Release>:-g -O3 -march=native -mtune=native -ftree-vectorize -funroll-loops -fopenmp -fopenmp-simd>
+)
