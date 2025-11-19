@@ -11,20 +11,20 @@ DATASET_SIZE=$2
 DATA_TYPE=$3
 PARTITION_FILE=$4
 BASE_FILE=$5
-PARLAYANN_GRAPH_FILE=$6
+GRAPH_FILE=$6
 SCATTER_GATHER_OUTPUT=$7
 SCATTER_GATHER_R=$8
 SCATTER_GATHER_L=$9
 STATE_SEND_OUTPUT=${10}
 
 if [ $# -ne 10 ]; then
-    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <parlayann_graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output>"
+    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output>"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M or 1B"
     echo "  data_type: uint8 or int8 or float"
     echo "  partition_file: /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin"
     echo "  base_file: /mydata/local/anngraphs/bigann/1B/base.1B.u8bin"
-    echo "  parlayann_graph_file: /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2"
+    echo "  graph_file: /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2"
     echo "  scatter_gather_output: /mydata/local/anngraphs/bigann/1B/clusters_5/"
     echo "  scatter_gather_r: 64"
     echo "  scatter_gather_l: 128"
@@ -52,8 +52,8 @@ if [[ ! -d "$DATA_FOLDER" ]]; then
 fi
 
 
-if [[ ! -f "$PARLAYANN_GRAPH_FILE" ]]; then
-    echo "${PARLAYANN_GRAPH_FILE} doesn't exist"
+if [[ ! -f "$GRAPH_FILE" ]]; then
+    echo "${GRAPH_FILE} doesn't exist"
     exit 1
 fi
 
@@ -168,8 +168,8 @@ PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${
 
 
 if [[ ! -f "${PARTITION_STATE_SEND_GRAPH_FILE}" ]]; then
-    "${WORKDIR}/build/src/state_send/convert_parlayann_graph_file" \
-	"${PARLAYANN_GRAPH_FILE}" \
+    "${WORKDIR}/build/src/state_send/convert_partition_graph_file" \
+	"${GRAPH_FILE}" \
 	"${PARTITION_FILE}" \
 	"${PARTITION_STATE_SEND_GRAPH_FILE}"
 fi
