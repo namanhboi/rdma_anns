@@ -162,7 +162,7 @@ fi
 echo "Scatter-gather index creation complete!"
 
 # Now create STATE_SEND indices
-PARTITION_STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/"
+PARTITION_STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/${dirname}"
 mkdir -p "${PARTITION_STATE_SEND_GRAPH_FOLDER}"
 PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${DATASET_SIZE}_${PARTITION_ID}_graph"
 
