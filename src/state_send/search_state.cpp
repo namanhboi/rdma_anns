@@ -160,7 +160,6 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   // updates frontier
   bool is_all_offserver = state_update_frontier(state);
 
-
   if (state_search_ends(state)) {
     for (uint32_t i = 0; i < state->cur_list_size; i++) {
       auto n = state->retset[i];
@@ -175,6 +174,7 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   if (is_all_offserver) {
     return SearchExecutionState::FRONTIER_OFF_SERVER;
   }
+
 
   if (state->frontier.empty()) {
     return SearchExecutionState::FRONTIER_EMPTY;
