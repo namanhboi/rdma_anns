@@ -160,6 +160,13 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
 
 
   if (state_search_ends(state)) {
+    for (uint32_t i = 0; i < state->cur_list_size; i++) {
+      auto n = state->retset[i];
+      if (n.flag) {
+        throw std::runtime_error("the state search ends returns true but there "
+                                 "are still nodes in the beam to be explored");
+      }
+    }
     return SearchExecutionState::FINISHED;
   }
 
