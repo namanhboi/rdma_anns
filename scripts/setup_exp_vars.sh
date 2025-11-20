@@ -41,7 +41,7 @@ if [ $# -ne 14 ]; then
     echo "  num_search_thread: number"
     echo "  max_batch_size: number"
     echo "  overlap: true or false"
-    echo "  beamwidth : must be 1 for anything except DISTRIBUTEDANN"
+    echo "  beamwidth : "
     echo "  num_client_threads : 1 for anything except Distributedann, for distributedann, this is the number of ochestration threads"
     echo "  use_counter_thread : use the counter thread or not. Right now counter thread is not yet implemented for distributedann"
     echo "  use_logging : logging is to get the message sizes in the handler and the serialization time rn. Need to remove the serialization time stuff"
@@ -74,6 +74,8 @@ fi
 # --- Graph prefix path ---
 if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
     GRAPH_PREFIX="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/pipeann_${DATASET_SIZE}"
+    PREFIX=""
+    GRAPH_SUFFIX=""
 else
     if [[ $OVERLAP == "true" ]]; then
 	if [ "$DIST_SEARCH_MODE" == "STATE_SEND"  ]; then
@@ -175,8 +177,8 @@ USE_BATCHING=true
 COUNTER_SLEEP_MS=100
 # --- Client parameters ---
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
-LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
-# LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
+# LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
+LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
 K_VALUE=10
 MEM_L=10
 RECORD_STATS=true

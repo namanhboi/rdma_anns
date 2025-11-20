@@ -176,7 +176,11 @@ echo "Waiting for servers to initialize..."
 if [[ "$MODE" == "local" ]]; then 
     sleep 30
 else
-    sleep 120
+    if [[ "$DATASET_SIZE" == "1B" ]]; then
+	sleep 120
+    else
+	sleep 30
+    fi
 fi
 
 
