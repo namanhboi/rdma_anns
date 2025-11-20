@@ -116,7 +116,7 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
 
 
    */
-  bool state_update_frontier(SearchState<T, TagT> *state);
+  UpdateFrontierValue state_update_frontier(SearchState<T, TagT> *state);
 
   void state_compute_and_add_to_retset(SearchState<T, TagT> *state,
                                        const unsigned *node_ids,

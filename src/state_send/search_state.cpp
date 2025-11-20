@@ -157,9 +157,6 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     }
   }
 
-  // updates frontier
-  bool is_all_offserver = state_update_frontier(state);
-
   if (state_search_ends(state)) {
     for (uint32_t i = 0; i < state->cur_list_size; i++) {
       auto n = state->retset[i];
@@ -171,20 +168,33 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     return SearchExecutionState::FINISHED;
   }
 
-  if (is_all_offserver) {
-    return SearchExecutionState::FRONTIER_OFF_SERVER;
-  }
-
-
-  if (state->frontier.empty()) {
+  // updates frontier
+  UpdateFrontierValue ret_val = state_update_frontier(state);
+  if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER) {
     return SearchExecutionState::FRONTIER_EMPTY;
+  } else if (ret_val == UpdateFrontierValue::FRONTIER_HAS_ON_SERVER) {
+    return SearchExecutionState::FRONTIER_ON_SERVER;
+  } else if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_ONLY_OFF_SERVER) {
+    return SearchExecutionState::FRONTIER_OFF_SERVER;
+  } else {
+    throw std::runtime_error("Weird return value from state update frontier");
   }
+
+  // if (is_all_offserver) {
+    // return SearchExecutionState::FRONTIER_OFF_SERVER;
+  // }
+
+
+  // if (state->frontier.empty()) {
+    // return SearchExecutionState::FRONTIER_EMPTY;
+  // }
   // if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
     // if (state_is_top_cand_off_server(state)) {
       // return SearchExecutionState::FRONTIER_OFF_SERVER;
   // }
   // }
 
+  // don't need
   return SearchExecutionState::FRONTIER_ON_SERVER;
 }
 
@@ -195,7 +205,7 @@ bool SSDPartitionIndex<T, TagT>::state_search_ends(
 }
 
 template <typename T, typename TagT>
-bool SSDPartitionIndex<T, TagT>::state_update_frontier(
+UpdateFrontierValue SSDPartitionIndex<T, TagT>::state_update_frontier(
     SearchState<T, TagT> *state) {
   // updates frontier
   state->frontier.clear();
@@ -221,7 +231,13 @@ bool SSDPartitionIndex<T, TagT>::state_update_frontier(
     }
     marker++;
   }
-  return num_off_server_nodes == state->beam_width;
+  if (state->frontier.empty()) {
+    if (num_off_server_nodes > 0) {
+      return UpdateFrontierValue::FRONTIER_EMPTY_ONLY_OFF_SERVER;
+    }
+    return UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER;
+  }
+  return UpdateFrontierValue::FRONTIER_HAS_ON_SERVER;
 }
 
 template <typename T, typename TagT>

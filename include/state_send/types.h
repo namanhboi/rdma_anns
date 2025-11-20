@@ -51,6 +51,8 @@ enum class DistributedSearchMode : uint32_t {
   DISTRIBUTED_ANN = 3
 };
 
+
+
 inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
   if (mode == DistributedSearchMode::SCATTER_GATHER) {
     return "SCATTER_GATHER";
@@ -132,6 +134,21 @@ enum class SearchExecutionState {
   FRONTIER_OFF_SERVER,
   FRONTIER_ON_SERVER,
   FRONTIER_EMPTY
+};
+
+enum class UpdateFrontierValue {
+  // these 3 value categories are mutually exclusive
+  FRONTIER_EMPTY_NO_OFF_SERVER,
+  // there is no unexplored neighbor starting from index k
+
+  FRONTIER_HAS_ON_SERVER,
+  // frontier is not empty and
+  // there is at least some on server nodes to explore
+
+
+  FRONTIER_EMPTY_ONLY_OFF_SERVER,
+  // frontier is empty because all nodes visited by state update frontier are
+  // off server
 };
 
 struct QueryStats {

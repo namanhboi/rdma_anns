@@ -123,15 +123,21 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             assert(allocated_states[i]->cur_list_size > 0);
             // parent->state_print_detailed(allocated_states[i]);
           }
-          bool is_all_offserver =
+          UpdateFrontierValue ret_val =
             parent->state_update_frontier(allocated_states[i]);
-          if (is_all_offserver) {
+          if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_ONLY_OFF_SERVER) {
             parent->send_state(allocated_states[i]);
             // send state will delete the state later
             number_concurrent_queries--;
             number_own_states--;
-          } else {
+          } else if (ret_val == UpdateFrontierValue::FRONTIER_HAS_ON_SERVER){
             parent->state_issue_next_io_batch(allocated_states[i], ctx);
+          } else if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER){
+            throw std::runtime_error(
+                "frontier can't be actually empty because we just added either "
+                "return value from mem index or medoid to it");
+          } else {
+	    throw std::runtime_error("werid return value from update frontier");
           }
         } else {
           assert(parent->dist_search_mode == DistributedSearchMode::STATE_SEND);
