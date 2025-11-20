@@ -38,7 +38,7 @@ static constexpr uint32_t MAX_L_SEARCH = 512;
 // later when/if i implement the comparison to pipeann methods then the beam
 // width of those will be higher but we don't care since it won't be using
 // states
-constexpr uint32_t BALANCE_BATCH_MAX_BEAMWIDTH = 1;
+constexpr uint32_t BALANCE_BATCH_MAX_BEAMWIDTH = 8;
 constexpr uint32_t MAX_NUM_NEIGHBORS = 128;
 constexpr uint32_t MAX_NUM_PQ_CHUNKS = 64;
 
@@ -129,8 +129,9 @@ struct ack {
 
 enum class SearchExecutionState {
   FINISHED,
-  TOP_CAND_NODE_OFF_SERVER,
-  TOP_CAND_NODE_ON_SERVER
+  FRONTIER_OFF_SERVER,
+  FRONTIER_ON_SERVER,
+  FRONTIER_EMPTY
 };
 
 struct QueryStats {

@@ -86,9 +86,22 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                                 dist_search_mode_str);
   }
 
-  if (beam_width != 1 && dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::invalid_argument(
-        "beam_width should be 1, other sizes not yet impl");
+  // if (beam_width != 1 && dist_search_mode !=
+  // DistributedSearchMode::DISTRIBUTED_ANN) { throw std::invalid_argument(
+  // "beam_width should be 1, other sizes not yet impl");
+  // }
+
+
+
+  if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+    if (beam_width > distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN) {
+      throw std::invalid_argument("beam width too large for distributedann");
+    }
+  } else {
+    if (beam_width > BALANCE_BATCH_MAX_BEAMWIDTH) {
+      throw std::invalid_argument("Beam width too large for balance batch "
+                                  "(includes scatter gather and state send");
+    }
   }
 
   std::vector<std::vector<uint32_t>> query_result_ids(Lvec.size());

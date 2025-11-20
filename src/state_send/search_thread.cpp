@@ -123,39 +123,34 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             assert(allocated_states[i]->cur_list_size > 0);
             // parent->state_print_detailed(allocated_states[i]);
           }
-          uint8_t partition_assignment_top_cand =
-            parent->get_random_partition_assignment(
-					   allocated_states[i]->frontier[0]);
-          if (partition_assignment_top_cand != parent->my_partition_id) {
+          bool is_all_offserver =
+            parent->state_update_frontier(allocated_states[i]);
+          if (is_all_offserver) {
             parent->send_state(allocated_states[i]);
             // send state will delete the state later
             number_concurrent_queries--;
             number_own_states--;
           } else {
-            bool read_issued =
-              parent->state_issue_next_io_batch(allocated_states[i], ctx);
-            assert(read_issued);
+            parent->state_issue_next_io_batch(allocated_states[i], ctx);
           }
         } else {
           assert(parent->dist_search_mode == DistributedSearchMode::STATE_SEND);
           number_concurrent_queries++;
           number_foreign_states++;
-          parent->num_foreign_states_global_queue--;          
+          parent->num_foreign_states_global_queue--;
           // state that was sent, need to check that the top node in frontier is
           // on this server
           // uint8_t partition_assignment_top_cand =
-            // parent->state_top_cand_random_partition(allocated_states[i]);
-            if (parent->state_is_top_cand_off_server(allocated_states[i])) {
-              throw std::runtime_error("state isn't on this server");
-                // "Partition assigmnent of sent state is not the same as "
-                // "server " +
-                // std::to_string(partition_assignment_top_cand) + " " +
-                // std::to_string(parent->my_partition_id));
-          }
-          assert(allocated_states[i]->frontier.size()> 0);
-          bool read_issued =
-            parent->state_issue_next_io_batch(allocated_states[i], ctx);
-          assert(read_issued);
+          // parent->state_top_cand_random_partition(allocated_states[i]);
+          // if (parent->state_is_top_cand_off_server(allocated_states[i])) {
+          // throw std::runtime_error("state isn't on this server");
+          // "Partition assigmnent of sent state is not the same as "
+          // "server " +
+          // std::to_string(partition_assignment_top_cand) + " " +
+          // std::to_string(parent->my_partition_id));
+          // }
+	  parent->state_update_frontier(allocated_states[i]);
+          parent->state_issue_next_io_batch(allocated_states[i], ctx);
         }
       }
     }
@@ -169,28 +164,26 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       // this is a poison pill to shutdown the thread
       break;
     }
-    // unsigned int ready = io_uring_cq_ready(reinterpret_cast<io_uring *>(ctx));
-    // LOG(INFO) << "Read received: " << req->offset;
 
     SearchState<T, TagT> *state =
       reinterpret_cast<SearchState<T, TagT> *>(req->search_state);
-    if (state->stats != nullptr) {
-      state->stats->io_us += (double) state->io_timer.elapsed();
+
+    if (!parent->state_io_finished(state)) {
+      continue;
     }
-    // if (state->query_emb == nullptr) {
-    //   if (parent->query_emb_map.contains(state->query_id)) {
-    //     state->query_emb = parent->query_emb_map.find(state->query_id);
-    //   } else {
-    //     throw std::runtime_error("the query_emb for this state doesn't exist");
-    //   }
-    // }
-    SearchExecutionState s = parent->state_explore_frontier(state);
+
+    SearchExecutionState s = SearchExecutionState::FRONTIER_EMPTY;
+    // this loop will advance the state until there is something to read or
+    // the state ends
+    while (s == SearchExecutionState::FRONTIER_EMPTY) {
+      s = parent->state_explore_frontier(state);
+    }
     // parent->state_print_detailed(state);
     if (s == SearchExecutionState::FINISHED) {
       // state->end_time = std::chrono::steady_clock::now();
-      if (state->stats != nullptr) {
-        state->stats->total_us += (double)state->query_timer.elapsed();
-      }
+      // if (state->stats != nullptr) {
+        // state->stats->total_us += (double)state->query_timer.elapsed();
+      // }
       number_concurrent_queries--;
       if (state->partition_history.size() == 1) {
         number_own_states--;
@@ -198,26 +191,24 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 	number_foreign_states--;
       }
       this->parent->notify_client(state);
-    } else if (s == SearchExecutionState::TOP_CAND_NODE_ON_SERVER) {
+    } else if (s == SearchExecutionState::FRONTIER_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
       if (state->stats != nullptr) {
         state->stats->n_4k++;
         state->stats->n_ios++;
 	state->io_timer.reset();
       }
-      assert(state->frontier.size() != 0);
-      bool read_issued = parent->state_issue_next_io_batch(state, ctx);
-      assert(read_issued);
-    } else if (s == SearchExecutionState::TOP_CAND_NODE_OFF_SERVER) {
+      parent->state_issue_next_io_batch(state, ctx);
+    } else if (s == SearchExecutionState::FRONTIER_OFF_SERVER) {
       if (state->partition_history.size() == 1) {
         number_own_states--;
       } else {
 	number_foreign_states--;
       }
       number_concurrent_queries--;
-      if (state->stats != nullptr) {
-        state->stats->total_us += (double)state->query_timer.elapsed();
-      }      
+      // if (state->stats != nullptr) {
+        // state->stats->total_us += (double)state->query_timer.elapsed();
+      // }
       parent->send_state(state);
     }    
   }

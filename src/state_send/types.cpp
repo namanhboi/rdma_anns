@@ -139,14 +139,14 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
   // write_data(buffer, reinterpret_cast<const char *>(&node_id),
   // sizeof(node_id), offset);
   // }
-  size_t size_frontier = frontier.size();
+  // size_t size_frontier = frontier.size();
 
-  write_data(buffer, reinterpret_cast<const char *>(&size_frontier),
-             sizeof(size_frontier), offset);
-  for (const auto &frontier_ele : frontier) {
-    write_data(buffer, reinterpret_cast<const char *>(&frontier_ele),
-               sizeof(frontier_ele), offset);
-  }
+  // write_data(buffer, reinterpret_cast<const char *>(&size_frontier),
+             // sizeof(size_frontier), offset);
+  // for (const auto &frontier_ele : frontier) {
+    // write_data(buffer, reinterpret_cast<const char *>(&frontier_ele),
+               // sizeof(frontier_ele), offset);
+  // }
 
   write_data(buffer, reinterpret_cast<const char *>(&cmps), sizeof(cmps),
              offset);
@@ -193,10 +193,10 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
     num_bytes += sizeof(retset[i].flag);
   }
 
-  num_bytes += sizeof(frontier.size());
-  for (const auto &frontier_ele : frontier) {
-    num_bytes += sizeof(frontier_ele);
-  }
+  // num_bytes += sizeof(frontier.size());
+  // for (const auto &frontier_ele : frontier) {
+    // num_bytes += sizeof(frontier_ele);
+  // }
 
   num_bytes += sizeof(cmps);
   num_bytes += sizeof(k);
@@ -303,18 +303,18 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
                                      // SingletonLogger::get_timestamp_ns(),
                                      // log_msg_id, "STATE");
   // --- frontier ---
-  size_t size_frontier;
-  std::memcpy(&size_frontier, buffer + offset, sizeof(size_frontier));
-  offset += sizeof(size_frontier);
+  // size_t size_frontier;
+  // std::memcpy(&size_frontier, buffer + offset, sizeof(size_frontier));
+  // offset += sizeof(size_frontier);
 
   // Read elements safely
-  state->frontier.resize(size_frontier);
-  for (size_t i = 0; i < size_frontier; ++i) {
-    unsigned val;
-    std::memcpy(&val, buffer + offset, sizeof(val));
-    offset += sizeof(val);
-    state->frontier[i] = val;
-  }
+  // state->frontier.resize(size_frontier);
+  // for (size_t i = 0; i < size_frontier; ++i) {
+    // unsigned val;
+    // std::memcpy(&val, buffer + offset, sizeof(val));
+    // offset += sizeof(val);
+    // state->frontier[i] = val;
+  // }
 
   // --- misc fields ---
   std::memcpy(&state->cmps, buffer + offset, sizeof(state->cmps));

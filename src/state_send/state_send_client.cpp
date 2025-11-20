@@ -122,6 +122,7 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
 }
 
 template <typename T> void StateSendClient<T>::ClientThread::start() {
+  LOG(INFO) << "Started client thread";
   running = true;
   real_thread = std::thread(&StateSendClient<T>::ClientThread::main_loop, this);
 }
@@ -399,8 +400,6 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
 				       },
 				       std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
 					 {res->partition_history[0], res}});
-
-      
       if (num_res == parent->other_peer_ids.size()) {
         std::shared_ptr<search_result_t> combined_res =
           combine_results(parent->sub_query_results.find(res->query_id));

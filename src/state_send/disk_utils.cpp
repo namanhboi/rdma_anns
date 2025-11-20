@@ -557,8 +557,7 @@ void create_and_write_partitions_to_loc_files(
     return;
 
   PointSet points = internal::ReadBytes<T>(base_file);
-  const double epsilon = 0.05;
-  // for some dumb reason it has to be num_partitions - 1
+  const double epsilon = 0.01;
   std::vector<std::vector<uint32_t>> partitions = ConvertPartitionToClusters(
 									     GraphPartitioning(points, num_partitions , epsilon, false));
   

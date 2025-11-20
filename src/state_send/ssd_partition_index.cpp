@@ -950,6 +950,11 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
     SearchState<T, TagT> *state) {
   uint64_t recipient_peer_id = parent->state_top_cand_random_partition(state);
+  if (recipient_peer_id == parent->my_partition_id) {
+    throw std::runtime_error(
+        "if we are sending a state then its top cand partition id can't be "
+        "from this server otherwise why send it");
+  }
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   if (!msg_queue.contains(recipient_peer_id)) {
     msg_queue[recipient_peer_id] =

@@ -44,39 +44,31 @@ void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
     state->cur_list_size++;
     // state->visited.insert(node_ids[i]);
   }
-  state_update_frontier(state);
+
 }
 
 template <typename T, typename TagT>
-bool SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(
+void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(
     SearchState<T, TagT> *state, void *ctx) {
   // read nhoods of frontier ids
-  if (!state->frontier.empty()) {
-    state->sector_idx = 0;
-    for (uint64_t i = 0; i < state->frontier.size(); i++) {
-      uint32_t loc = id2loc(state->frontier[i]);
-      uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
-      auto sector_buf = state->sectors + state->sector_idx * this->size_per_io;
-      fnhood_t fnhood = std::make_tuple(state->frontier[i], loc, sector_buf);
-      state->sector_idx++;
-      state->frontier_nhoods.push_back(fnhood);
-      state->frontier_read_reqs.emplace_back(IORequest(
-          offset, this->size_per_io, sector_buf, 0, 0, nullptr, state));
-      // LOG(INFO) << "read offset is  " << offset;
-    }
-
-    this->reader->send_io(state->frontier_read_reqs, ctx, false);
-    return true;
+  if (state->frontier.empty()) {
+    throw std::invalid_argument(
+				"State frontier can't be emtpy when issuing an io batch");
   }
-  // LOG(INFO) << "k, size of batch " << k << " " << frontier_read_reqs.size();
-  // LOG(INFO) << "k, size of frontier " << k << " " << frontier.size();
-  // if (frontier.empty()) {
-  //   LOG(INFO) << "k, frontier[0] " << "null";
-  // }
-  // else {
-  //   LOG(INFO) << "k, frontier[0] " << frontier[0];
-  // }
-  return false;
+  state->sector_idx = 0;
+  for (uint64_t i = 0; i < state->frontier.size(); i++) {
+    uint32_t loc = id2loc(state->frontier[i]);
+    uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
+    auto sector_buf = state->sectors + state->sector_idx * this->size_per_io;
+    fnhood_t fnhood = std::make_tuple(state->frontier[i], loc, sector_buf);
+    state->sector_idx++;
+    state->frontier_nhoods.push_back(fnhood);
+    state->frontier_read_reqs.emplace_back(
+					   IORequest(offset, this->size_per_io, sector_buf, 0, 0, nullptr, state));
+    // LOG(INFO) << "read offset is  " << offset;
+  }
+
+  this->reader->send_io(state->frontier_read_reqs, ctx, false);
 }
 
 template <typename T, typename TagT>
@@ -164,20 +156,27 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   }
 
   // updates frontier
-  state_update_frontier(state);
+  bool is_all_offserver = state_update_frontier(state);
+
 
   if (state_search_ends(state)) {
     return SearchExecutionState::FINISHED;
   }
+
+  if (is_all_offserver) {
+    return SearchExecutionState::FRONTIER_OFF_SERVER;
+  }
+
   if (state->frontier.empty()) {
-    return SearchExecutionState::FINISHED;
+    return SearchExecutionState::FRONTIER_EMPTY;
   }
-  if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
-    if (state_is_top_cand_off_server(state)) {
-      return SearchExecutionState::TOP_CAND_NODE_OFF_SERVER;
-    }
-  }
-  return SearchExecutionState::TOP_CAND_NODE_ON_SERVER;
+  // if (this->dist_search_mode == DistributedSearchMode::STATE_SEND) {
+    // if (state_is_top_cand_off_server(state)) {
+      // return SearchExecutionState::FRONTIER_OFF_SERVER;
+  // }
+  // }
+
+  return SearchExecutionState::FRONTIER_ON_SERVER;
 }
 
 template <typename T, typename TagT>
@@ -187,7 +186,7 @@ bool SSDPartitionIndex<T, TagT>::state_search_ends(
 }
 
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::state_update_frontier(
+bool SSDPartitionIndex<T, TagT>::state_update_frontier(
     SearchState<T, TagT> *state) {
   // updates frontier
   state->frontier.clear();
@@ -197,38 +196,60 @@ void SSDPartitionIndex<T, TagT>::state_update_frontier(
 
   uint32_t marker = state->k;
   uint32_t num_seen = 0;
+  uint32_t num_off_server_nodes = 0;
   while (marker < state->cur_list_size &&
-         state->frontier.size() < state->beam_width &&
+         // state->frontier.size() < state->beam_width &&
          num_seen < state->beam_width) {
     if (state->retset[marker].flag) {
       num_seen++;
-      state->frontier.push_back(state->retset[marker].id);
-      state->retset[marker].flag = false;
+      if (get_random_partition_assignment(state->retset[marker].id) !=
+          my_partition_id) {
+	num_off_server_nodes++;
+      } else {
+	state->frontier.push_back(state->retset[marker].id);
+	state->retset[marker].flag = false;
+      }
     }
     marker++;
   }
+  return num_off_server_nodes == state->beam_width;
 }
 
 template <typename T, typename TagT>
 uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_random_partition(
     SearchState<T, TagT> *state) {
-  if (state->frontier.size() == 0) {
-    throw std::invalid_argument("State has frontier size 0");
+  // if (state->frontier.size() == 0) {
+    // throw std::invalid_argument("State has frontier size 0");
+  // }
+  uint32_t marker = state->k;
+  uint32_t num_seen = 0;
+  uint32_t num_off_server_nodes = 0;
+  while (marker < state->cur_list_size &&
+         // state->frontier.size() < state->beam_width &&
+         num_seen < state->beam_width) {
+    if (state->retset[marker].flag) {
+      num_seen++;
+      uint8_t node_partition_id = get_random_partition_assignment(state->retset[marker].id);
+      if (node_partition_id != my_partition_id) {
+        return node_partition_id;
+      }
+    }
+    marker++;
   }
-  return this->get_random_partition_assignment(state->frontier[0]);
+  return my_partition_id;
 }
 
-template <typename T, typename TagT>
-bool SSDPartitionIndex<T, TagT>::state_is_top_cand_off_server(
-							      SearchState<T, TagT> *state) {
-  if (std::find(partition_assignment[state->frontier[0]].cbegin(),
-                partition_assignment[state->frontier[0]].cend(),
-                this->my_partition_id) !=
-      partition_assignment[state->frontier[0]].cend()) {
-    return false;
-  }
-  return true;
-}
+// template <typename T, typename TagT>
+// bool SSDPartitionIndex<T, TagT>::state_is_top_cand_off_server(
+// 							      SearchState<T, TagT> *state) {
+//   if (std::find(partition_assignment[state->frontier[0]].cbegin(),
+//                 partition_assignment[state->frontier[0]].cend(),
+//                 this->my_partition_id) !=
+//       partition_assignment[state->frontier[0]].cend()) {
+//     return false;
+//   }
+//   return true;
+// }
 
 std::string neighbors_to_string(pipeann::Neighbor *neighbors,
                                 uint32_t num_neighbors) {
@@ -270,6 +291,19 @@ std::string state_partition_history_to_string(SearchState<T, TagT> *state) {
   }
   return str.str();
 }
+
+
+template <typename T, typename TagT>
+bool SSDPartitionIndex<T, TagT>::state_io_finished(
+						   SearchState<T, TagT> *state) {
+  for (auto &req : state->frontier_read_reqs) {
+    if (!req.finished) {
+      return false;
+    }
+  }
+  return true;
+}
+
 
 // template <typename T, typename TagT>
 // std::string state_frontier_nhoods_to_string(SearchState<T, TagT> *state) {

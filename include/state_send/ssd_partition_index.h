@@ -98,18 +98,31 @@ public:
 
   void state_print(SearchState<T, TagT> *state);
   void state_reset(SearchState<T, TagT> *state);
-  
+
   /**
      called at the end of compute and add to retset and explore frontier. This
      is so that  issue_next_io_batch can read the frontier and issue the reads
+
+
+the updated frontier will only contain nodes that are on-server/can be read
+
+     RETURNS: whether all the nodes iterated over to fill the beam are off
+     server, if so then return true, else false. In case where we have reached
+     the end of the retset, return false.
+
+
+ONLY RETURN TRUE IF WE MUST SEND THE STATE.
+
+
+
    */
-  void state_update_frontier(SearchState<T, TagT> *state);
+  bool state_update_frontier(SearchState<T, TagT> *state);
 
   void state_compute_and_add_to_retset(SearchState<T, TagT> *state,
                                        const unsigned *node_ids,
                                        const uint64_t n_ids);
 
-  bool state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx);
+  void state_issue_next_io_batch(SearchState<T, TagT> *state, void *ctx);
   
     /**
        advances the state based on whatever is in frontier_nhoods, which is the
@@ -132,12 +145,20 @@ public:
   // 
   // }
 
+
+  /*
+    Traces back the nodes that state_update_frontier also went through. Return
+    the partition_id of the first one that is offserver. If none are off server then
+    return this server's partition_id.
+   */
   uint8_t state_top_cand_random_partition(SearchState<T, TagT> *state);
-  bool state_is_top_cand_off_server(SearchState<T, TagT> *state);
+  // bool state_is_top_cand_off_server(SearchState<T, TagT> *state);
 
   void state_print_detailed(SearchState<T, TagT> *state);
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
 
+
+  bool state_io_finished(SearchState<T, TagT>* state);
 
 private:
   class CounterThread {
