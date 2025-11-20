@@ -149,18 +149,17 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     // }
   }
 
-
-  // updates frontier
-  bool is_all_offserver = state_update_frontier(state);
-  if (is_all_offserver) {
-    return SearchExecutionState::FRONTIER_OFF_SERVER;
-  }
-
   if (nk <= state->k) {
     state->k = nk; // k is the best position in retset updated in this round.
   } else {
-    state->k++;
+    if (get_random_partition_assignment(state->retset[state->k].id) == my_partition_id) {
+      state->k++;
+    }
   }
+
+  // updates frontier
+  bool is_all_offserver = state_update_frontier(state);
+
 
   if (state_search_ends(state)) {
     for (uint32_t i = 0; i < state->cur_list_size; i++) {
@@ -171,6 +170,10 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
       }
     }
     return SearchExecutionState::FINISHED;
+  }
+
+  if (is_all_offserver) {
+    return SearchExecutionState::FRONTIER_OFF_SERVER;
   }
 
   if (state->frontier.empty()) {
