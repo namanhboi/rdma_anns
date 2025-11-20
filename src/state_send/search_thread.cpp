@@ -155,6 +155,10 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           // std::to_string(partition_assignment_top_cand) + " " +
           // std::to_string(parent->my_partition_id));
           // }
+          // if (parent->get_random_partition_assignment(
+						      // allocated_states[i]->retset[allocated_states[i]->k].id) != parent->my_partition_id) {
+            // throw std::runtime_error("unexpected different value");
+          // }
 	  parent->state_update_frontier(allocated_states[i]);
           parent->state_issue_next_io_batch(allocated_states[i], ctx);
         }
@@ -183,6 +187,8 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     // the state ends
     while (s == SearchExecutionState::FRONTIER_EMPTY) {
       s = parent->state_explore_frontier(state);
+      // LOG(INFO) << "HELLO " << state->k << " " << state->cur_list_size << " "
+      // << (int)(parent->get_random_partition_assignment(state->retset[state->k].id) == parent->my_partition_id) << " " << state->frontier.size() << " " << int(state->retset[state->k].flag);
     }
     // parent->state_print_detailed(state);
     if (s == SearchExecutionState::FINISHED) {

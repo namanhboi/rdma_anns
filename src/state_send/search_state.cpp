@@ -152,7 +152,12 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   if (nk <= state->k) {
     state->k = nk; // k is the best position in retset updated in this round.
   } else {
-    if (get_random_partition_assignment(state->retset[state->k].id) == my_partition_id) {
+    // if (get_random_partition_assignment(state->retset[state->k].id) == my_partition_id) {
+      // state->k++;
+    // } else if (!state->retset[state->k].flag) {
+    // state->k++;
+    // }
+    if (!state->retset[state->k].flag) {
       state->k++;
     }
   }
@@ -171,10 +176,14 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   // updates frontier
   UpdateFrontierValue ret_val = state_update_frontier(state);
   if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER) {
+    // LOG(INFO) << 
     return SearchExecutionState::FRONTIER_EMPTY;
   } else if (ret_val == UpdateFrontierValue::FRONTIER_HAS_ON_SERVER) {
     return SearchExecutionState::FRONTIER_ON_SERVER;
   } else if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_ONLY_OFF_SERVER) {
+    if (this->get_random_partition_assignment(state->retset[state->k].id) == my_partition_id && state->retset[state->k].flag) {
+      throw std::runtime_error("current position is still my partition id, why not explore ");
+    }
     return SearchExecutionState::FRONTIER_OFF_SERVER;
   } else {
     throw std::runtime_error("Weird return value from state update frontier");
