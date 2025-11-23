@@ -3,6 +3,7 @@
 #include "types.h"
 #include "singleton_logger.h"
 #include <chrono>
+#include <cstdint>
 #include <limits>
 
 
@@ -100,13 +101,20 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(&query_id),
              sizeof(query_id), offset);
   size_t num_partitions = partition_history.size();
-
   write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
              sizeof(num_partitions), offset);
   for (const auto partition_id : partition_history) {
     write_data(buffer, reinterpret_cast<const char *>(&partition_id),
                sizeof(partition_id), offset);
   }
+  size_t num_partition_history_hop_idx = partition_history_hop_idx.size();
+  write_data(buffer, (char *)(&num_partition_history_hop_idx),
+             sizeof(num_partition_history_hop_idx), offset);
+  for (const auto node_id : partition_history_hop_idx) {
+    write_data(buffer, reinterpret_cast<const char *>(&node_id),
+               sizeof(node_id), offset);
+  }
+  
 
   size_t size_full_retset = full_retset.size();
   write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
@@ -207,8 +215,10 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
 
   num_bytes += sizeof(query_id);
 
-  num_bytes += sizeof(partition_history.size());
+  num_bytes += sizeof(size_t);
   num_bytes += sizeof(uint8_t) * partition_history.size();
+  num_bytes += sizeof(size_t);
+  num_bytes += sizeof(uint32_t) * partition_history_hop_idx.size();
 
   num_bytes += sizeof(bool);
   if (stats != nullptr) {
@@ -250,7 +260,20 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   state->partition_history =
       std::vector<uint8_t>(start_partition_history,
                            start_partition_history + size_partition_history);
+
+
   offset += size_partition_history * sizeof(uint8_t);
+
+
+  size_t num_partition_history_hop_idx;
+  std::memcpy(&num_partition_history_hop_idx, buffer + offset,
+              sizeof(num_partition_history_hop_idx));
+  offset += sizeof(num_partition_history_hop_idx);
+  state->partition_history_hop_idx.resize(num_partition_history_hop_idx);
+  std::memcpy(state->partition_history_hop_idx.data(), buffer + offset,
+              sizeof(uint32_t) * num_partition_history_hop_idx);
+  offset += sizeof(uint32_t) * num_partition_history_hop_idx;
+  
   state->query_emb = nullptr;
   // SingletonLogger::get_logger().info(
       // "[{}] [{}] [{}]:BEGIN_DESERIALIZE_FULL_RETSET",
@@ -302,20 +325,6 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_RETSET",
                                      // SingletonLogger::get_timestamp_ns(),
                                      // log_msg_id, "STATE");
-  // --- frontier ---
-  // size_t size_frontier;
-  // std::memcpy(&size_frontier, buffer + offset, sizeof(size_frontier));
-  // offset += sizeof(size_frontier);
-
-  // Read elements safely
-  // state->frontier.resize(size_frontier);
-  // for (size_t i = 0; i < size_frontier; ++i) {
-    // unsigned val;
-    // std::memcpy(&val, buffer + offset, sizeof(val));
-    // offset += sizeof(val);
-    // state->frontier[i] = val;
-  // }
-
   // --- misc fields ---
   std::memcpy(&state->cmps, buffer + offset, sizeof(state->cmps));
   offset += sizeof(state->cmps);
@@ -466,8 +475,8 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   state->frontier_nhoods.clear();
   state->frontier_read_reqs.clear();
   state->partition_history.clear();
+  state->partition_history_hop_idx.clear();  
   state->query_id = std::numeric_limits<uint64_t>::max();
-  state->partition_history.clear();
   state->stats = nullptr;
   state->client_peer_id = std::numeric_limits<uint64_t>::max();
 }
@@ -498,9 +507,20 @@ search_result_t::deserialize(const char *buffer) {
 
   res->partition_history.resize(num_partitions);
 
+
   std::memcpy(res->partition_history.data(), buffer + offset,
               sizeof(uint8_t) * num_partitions);
   offset += sizeof(uint8_t) * num_partitions;
+
+
+  size_t num_partition_history_hop_idx;
+  std::memcpy(&num_partition_history_hop_idx, buffer + offset,
+              sizeof(num_partition_history_hop_idx));
+  offset += sizeof(num_partition_history_hop_idx);
+  res->partition_history_hop_idx.resize(num_partition_history_hop_idx);
+  std::memcpy(res->partition_history_hop_idx.data(), buffer + offset,
+              sizeof(uint32_t) * num_partition_history_hop_idx);
+  offset += sizeof(uint32_t) * num_partition_history_hop_idx;
 
   bool record_stats;
   std::memcpy(&record_stats, buffer + offset, sizeof(record_stats));
@@ -532,6 +552,12 @@ size_t search_result_t::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(partition_history.data()),
              sizeof(uint8_t) * num_partitions, offset);
 
+  size_t num_partition_history_idx = this->partition_history_hop_idx.size();
+  write_data(buffer, reinterpret_cast<const char *>(&num_partition_history_idx),
+             sizeof(num_partition_history_idx), offset);
+  write_data(buffer, reinterpret_cast<const char *>(partition_history_hop_idx.data()),
+             sizeof(uint32_t) * num_partition_history_idx, offset);  
+
   bool record_stats = (stats != nullptr);
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
@@ -546,6 +572,7 @@ size_t search_result_t::get_serialize_size() const {
   num_bytes += sizeof(query_id) + sizeof(client_peer_id) + sizeof(num_res) +
                sizeof(uint32_t) * num_res + sizeof(float) * num_res +
                sizeof(size_t) + sizeof(uint8_t) * partition_history.size() +
+               sizeof(size_t) + sizeof(uint32_t) * partition_history_hop_idx.size() + 
                sizeof(bool);
   if (stats != nullptr) {
     num_bytes += stats->get_serialize_size();

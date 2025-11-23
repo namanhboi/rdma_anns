@@ -202,6 +202,7 @@ struct search_result_t {
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
   std::vector<uint8_t> partition_history;
+  std::vector<uint32_t> partition_history_hop_idx;
   std::shared_ptr<QueryStats> stats = nullptr;
 
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
@@ -294,6 +295,7 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // all the partition/server ids that it has been through
   std::vector<uint8_t> partition_history;
+  std::vector<uint32_t> partition_history_hop_idx;
 
   // stats
   pipeann::Timer query_timer, io_timer, cpu_timer;

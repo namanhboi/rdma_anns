@@ -67,13 +67,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           //poison pill from queue
           break;
         }
-
-        if (allocated_states[i]->stats != nullptr) {
-          allocated_states[i]->query_timer.reset();
-          allocated_states[i]->io_timer.reset();
-          allocated_states[i]->stats->n_4k++;
-          allocated_states[i]->stats->n_ios++;
-        }
         if (allocated_states[i]->query_emb == nullptr) {
           allocated_states[i]->query_emb =
             parent->query_emb_map.find(allocated_states[i]->query_id);
@@ -85,8 +78,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 						    allocated_states[i]->query_emb->pq_dists);
           allocated_states[i]->query_emb->populated_pq_dists = true;
         }
-        // if (allocated_states[i]->query_emb->pq_dists
-        
         // initialize the result set: either with in mem index or by just using
         // the medoid
         // brand new state, must be sent from client
@@ -96,7 +87,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           parent->num_new_states_global_queue--;
           assert(allocated_states[i]->partition_history.size() == 1);
           if (allocated_states[i]->mem_l > 0) {
-            // LOG(INFO) << "SEARCHING WITH MEM INDEX";
             assert(parent->mem_index_ != nullptr);
             std::vector<unsigned> mem_tags(allocated_states[i]->mem_l);
             std::vector<float> mem_dists(allocated_states[i]->mem_l);
@@ -108,20 +98,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 allocated_states[i], mem_tags.data(),
                 std::min((unsigned)allocated_states[i]->mem_l,
                          (unsigned)allocated_states[i]->l_search));
-            // LOG(INFO) << "==== HEADINDEX" << allocated_states[i]->query_id
-            // << "======";
-            // print_neighbor_vec({allocated_states[i]->retset,
-                                // allocated_states[i]->retset +
-                                // allocated_states[i]->cur_list_size});
-            
             assert(allocated_states[i]->cur_list_size > 0);
-            // parent->state_print_detailed(allocated_states[i]);
           } else {
 	    uint32_t best_medoid = parent->medoids[0];
             parent->state_compute_and_add_to_retset(allocated_states[i],
                                                     &best_medoid, 1);
             assert(allocated_states[i]->cur_list_size > 0);
-            // parent->state_print_detailed(allocated_states[i]);
           }
           UpdateFrontierValue ret_val =
             parent->state_update_frontier(allocated_states[i]);
@@ -205,11 +187,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       this->parent->notify_client(state);
     } else if (s == SearchExecutionState::FRONTIER_ON_SERVER) {
       // LOG(INFO) << "Issuing io";
-      if (state->stats != nullptr) {
-        state->stats->n_4k++;
-        state->stats->n_ios++;
-	state->io_timer.reset();
-      }
+
       parent->state_issue_next_io_batch(state, ctx);
     } else if (s == SearchExecutionState::FRONTIER_OFF_SERVER) {
       if (state->partition_history.size() == 1) {

@@ -57,6 +57,11 @@ void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(
   }
   state->sector_idx = 0;
   for (uint64_t i = 0; i < state->frontier.size(); i++) {
+    if (state->stats != nullptr) {
+      state->stats->n_4k++;
+      state->stats->n_ios++;
+      // state->io_timer.reset();
+    }    
     uint32_t loc = id2loc(state->frontier[i]);
     uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
     auto sector_buf = state->sectors + state->sector_idx * this->size_per_io;
@@ -75,7 +80,11 @@ template <typename T, typename TagT>
 SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     SearchState<T, TagT> *state) {
   auto nk = state->cur_list_size;
-  state->stats->n_hops++;
+  if (!state->frontier.empty()) {
+    if (state->stats) {
+      state->stats->n_hops++;
+    }
+  }
   for (auto &frontier_nhood : state->frontier_nhoods) {
     auto [id, loc, sector_buf] = frontier_nhood;
     char *node_disk_buf = this->offset_to_loc(sector_buf, loc);

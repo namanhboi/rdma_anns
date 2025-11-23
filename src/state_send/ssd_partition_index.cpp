@@ -599,10 +599,15 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       new_search_state->query_id = query->query_id;
       new_search_state->client_peer_id = query->client_peer_id;
       new_search_state->partition_history.push_back(this->my_partition_id);
+
       new_search_state->query_emb = query;
       new_search_state->cur_list_size = 0;
       if (query->record_stats) {
         new_search_state->stats = std::make_shared<QueryStats>();
+      }
+      if (new_search_state->stats) {
+        new_search_state->partition_history_hop_idx.push_back(
+							      new_search_state->stats->n_hops);
       }
 
       num_new_states_global_queue.fetch_add(1);
@@ -653,6 +658,10 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                                        // message_type_to_string(msg_type));
     for (uint64_t i = 0; i < num_states; i++) {
       state_scratch[i]->partition_history.push_back(my_partition_id);
+      if (state_scratch[i]->stats) {
+        state_scratch[i]->partition_history_hop_idx.push_back(
+							      state_scratch[i]->stats->n_hops);
+      }
     }
     num_foreign_states_global_queue.fetch_add(num_states);
     // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
