@@ -42,7 +42,7 @@ SCATTER_GATHER_ALPHA=1.2
 SCATTER_GATHER_NUM_PQ_CHUNKS=32
 
 
-[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" ]] && { echo "Error: dataset_name must be 'bigann or deep1b'"; exit 1; }
+[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" ]] && { echo "Error: dataset_name must be 'bigann or deep1b'"; exit 1; }
 [[ "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 100M or 1B"; exit 1; }
 
 DATA_FOLDER="/mydata/local/anngraphs/${DATASET_NAME}/${DATASET_SIZE}/"

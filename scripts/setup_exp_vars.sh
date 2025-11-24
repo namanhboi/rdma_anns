@@ -50,7 +50,7 @@ if [ $# -ne 14 ]; then
 fi
 
 # --- Input validation ---
-[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" ]] && { echo "Error: dataset_name must be 'bigann' or deep1b"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" ]] && { echo "Error: dataset_name must be 'bigann' or deep1b"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
@@ -86,7 +86,14 @@ elif [[ "$DATASET_NAME" == "deep1b" ]]; then
     METRIC="l2"
     QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.fbin"
     TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/deep-${DATASET_SIZE}"
+elif [[ "$DATASET_NAME" == "MSSPACEV1B" ]]; then
+    DATA_TYPE="int8"
+    DIMENSION=100
+    METRIC="l2"
+    QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.i8bin"
+    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/msspacev-gt-${DATASET_SIZE}"    
 fi
+
 
 
 
