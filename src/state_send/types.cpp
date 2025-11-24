@@ -400,6 +400,7 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result() {
   std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
   result->client_peer_id = this->client_peer_id;
   result->partition_history = this->partition_history;
+  result->partition_history_hop_idx = this->partition_history_hop_idx;
 
   auto &full_retset = this->full_retset;
   std::sort(full_retset.begin(), full_retset.end(),
