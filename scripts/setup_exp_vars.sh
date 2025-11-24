@@ -50,7 +50,7 @@ if [ $# -ne 14 ]; then
 fi
 
 # --- Input validation ---
-[[ "$DATASET_NAME" != "bigann" ]] && { echo "Error: dataset_name must be 'bigann'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" ]] && { echo "Error: dataset_name must be 'bigann' or deep1b"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
@@ -59,10 +59,6 @@ fi
 [[ ! "$NUM_SERVERS" =~ ^[0-9]+$ ]] && { echo "Error: num_servers must be a positive integer"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$NUM_SERVERS" -lt 1 ]] && { echo "Error: num_servers must be at least 1"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
-# --- Dataset metadata ---
-DATA_TYPE="uint8"
-DIMENSION=128
-METRIC="l2"
 
 # --- Mode-based prefix path ---
 if [ "$MODE" == "local" ]; then
@@ -70,6 +66,29 @@ if [ "$MODE" == "local" ]; then
 else
     ANNGRAHPS_PREFIX="/mydata/local/anngraphs"
 fi
+
+# --- Dataset metadata ---
+
+if [[ "$DATASET_NAME" == "bigann" ]]; then
+    DATA_TYPE="uint8"
+    DIMENSION=128
+    METRIC="l2"
+
+    QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.u8bin"
+    if [[ "${DATASET_SIZE}" == "1B" ]]; then
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/GT.public.1B.ibin"
+    else
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/bigann-${DATASET_SIZE}"
+    fi
+elif [[ "$DATASET_NAME" == "deep1b" ]]; then
+    DATA_TYPE="float"
+    DIMENSION=96
+    METRIC="l2"
+    QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.fbin"
+    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/deep-${DATASET_SIZE}"
+fi
+
+
 
 # --- Graph prefix path ---
 if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
@@ -99,12 +118,6 @@ else
 fi
 
 # --- Query and truthset paths ---
-QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.public.10K.u8bin"
-if [[ "${DATASET_SIZE}" == "1B" ]]; then
-    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/GT.public.1B.ibin"
-else
-    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/bigann-${DATASET_SIZE}"
-fi
 
 
 DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/${PREFIX}_${NUM_SERVERS}/${GRAPH_SUFFIX}_assignment.bin"

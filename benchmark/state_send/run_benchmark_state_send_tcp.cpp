@@ -24,6 +24,11 @@ void write_results_csv(
     for (const auto &id : result->partition_history) {
       str << (int)id << ",";
     }
+    str << "],";
+    str << "[";
+    for (const auto &node_id : result->partition_history_hop_idx) {
+      str << node_id << ",";
+    }
     str << "]";
     return str.str();
   };
@@ -33,7 +38,7 @@ void write_results_csv(
          << "," << "receive_timestamp_ns"
          << "," << "completion_time_us" << "," << "n_hops" << "," << "n_ios"
          << "," << "n_cmps" << ","
-  << "partition_history" << "\n";
+  << "partition_history" << ",partition_history_hop_idx""\n";
   for (auto i = 0; i < results.size(); i++) {
     output << results[i]->query_id << "," << send_timestamp[i] << ","
     << receive_timestamp[i] << ",";
