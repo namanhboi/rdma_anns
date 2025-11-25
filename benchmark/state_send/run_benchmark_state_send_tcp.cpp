@@ -36,18 +36,22 @@ void write_results_csv(
   output << "query_id"
          << "," << "send_timestamp_ns"
          << "," << "receive_timestamp_ns"
-         << "," << "completion_time_us" << "," << "n_hops" << "," << "n_ios"
+         << "," << "completion_time_us" << "," << "io_us" << ","
+         << "n_hops" << "," << "n_ios"
          << "," << "n_cmps" << ","
-  << "partition_history" << ",partition_history_hop_idx""\n";
+         << "partition_history"
+         << ",partition_history_hop_idx"
+            "\n";
   for (auto i = 0; i < results.size(); i++) {
     output << results[i]->query_id << "," << send_timestamp[i] << ","
     << receive_timestamp[i] << ",";
     if (results[i]->stats) {
-      output << results[i]->stats->total_us << "," << results[i]->stats->n_hops
-             << "," << results[i]->stats->n_ios << ","
-      << results[i]->stats->n_cmps << ",";
+      output << results[i]->stats->total_us << "," << results[i]->stats->io_us
+             << "," << results[i]->stats->n_hops << ","
+             << results[i]->stats->n_ios << "," << results[i]->stats->n_cmps
+      << ",";
     } else {
-      output << 0 << "," << 0 << "," << 0 << "," << 0 << ",";
+      output << 0 << "," << 0 << "," << 0 << "," << 0 << "," << 0 << ",";
     }
     
     output << partition_history_to_str(results[i]) << "\n";

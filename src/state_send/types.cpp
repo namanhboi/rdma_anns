@@ -480,6 +480,9 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   state->query_id = std::numeric_limits<uint64_t>::max();
   state->stats = nullptr;
   state->client_peer_id = std::numeric_limits<uint64_t>::max();
+  state->io_timer.reset();
+  state->query_timer.reset();
+  state->cpu_timer.reset();
 }
 
 std::shared_ptr<search_result_t>
