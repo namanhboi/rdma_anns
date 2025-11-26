@@ -42,12 +42,15 @@ size_t QueryStats::write_serialize(char *buffer) const {
              offset);
   write_data(buffer, reinterpret_cast<const char *>(&n_hops), sizeof(n_hops),
              offset);
+  write_data(buffer, reinterpret_cast<const char *>(&n_inter_partition_hops),
+             sizeof(n_inter_partition_hops), offset);
   return offset;
 }
 
 size_t QueryStats::get_serialize_size() const {
   return sizeof(total_us) + sizeof(n_4k) + sizeof(n_ios) + sizeof(io_us) +
-         sizeof(head_us) + sizeof(cpu_us) + sizeof(n_cmps) + sizeof(n_hops);
+         sizeof(head_us) + sizeof(cpu_us) + sizeof(n_cmps) + sizeof(n_hops) +
+         sizeof(n_inter_partition_hops);
 }
 
 std::shared_ptr<QueryStats> QueryStats::deserialize(const char *buffer) {
@@ -77,7 +80,9 @@ std::shared_ptr<QueryStats> QueryStats::deserialize(const char *buffer) {
 
   std::memcpy(&stats->n_hops, buffer + offset, sizeof(stats->n_hops));
   offset += sizeof(stats->n_hops);
-
+  
+  std::memcpy(&stats->n_inter_partition_hops, buffer + offset, sizeof(stats->n_inter_partition_hops));
+  offset += sizeof(stats->n_inter_partition_hops);
   return stats;
 }
 

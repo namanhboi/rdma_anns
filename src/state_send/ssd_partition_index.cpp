@@ -661,6 +661,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       if (state_scratch[i]->stats) {
         state_scratch[i]->partition_history_hop_idx.push_back(
 							      state_scratch[i]->stats->n_hops);
+        state_scratch[i]->stats->n_inter_partition_hops++;
       }
     }
     num_foreign_states_global_queue.fetch_add(num_states);

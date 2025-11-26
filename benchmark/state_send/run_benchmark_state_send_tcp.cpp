@@ -254,7 +254,15 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     float mean_cmps = (float)get_mean_stats(
         query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_cmps : 0;
-        });
+    });
+
+
+    float mean_inter_partition_hops = (float)get_mean_stats(
+        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+          return stats ? stats->n_inter_partition_hops : 0;
+    });
+    
+    
 
     // double mean_query_completion_time =
     // sum_query_completion_time / query_completion_time.size();
@@ -280,7 +288,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       std::cout << std::setw(6) << L << std::setw(12) << beam_width
                 << std::setw(12) << qps << std::setw(12) << mean_e2e_latency
                 << std::setw(12) << p999_latency << std::setw(12) << mean_hops
-      << std::setw(12) << mean_ios << std::setw(12) << mean_cmps;
+                << std::setw(12) << mean_inter_partition_hops << std::setw(12)
+      << mean_ios << std::setw(12) << mean_cmps;
       if (calc_recall_flag) {
         std::cout << std::setw(12) << recall << std::endl;
       }
@@ -301,13 +310,15 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::cout << std::setw(6) << "L" << std::setw(12) << "I/O Width"
             << std::setw(12) << "QPS" << std::setw(12) << "AvgLat(us)"
             << std::setw(12) << "P99 Lat" << std::setw(12) << "Mean Hops"
-            << std::setw(12) << "Mean IOs" << std::setw(12) << "Mean cmps" << std::setw(12);
+            << std::setw(12) << "Mean inter" << std::setw(12) << "Mean IOs"
+  << std::setw(12) << "Mean cmps" << std::setw(12);
   if (calc_recall_flag) {
     std::cout << std::setw(12) << recall_string << std::endl;
   } else
     std::cout << std::endl;
   std::cout << "=============================================="
                "======================================================="
+  << "==============="
             << std::endl;
 
   for (uint32_t test_id = 0; test_id < Lvec.size(); test_id++) {

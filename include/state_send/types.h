@@ -160,6 +160,7 @@ struct QueryStats {
   double cpu_us = 0;   // total time spent in CPU
   double n_cmps = 0;   // # cmps
   double n_hops = 0;   // # search hops
+  double n_inter_partition_hops = 0;
 
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
