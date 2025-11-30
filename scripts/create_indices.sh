@@ -139,7 +139,7 @@ fi
 
 # now we actually create the disk index for scatter gather
 if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
-    RAM_BUDGET=96
+    RAM_BUDGET=64
     "${WORKDIR}/build/src/state_send/build_disk_index" \
 	"${DATA_TYPE}" \
 	"${PARTITION_BASE_FILE_PATH}" \
