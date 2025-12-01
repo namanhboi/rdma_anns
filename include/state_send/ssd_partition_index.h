@@ -36,8 +36,8 @@
 
 #define MAX_WORKER_THREADS 64
 
-constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 35000;
-constexpr uint64_t MAX_ELEMENTS_HANDLER = 256;
+constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 50000;
+constexpr uint64_t MAX_ELEMENTS_HANDLER = 500;
 
 namespace {
 inline void aggregate_coords(const unsigned *ids, const uint64_t n_ids,
