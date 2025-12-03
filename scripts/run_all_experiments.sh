@@ -45,22 +45,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 
 
-# $SCRIPT_DIR/run_experiment.sh test \
-# 			      2 \
-# 			      bigann \
-# 			      10M \
-# 			      STATE_SEND \
-# 			      local \
-# 			      4 \
-# 			      8 \
-# 			      false \
-# 			      1 \
-# 			      1 \
-# 			      false \
-# 			      false \
-# 			      0
-
-
 $SCRIPT_DIR/run_experiment.sh test \
 			      2 \
 			      bigann \
@@ -68,10 +52,26 @@ $SCRIPT_DIR/run_experiment.sh test \
 			      STATE_SEND \
 			      local \
 			      4 \
-			      8 \
+			      1 \
 			      false \
-			      2 \
+			      1 \
 			      1 \
 			      false \
 			      false \
 			      0
+
+
+# $SCRIPT_DIR/run_experiment.sh test \
+# 			      5 \
+# 			      MSSPACEV1B \
+# 			      100M \
+# 			      STATE_SEND \
+# 			      distributed \
+# 			      8 \
+# 			      8 \
+# 			      false \
+# 			      8 \
+# 			      1 \
+# 			      false \
+# 			      false \
+# 			      0

@@ -618,6 +618,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
                // message_type_to_string(msg_type));      
     }
   } else if (msg_type == MessageType::STATES) {
+    LOG(INFO) << size;
     size_t num_states, num_queries;
     std::memcpy(&num_states, buffer + offset, sizeof(num_states));
     offset += sizeof(num_states);    

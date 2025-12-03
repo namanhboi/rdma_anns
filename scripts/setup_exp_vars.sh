@@ -91,7 +91,11 @@ elif [[ "$DATASET_NAME" == "MSSPACEV1B" ]]; then
     DIMENSION=100
     METRIC="l2"
     QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.i8bin"
-    TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/msspacev-gt-${DATASET_SIZE}"    
+    if [[ "${DATASET_SIZE}" == "1B" ]]; then
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/public_query_gt100.bin"
+    else
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/msspacev-gt-100M"	
+    fi
 fi
 
 
@@ -167,7 +171,7 @@ if [[ "$MODE" == "distributed" ]]; then
 	"namanh@er082.utah.cloudlab.us"
 	"namanh@er076.utah.cloudlab.us"
 	"namanh@er050.utah.cloudlab.us"
-	"namanh@er104.utah.cloudlab.us"
+	"namanh@er104.utah.cloudlab.us" 
 	"namanh@er124.utah.cloudlab.us"
 	"namanh@er001.utah.cloudlab.us"
 	"namanh@er040.utah.cloudlab.us"
@@ -199,6 +203,8 @@ COUNTER_SLEEP_MS=100
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
 # LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
 LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
+# LVEC="65 70 80 100 120 140 160"
+# LVEC="400"
 K_VALUE=10
 MEM_L=10
 RECORD_STATS=true
