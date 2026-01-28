@@ -30,8 +30,9 @@ NUM_CLIENT_THREADS=${11}
 USE_COUNTER_THREAD=${12}
 USE_LOGGING=${13}
 SEND_RATE=${14}
+WRITE_QUERY_CSV=${15}
 
-if [ $# -ne 14 ]; then
+if [ $# -ne 15 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
@@ -46,6 +47,7 @@ if [ $# -ne 14 ]; then
     echo "  use_counter_thread : use the counter thread or not. Right now counter thread is not yet implemented for distributedann"
     echo "  use_logging : logging is to get the message sizes in the handler and the serialization time rn. Need to remove the serialization time stuff"
     echo "  send_rate : this is the number of queries you want to send per second. "
+    echo "  write_query_csv : whether or not to record information about each individual query into a csv file for each L "
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
 
@@ -202,7 +204,8 @@ COUNTER_SLEEP_MS=100
 # --- Client parameters ---
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
 # LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
-LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
+# LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
+LVEC="10"
 # LVEC="65 70 80 100 120 140 160"
 # LVEC="400"
 K_VALUE=10
@@ -214,8 +217,8 @@ EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NU
 # --- Export variables ---
 
 
-export NUM_SEARCH_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BATCH_SIZE USE_COUNTER_THREAD COUNTER_SLEEP_MS
-export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE
+export NUM_SEARCH_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BATCH_SIZE USE_COUNTER_THREAD COUNTER_SLEEP_MS 
+export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE WRITE_QUERY_CSV
 export NUM_SERVERS DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
 export ANNGRAHPS_PREFIX GRAPH_PREFIX QUERY_BIN TRUTHSET_BIN
 export PEER_IPS
@@ -225,7 +228,6 @@ export EXPERIMENT_NAME
 export USE_LOGGING
 export MASTER_LOG_FOLDER_NAME
 export DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE
-
 
 if [[ "$MODE" == "distributed" ]]; then
     export CLOUDLAB_HOSTS
@@ -248,6 +250,7 @@ if [ $SOURCED -eq 0 ]; then
     echo "Graph prefix path:   $GRAPH_PREFIX"
     echo "Query binary:        $QUERY_BIN"
     echo "Truthset binary:     $TRUTHSET_BIN"
+    echo "WRITE_QUERY_CSV:     $WRITE_QUERY_CSV"    
     echo
     echo "Peer IPs (servers + client):"
     for ip in "${PEER_IPS[@]}"; do
