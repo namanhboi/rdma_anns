@@ -1,3 +1,9 @@
+# How to run experiments
+
+`scripts/run_experiment.sh` is how you run an experiments. It calls `scripts/setup_exp_vars.sh` which parses the user arguments and sets up the variables in the `run_experiment.sh` script.
+
+The resulting log files will be saved to a folder you specified.
+
 # Pre-Req: 
 
 ## For no sudo , update bashrc
@@ -243,13 +249,14 @@ make -j
 
 no sudo 
 ```
-cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF   -DMKL_PATH="$MKL_LIB_PATH" -DMKL_INCLUDE_PATH="$MKL_INCLUDE_PATH" -DOMP_PATH="$OMP_PATH"
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
+cmake --build build -j
 ```
 
 
 
 `cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF`
-`cmake --build build -j`
+
 
 - TEST\_UDL1: run\_benchmark sends queries to udl1 pathname and receives back a GreedySearchQuery with cluster id = 0 and candidate queue is the results of the search. Used to test recall of udl 1
 - TEST\_UDL2: run\_benchmark sends queries to udl1 pathname and receives back ANNResult. Used to test udl 2
@@ -262,27 +269,3 @@ cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_C
 - TEST\_COMPUTE\_PIPELINE: with this enabled, when the distance compute thread receives the compute query, it won't do any computation/read, just return with blank compute result
 
 
-# RDMA
-
-## fractus
-compute 20
-```
-8: roce0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP group default qlen 1000
-    link/ether 7c:fe:90:32:76:f7 brd ff:ff:ff:ff:ff:ff
-    altname enp69s0f1np1
-    inet 192.168.9.20/24 brd 192.168.9.255 scope global roce0
-       valid_lft forever preferred_lft forever
-    inet6 fe80::7efe:90ff:fe32:76f7/64 scope link
-       valid_lft forever preferred_lft forever
-```
-
-compute 16
-```
-10: roce0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP group default qlen 1000
-    link/ether 7c:fe:90:32:77:9b brd ff:ff:ff:ff:ff:ff
-    altname enp69s0f1np1
-    inet 192.168.9.16/24 brd 192.168.9.255 scope global roce0
-       valid_lft forever preferred_lft forever
-    inet6 fe80::7efe:90ff:fe32:779b/64 scope link
-       valid_lft forever preferred_lft forever
-```
