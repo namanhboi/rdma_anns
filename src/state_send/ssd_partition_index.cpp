@@ -374,21 +374,24 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
           cluster_file);
     }
     // for testing right now to see what the overhead is of nodes with multiple
-    // clusters as home cluster size_t ca_num_pts, ca_dim; std::vector<uint8_t>
-    // tmp; pipeann::load_bin<uint8_t>(cluster_file, tmp, ca_num_pts, ca_dim);
+    // clusters as home cluster
+    size_t ca_num_pts, ca_dim;
+    std::vector<uint8_t> tmp;
+    pipeann::load_bin<uint8_t>(cluster_file, partition_assignment, ca_num_pts, ca_dim);
+    
     // for (const auto &node_id : tmp) {
     // partition_assignment.push_back({node_id});
     // }
-    uint8_t num_partitions;
-    load_partition_assignment_file(cluster_file, partition_assignment,
-                                   num_partitions);
-    for (auto &assignment : partition_assignment) {
-      auto it =
-        std::find(assignment.begin(), assignment.end(), my_partition_id);
-      if (it != assignment.end()) {
-	assignment = {my_partition_id};
-      }
-    }
+    // uint8_t num_partitions;
+    // load_partition_assignment_file(cluster_file, partition_assignment,
+    //                                num_partitions);
+    // for (auto &assignment : partition_assignment) {
+    //   auto it =
+    //     std::find(assignment.begin(), assignment.end(), my_partition_id);
+    //   if (it != assignment.end()) {
+    // 	assignment = {my_partition_id};
+    //   }
+    // }
     LOG(INFO) << "cluster assignment file loaded successfully.";
   }
 

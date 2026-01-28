@@ -1,3 +1,12 @@
+
+# How to create the indices
+
+For state send you need to create the graph file on the entire dataset with ParlayANN. 
+
+Then you need to run the partitioning of the dataset with `src/state_send/create_partition_loc_files`
+
+Then you can Use the `scripts/create_indices.sh` file to create each individual partition's index.
+
 # How to run experiments
 
 `scripts/run_experiment.sh` is how you run an experiments. It calls `scripts/setup_exp_vars.sh` which parses the user arguments and sets up the variables in the `run_experiment.sh` script.

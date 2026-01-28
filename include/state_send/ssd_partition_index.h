@@ -104,16 +104,13 @@ public:
      is so that  issue_next_io_batch can read the frontier and issue the reads
 
 
-the updated frontier will only contain nodes that are on-server/can be read
+the updated frontier will only contain nodes that are on-server/can be read 
 
      RETURNS: whether all the nodes iterated over to fill the beam are off
      server, if so then return true, else false. In case where we have reached
      the end of the retset, return false.
 
-
 ONLY RETURN TRUE IF WE MUST SEND THE STATE.
-
-
 
    */
   UpdateFrontierValue state_update_frontier(SearchState<T, TagT> *state);
@@ -440,13 +437,7 @@ public:
   uint8_t get_random_partition_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND)
       return my_partition_id;
-    
-    static thread_local std::random_device dev;
-    static thread_local std::mt19937 gen(dev());
-
-    std::uniform_int_distribution<uint8_t> distrib(
-						   0, partition_assignment[node_id].size() - 1);
-    return partition_assignment[node_id][distrib(gen)];
+    return partition_assignment[node_id];
   }
 
   uint64_t get_data_dim() {return this->data_dim;}
@@ -515,8 +506,7 @@ private:
 
   std::atomic<uint64_t> current_search_thread_index{0};
 
-  std::vector<std::vector<uint8_t>> partition_assignment;
-
+  std::vector<uint8_t> partition_assignment;
 
   std::unique_ptr<pipeann::Index<T, TagT>> mem_index_;
 

@@ -748,21 +748,8 @@ void create_partition_assignment_file(
     }
   }
 
-  // pipeann::save_bin<uint8_t>(partition_assignment_file, partition_map.data(),
-                             // num_points, 1);
-  std::ofstream partition_out(partition_assignment_file, std::ios::binary);
-
-  uint8_t num_partitions_u8 = static_cast<uint8_t>(num_partitions);
-  partition_out.write(reinterpret_cast<char *>(&num_points), sizeof(num_points));
-  partition_out.write(reinterpret_cast<char *>(&num_partitions_u8),
-                      sizeof(num_partitions_u8));
-  for (const auto &home_partitions : partition_map) {
-    uint8_t num_home_partition_u8 = static_cast<uint8_t>(1);
-    partition_out.write(reinterpret_cast<char *>(&num_home_partition_u8),
-                        sizeof(num_home_partition_u8));
-    partition_out.write(reinterpret_cast<const char *>(&home_partitions),
-                        sizeof(uint8_t));
-  }  
+  pipeann::save_bin<uint8_t>(partition_assignment_file, partition_map.data(),
+                             num_points, 1);
 }
 
 template <typename T>
