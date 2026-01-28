@@ -11,7 +11,7 @@ echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Now source relative to script location
-source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14}
+source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15}
 
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"
@@ -200,6 +200,8 @@ echo "  Client via $CLIENT_SSH_HOST"
 echo "  Client peer ID: $CLIENT_ID"
 echo "  Client address: tcp://$CLIENT_IP"
 
+
+
 # Build client command with all arguments
 CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --num_client_thread=$NUM_CLIENT_THREADS \
@@ -217,7 +219,8 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --address_list $ADDRESS_LIST_STR \
   --data_type=$DATA_TYPE \
   --result_output_folder=$REMOTE_LOG_DIR \
-  --partition_assignment_file=${DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE}"
+  --partition_assignment_file=${DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE} \
+  --write_query_csv=${WRITE_QUERY_CSV}"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH

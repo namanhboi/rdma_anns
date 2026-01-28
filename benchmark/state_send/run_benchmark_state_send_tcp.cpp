@@ -64,7 +64,7 @@ template <typename T>
 int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       std::string query_bin, std::string truthset_bin,
                       std::vector<uint64_t> &Lvec, uint64_t beam_width,
-                      uint64_t K, uint64_t mem_L, bool record_stats,
+                      uint64_t K, uint64_t mem_L, bool record_stats, bool write_query_csv, 
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
                       const std::vector<std::string> &address_list,
@@ -219,7 +219,11 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     }
     std::string result_file =
       result_output_folder + "/result_L_" + std::to_string(L) + ".csv";
-    write_results_csv(results, send_timestamp, receive_timestamp, result_file);
+    if (write_query_csv) {
+      LOG(INFO) << "WRITE_QUERY_CSV " << write_query_csv;
+      write_results_csv(results, send_timestamp, receive_timestamp,
+                        result_file);
+    }
     std::sort(e2e_latencies.begin(), e2e_latencies.end());
     std::chrono::duration<double> total_elapsed = last - first;
     // std::cout << "total time is " << (double) total_elapsed.count() <<
@@ -342,6 +346,7 @@ int main(int argc, char **argv) {
   uint64_t K;
   uint64_t mem_L;
   bool record_stats;
+  bool write_query_csv; 
   std::string dist_search_mode_str;
   uint64_t client_peer_id;
   uint64_t send_rate_per_second;
@@ -382,7 +387,10 @@ int main(int argc, char **argv) {
       "partition_assignment_file",
       po::value<std::string>(&partition_assignment_file)->default_value(""),
       "path to partition_assignment_file for distributedann orchestration "
-      "service");
+      "service")("write_query_csv",
+                 po::value<bool>(&write_query_csv)->required(),
+                 "if true then writes information about every single query for "
+                 "each L value into a csv file.");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -401,20 +409,20 @@ int main(int argc, char **argv) {
 
   if (data_type == "uint8") {
     search_disk_index<uint8_t>(num_client_thread, dim, query_bin, truthset_bin,
-                               Lvec, beam_width, K, mem_L, record_stats,
+                               Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
                                dist_search_mode_str, client_peer_id,
                                send_rate_per_second, address_list,
                                result_output_folder, partition_assignment_file);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(num_client_thread, dim, query_bin, truthset_bin,
-                              Lvec, beam_width, K, mem_L, record_stats,
+                              Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
                               dist_search_mode_str, client_peer_id,
                               send_rate_per_second, address_list,
                               result_output_folder, partition_assignment_file);
     
   } else if (data_type == "float") {
     search_disk_index<float>(num_client_thread, dim, query_bin, truthset_bin,
-                             Lvec, beam_width, K, mem_L, record_stats,
+                             Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
                              dist_search_mode_str, client_peer_id,
                              send_rate_per_second, address_list,
                              result_output_folder, partition_assignment_file);
