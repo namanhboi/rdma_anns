@@ -1,21 +1,12 @@
+// taken from pipeann repo https://github.com/thustorage/PipeANN
 #pragma once
 
 #include <immintrin.h>
 #include <cmath>
 #include <cstdint>
+#include "utils.h"
 
 namespace pipeann {
-
-  template<typename T>
-  inline float compute_l2_norm(const T *vector, uint64_t ndims) {
-    float norm = 0.0f;
-    for (uint64_t i = 0; i < ndims; i++) {
-      norm += (float) (vector[i] * vector[i]);
-    }
-    return std::sqrt(norm);
-  }
-
-  //  enum Metric { L2 = 0, INNER_PRODUCT = 1, FAST_L2 = 2, PQ = 3 };
   template<typename T>
   class Distance {
    public:
@@ -34,7 +25,7 @@ namespace pipeann {
     virtual float compare(const float *a, const float *b, uint32_t length) const;
   };
 
-  class SlowDistanceCosineUInt8 : public Distance<uint8_t> {
+  class DistanceCosineUInt8 : public Distance<uint8_t> {
    public:
     virtual float compare(const uint8_t *a, const uint8_t *b, uint32_t length) const;
   };
@@ -49,8 +40,47 @@ namespace pipeann {
     virtual float compare(const uint8_t *a, const uint8_t *b, uint32_t size) const;
   };
 
-  class DistanceL2 : public Distance<float> {
+  class DistanceL2Float : public Distance<float> {
    public:
     virtual float compare(const float *a, const float *b, uint32_t size) const __attribute__((hot));
   };
+
+  template<typename T>
+  class DistanceInnerProduct : public Distance<T> {
+   public:
+    virtual float compare(const T *a, const T *b, unsigned size);
+  };
+
+  inline Metric get_metric(const std::string &metric_str) {
+    if (metric_str == "l2") {
+      return Metric::L2;
+    } else if (metric_str == "cosine") {
+      return Metric::COSINE;
+    } else if (metric_str == "mips") {
+      return Metric::INNER_PRODUCT;
+    } else {
+      LOG(ERROR) << "Unsupported metric: " << metric_str << ". Using L2.";
+      return Metric::L2;
+    }
+  }
+
+  inline std::string get_metric_str(Metric m) {
+    switch (m) {
+      case Metric::L2:
+        return "l2";
+      case Metric::COSINE:
+        return "cosine";
+      case Metric::INNER_PRODUCT:
+        return "mips";
+      default:
+        return "unknown";
+    }
+  }
+  // The distance function does not return the actual distance, but reserves the partial order.
+  // For L2, it returns the squared L2 distance.
+  // For IP, it returns A^2 - inner_product, where A is 1 if float, 255 if uint8_t, and 127 if int8_t.
+  // For cosine, it returns A^2 * (1 - cosine(theta)). Data should be first normalized by normalize_data.
+  // Note that cosine distance function is used for both inner_product and cosine metrics.
+  template<typename T>
+  Distance<T> *get_distance_function(Metric m);
 }  // namespace pipeann

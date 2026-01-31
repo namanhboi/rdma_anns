@@ -3,46 +3,6 @@
 #include <stdio.h>
 
 namespace pipeann {
-  // Get the right distance function for the given metric.
-  template<>
-  pipeann::Distance<float> *get_distance_function(pipeann::Metric m) {
-    if (m == pipeann::Metric::L2) {
-      return new pipeann::DistanceL2();  // compile-time dispatch
-    } else if (m == pipeann::Metric::COSINE) {
-      return new pipeann::DistanceCosineFloat();
-    } else {
-      LOG(ERROR) << "Only L2 and cosine metric supported as of now.";
-      crash();
-      return nullptr;
-    }
-  }
-
-  template<>
-  pipeann::Distance<int8_t> *get_distance_function(pipeann::Metric m) {
-    if (m == pipeann::Metric::L2) {
-      return new pipeann::DistanceL2Int8();
-    } else if (m == pipeann::Metric::COSINE) {
-      return new pipeann::DistanceCosineInt8();
-    } else {
-      LOG(ERROR) << "Only L2 and cosine metric supported as of now";
-      crash();
-      return nullptr;
-    }
-  }
-
-  template<>
-  pipeann::Distance<uint8_t> *get_distance_function(pipeann::Metric m) {
-    if (m == pipeann::Metric::L2) {
-      return new pipeann::DistanceL2UInt8();
-    } else if (m == pipeann::Metric::COSINE) {
-      LOG(INFO) << "AVX/AVX2 distance function not defined for Uint8. Using slow version.";
-      return new pipeann::SlowDistanceCosineUInt8();
-    } else {
-      LOG(ERROR) << "Only L2 and Cosine metric supported as of now.";
-      crash();
-      return nullptr;
-    }
-  }
 
   void block_convert(std::ofstream &writr, std::ifstream &readr, float *read_buf, uint64_t npts, uint64_t ndims) {
     readr.read((char *) read_buf, npts * ndims * sizeof(float));

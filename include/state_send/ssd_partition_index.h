@@ -28,7 +28,7 @@
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
-#define SECTOR_LEN 4096
+
 
 #define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))

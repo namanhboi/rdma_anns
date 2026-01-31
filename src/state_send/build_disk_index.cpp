@@ -27,10 +27,8 @@ int main(int argc, char **argv) {
     std::string dist_metric(argv[9]);
     bool single_file_index = std::atoi(argv[10]) != 0;
 
-    pipeann::Metric m = dist_metric == "cosine" ? pipeann::Metric::COSINE : pipeann::Metric::L2;
-    if (dist_metric != "l2" && m == pipeann::Metric::L2) {
-      std::cout << "Metric " << dist_metric << " is not supported. Using L2" << std::endl;
-    }
+    pipeann::Metric m = pipeann::get_metric(dist_metric);
+
     if (std::string(argv[1]) == std::string("float"))
       build_index<float>(argv[2], argv[3], params.c_str(), m, single_file_index);
     else if (std::string(argv[1]) == std::string("int8"))

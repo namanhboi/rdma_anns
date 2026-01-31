@@ -1,4 +1,5 @@
 #pragma once
+#include <immintrin.h>
 #include <fcntl.h>
 #include <algorithm>
 #include <cassert>
@@ -14,9 +15,15 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+/*
+ * Necessary definitions and
+ * functions used both by both in-memory and on-disk index.
+ * Avoid including other headers in this project!
+ */
+constexpr uint64_t SECTOR_LEN = 4096;
+
 typedef int FileHandle;
 
-#include "distance.h"
 #include "log.h"
 
 // taken from
@@ -27,7 +34,17 @@ typedef int FileHandle;
 #define DIV_ROUND_UP(X, Y) (((uint64_t) (X) / (Y)) + ((uint64_t) (X) % (Y) != 0))
 
 // round down X to the nearest multiple of Y
-#define ROUND_DOWN(X, Y) (((uint64_t) (X) / (Y)) * (Y))
+#define ROUND_DOWN(X, Y) (((uint64_t)(X) / (Y)) * (Y))
+
+
+#ifndef likely
+#define likely(x) __builtin_expect(!!(x), 1)
+#endif
+
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
 
 // alignment tests
 #define IS_ALIGNED(X, Y) ((uint64_t) (X) % (uint64_t) (Y) == 0)
@@ -110,7 +127,7 @@ inline int delete_file(const std::string &fileName) {
 namespace pipeann {
   static const size_t MAX_SIZE_OF_STREAMBUF = 2LL * 1024 * 1024 * 1024;
 
-  enum Metric { L2 = 0, INNER_PRODUCT = 1, FAST_L2 = 2, PQ = 3, COSINE = 4 };
+  enum Metric { L2 = 0, INNER_PRODUCT = 1, COSINE = 2 };
 
   float calc_recall_set_tags(unsigned num_queries, unsigned *gold_std, unsigned dim_gs, unsigned *our_results_tags,
                              unsigned dim_or, unsigned recall_at, unsigned subset_size, std::string gt_tag_filename,
@@ -464,10 +481,41 @@ namespace pipeann {
   // NOTE: Implementation in utils.cpp.
   void block_convert(std::ofstream &writr, std::ifstream &readr, float *read_buf, uint64_t npts, uint64_t ndims);
 
-  void normalize_data_file(const std::string &inFileName, const std::string &outFileName);
+  void normalize_data_file(const std::string &inFileName,
+                           const std::string &outFileName);
 
-  template<typename T>
-  Distance<T> *get_distance_function(Metric m);
+
+
+
+    /* Parameters for index build. */
+  struct IndexBuildParameters {
+    uint32_t R = 0;              // maximum out-neighbors.
+    uint32_t L = 0;              // build L.
+    uint32_t C = 384;            // delete pruning capacity.
+    float alpha = 1.2f;          // alpha for Vamana.
+    uint32_t num_threads = 0;    // num_threads used.
+    bool saturate_graph = true;  // saturate graph during build (using kNN neighbors).
+    uint32_t beam_width = 4;     // insert beam width. (for SSD)
+
+    void set(uint32_t R, uint32_t L, uint32_t C, float alpha = 1.2, uint32_t num_threads = 0,
+             bool saturate_graph = true, uint32_t beam_width = 4) {
+      this->R = R;
+      this->L = L;
+      this->C = C;
+      this->alpha = alpha;
+      this->num_threads = num_threads;
+      this->beam_width = beam_width;
+      this->saturate_graph = saturate_graph;
+    }
+
+    void print() {
+      LOG(INFO) << "IndexBuildParameters with L: " << L << " R: " << R << " C: " << C << " alpha: " << alpha
+                << " num_threads: " << num_threads << " beam_width: " << beam_width
+                << " saturate_graph: " << saturate_graph;
+    }
+  };
+    // We reserve kInvalidID to mark an invalid ID or location.
+  static constexpr uint32_t kInvalidID = std::numeric_limits<uint32_t>::max();
 }  // namespace pipeann
 
 struct PivotContainer {
@@ -488,5 +536,3 @@ struct PivotContainer {
   float piv_dist;
 };
 
-template<typename T>
-pipeann::Distance<T> *get_distance_function(pipeann::Metric m);

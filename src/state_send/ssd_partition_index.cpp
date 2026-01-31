@@ -27,7 +27,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       distributed_ann_head_index_ptok(distributed_ann_task_queue),
       distributed_ann_scoring_ptok(distributed_ann_task_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
-      use_batching(use_batching), use_counter_thread(use_counter_thread) {
+      use_batching(use_batching), use_counter_thread(use_counter_thread), pq_table(m) {
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     prealloc_distributedann_result =
