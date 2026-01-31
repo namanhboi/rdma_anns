@@ -17,10 +17,11 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::Metric m, uint8_t partition_id, uint32_t num_worker_threads,
     std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator,
-    DistributedSearchMode dist_search_mode, pipeann::Parameters *params,
-    uint64_t num_queries_balance, bool use_batching, uint64_t max_batch_size,
-    bool use_counter_thread, std::string counter_csv, uint64_t counter_sleep_ms,
-    bool use_logging, const std::string &log_file)
+    DistributedSearchMode dist_search_mode,
+    pipeann::IndexBuildParameters *params, uint64_t num_queries_balance,
+    bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
+    std::string counter_csv, uint64_t counter_sleep_ms, bool use_logging,
+					      const std::string &log_file)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
@@ -116,13 +117,13 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   this->dist_cmp.reset(pipeann::get_distance_function<T>(m));
   // this->pq_reader = new LinuxAlignedFileReader();
   if (params != nullptr) {
-    this->beamwidth = params->Get<uint32_t>("beamwidth");
-    this->l_index = params->Get<uint32_t>("L");
-    this->range = params->Get<uint32_t>("R");
-    this->maxc = params->Get<uint32_t>("C");
-    this->alpha = params->Get<float>("alpha");
+    this->beamwidth = params->beam_width;
+    this->l_index = params->L;
+    this->range = params->R;
+    this->maxc = params->C;
+    this->alpha = params->alpha;
     LOG(INFO) << "Beamwidth: " << this->beamwidth << ", L: " << this->l_index
-              << ", R: " << this->range << ", C: " << this->maxc;
+    << ", R: " << this->range << ", C: " << this->maxc;
   }
 
 

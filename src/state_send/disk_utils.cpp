@@ -214,14 +214,15 @@ int build_in_memory_index(const std::string &data_path,
                           const std::string &save_path,
                           const unsigned num_threads, bool dynamic_index,
                           bool single_file_index, pipeann::Metric distMetric) {
-  pipeann::Parameters paras;
-  paras.Set<unsigned>("R", R);
-  paras.Set<unsigned>("L", L);
-  paras.Set<unsigned>(
-      "C", 750); // maximum candidate set size during pruning procedure
-  paras.Set<float>("alpha", alpha);
-  paras.Set<bool>("saturate_graph", 0);
-  paras.Set<unsigned>("num_threads", num_threads);
+  pipeann::IndexBuildParameters paras;
+  paras.set(R, L, 750, alpha, num_threads, 0);
+  // paras.Set<unsigned>("R", R);
+  // paras.Set<unsigned>("L", L);
+  // paras.Set<unsigned>(
+  //     "C", 750); // maximum candidate set size during pruning procedure
+  // paras.Set<float>("alpha", alpha);
+  // paras.Set<bool>("saturate_graph", 0);
+  // paras.Set<unsigned>("num_threads", num_threads);
 
   uint64_t data_num, data_dim;
   pipeann::get_bin_metadata(data_path, data_num, data_dim);

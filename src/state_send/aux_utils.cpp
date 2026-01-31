@@ -368,13 +368,8 @@ namespace pipeann {
     double full_index_ram = estimate_ram_usage(base_num, base_dim, sizeof(T), R);
     if (full_index_ram < ram_budget * 1024 * 1024 * 1024) {
       LOG(INFO) << "Full index fits in RAM, building in one shot";
-      pipeann::Parameters paras;
-      paras.Set<unsigned>("L", (unsigned) L);
-      paras.Set<unsigned>("R", (unsigned) R);
-      paras.Set<unsigned>("C", 750);
-      paras.Set<float>("alpha", 1.2f);
-      paras.Set<bool>("saturate_graph", 1);  // was 0 earlier.
-      paras.Set<std::string>("save_path", mem_index_path);
+      IndexBuildParameters paras;
+      paras.set(R, L, 750, 1.2, 0, true);
 
       bool tags_enabled;
       if (tag_file == nullptr)
@@ -412,13 +407,8 @@ namespace pipeann {
       std::string shard_base_file = merged_index_prefix + "_subshard-" + std::to_string(p) + ".bin";
       std::string shard_index_file = merged_index_prefix + "_subshard-" + std::to_string(p) + "_mem.index";
 
-      pipeann::Parameters paras;
-      paras.Set<unsigned>("L", L);
-      paras.Set<unsigned>("R", (2 * (R / 3)));
-      paras.Set<unsigned>("C", 750);
-      paras.Set<float>("alpha", 1.2f);
-      paras.Set<bool>("saturate_graph", 0);
-      paras.Set<std::string>("save_path", shard_index_file);
+      IndexBuildParameters paras;
+      paras.set(2 * R / 3, L, 750, 1.2, 0, false);
 
       uint64_t shard_base_dim, shard_base_pts;
       get_bin_metadata(shard_base_file, shard_base_pts, shard_base_dim);

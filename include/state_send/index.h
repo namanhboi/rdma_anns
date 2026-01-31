@@ -10,7 +10,6 @@
 
 #include "distance.h"
 #include "neighbor.h"
-#include "parameters.h"
 #include "utils.h"
 
 #include "neighbor.h"
@@ -58,10 +57,10 @@ namespace pipeann {
 
     size_t get_num_points();
 
-    void build(const char *filename, const size_t num_points_to_load, Parameters &parameters,
+    void build(const char *filename, const size_t num_points_to_load, IndexBuildParameters &parameters,
                const std::vector<TagT> &tags = std::vector<TagT>());
 
-    void build(const char *filename, const size_t num_points_to_load, Parameters &parameters, const char *tag_filename);
+    void build(const char *filename, const size_t num_points_to_load, IndexBuildParameters &parameters, const char *tag_filename);
     // Added search overload that takes L as parameter, so that we
     // can customize L on a per-query basis without tampering with "Parameters"
     std::pair<uint32_t, uint32_t> search(const T *query, const size_t K, const unsigned L, unsigned *indices,
@@ -84,7 +83,7 @@ namespace pipeann {
 
     /* insertions possible only when id corresponding to tag does not already
      * exist in the graph */
-    int insert_point(const T *point, const Parameters &parameter,
+    int insert_point(const T *point, const IndexBuildParameters &parameter,
                      const TagT tag);  // only keep point, tag, parameters
     // call before triggering deleteions - sets important flags required for
     // deletion related operations
@@ -121,7 +120,7 @@ namespace pipeann {
 
     void compact_frozen_point();
 
-    void consolidate(Parameters &parameters);
+    void consolidate(IndexBuildParameters &parameters);
 
     // void save_index_as_one_file(bool flag);
 
@@ -153,9 +152,9 @@ namespace pipeann {
     void get_expanded_nodes(const size_t node, const unsigned Lindex, std::vector<unsigned> init_ids,
                             std::vector<Neighbor> &expanded_nodes_info, tsl::robin_set<unsigned> &expanded_nodes_ids);
 
-    void inter_insert(unsigned n, std::vector<unsigned> &pruned_list, const Parameters &parameter);
+    void inter_insert(unsigned n, std::vector<unsigned> &pruned_list, const IndexBuildParameters &parameter);
 
-    void prune_neighbors(const unsigned location, std::vector<Neighbor> &pool, const Parameters &parameter,
+    void prune_neighbors(const unsigned location, std::vector<Neighbor> &pool, const IndexBuildParameters &parameter,
                          std::vector<unsigned> &pruned_list);
 
     void occlude_list(std::vector<Neighbor> &pool, const float alpha, const unsigned degree, const unsigned maxc,
@@ -164,7 +163,7 @@ namespace pipeann {
     void occlude_list(std::vector<Neighbor> &pool, const float alpha, const unsigned degree, const unsigned maxc,
                       std::vector<Neighbor> &result, std::vector<float> &occlude_factor);
 
-    void link(Parameters &parameters);
+    void link(IndexBuildParameters &parameters);
 
     // Support for Incremental Indexing
     int reserve_location();
@@ -184,7 +183,7 @@ namespace pipeann {
 
     // WARNING: Do not call consolidate_deletes without acquiring change_lock_
     // Returns number of live points left after consolidation
-    size_t consolidate_deletes(const Parameters &parameters);
+    size_t consolidate_deletes(const IndexBuildParameters &parameters);
 
    public:
     std::shared_timed_mutex _tag_lock;  // reader-writer lock on
@@ -244,3 +243,6 @@ namespace pipeann {
     const float INDEX_GROWTH_FACTOR = 1.5f;
   };
 }  // namespace pipeann
+
+
+

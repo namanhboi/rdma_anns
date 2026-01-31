@@ -22,7 +22,6 @@
 #include <time.h>
 
 #include "index.h"
-#include "parameters.h"
 #include "timer.h"
 #include "utils.h"
 #include "query_buf.h"
@@ -741,10 +740,10 @@ namespace pipeann {
 
   template<typename T, typename TagT>
   void Index<T, TagT>::prune_neighbors(const unsigned location, std::vector<Neighbor> &pool,
-                                       const Parameters &parameter, std::vector<unsigned> &pruned_list) {
-    unsigned range = parameter.Get<unsigned>("R");
-    unsigned maxc = parameter.Get<unsigned>("C");
-    float alpha = parameter.Get<float>("alpha");
+                                       const IndexBuildParameters &parameter, std::vector<unsigned> &pruned_list) {
+    unsigned range = parameter.R;
+    unsigned maxc = parameter.C;
+    float alpha = parameter.alpha;
 
     if (pool.size() == 0) {
       crash();
@@ -785,8 +784,8 @@ namespace pipeann {
    * the current node n.
    */
   template<typename T, typename TagT>
-  void Index<T, TagT>::inter_insert(unsigned n, std::vector<unsigned> &pruned_list, const Parameters &parameter) {
-    const auto range = parameter.Get<unsigned>("R");
+  void Index<T, TagT>::inter_insert(unsigned n, std::vector<unsigned> &pruned_list, const IndexBuildParameters &parameter) {
+    const auto range = parameter.R;
     assert(n >= 0 && n < _nd + _num_frozen_pts);
 
     const auto &src_pool = pruned_list;
@@ -844,15 +843,15 @@ namespace pipeann {
 
   // one-pass graph building.
   template<typename T, typename TagT>
-  void Index<T, TagT>::link(Parameters &parameters) {
-    unsigned num_threads = parameters.Get<unsigned>("num_threads");
-    _saturate_graph = parameters.Get<bool>("saturate_graph");
-    unsigned L = parameters.Get<unsigned>("L");  // Search list size
-    const unsigned range = parameters.Get<unsigned>("R");
+  void Index<T, TagT>::link(IndexBuildParameters &parameters) {
+    unsigned num_threads = parameters.num_threads;
+    _saturate_graph = parameters.saturate_graph;
+    unsigned L = parameters.L;  // Search list size
+    const unsigned range = parameters.R;
 
     LOG(INFO) << "Parameters: " << "L: " << L << ", R: " << range
               << ", saturate_graph: " << (_saturate_graph ? "true" : "false") << ", num_threads: " << num_threads
-              << ", alpha: " << parameters.Get<float>("alpha");
+              << ", alpha: " << parameters.alpha;
     if (num_threads != 0)
       omp_set_num_threads(num_threads);
 
@@ -928,7 +927,7 @@ namespace pipeann {
   }
 
   template<typename T, typename TagT>
-  void Index<T, TagT>::build(const char *filename, const size_t num_points_to_load, Parameters &parameters,
+  void Index<T, TagT>::build(const char *filename, const size_t num_points_to_load, IndexBuildParameters &parameters,
                              const std::vector<TagT> &tags) {
     if (!file_exists(filename)) {
       LOG(ERROR) << "Data file " << filename << " does not exist!!! Exiting....";
@@ -994,7 +993,7 @@ namespace pipeann {
   }
 
   template<typename T, typename TagT>
-  void Index<T, TagT>::build(const char *filename, const size_t num_points_to_load, Parameters &parameters,
+  void Index<T, TagT>::build(const char *filename, const size_t num_points_to_load, IndexBuildParameters &parameters,
                              const char *tag_filename) {
     if (!file_exists(filename)) {
       LOG(ERROR) << "Data file provided " << filename << " does not exist.";
@@ -1365,7 +1364,7 @@ namespace pipeann {
   // proxy inserts all nghrs of deleted points
   // original approach
   template<typename T, typename TagT>
-  size_t Index<T, TagT>::consolidate_deletes(const Parameters &parameters) {
+  size_t Index<T, TagT>::consolidate_deletes(const IndexBuildParameters &parameters) {
     if (_eager_done) {
       LOG(INFO) << "In consolidate_deletes(), _eager_done is true. So exiting.";
       return 0;
@@ -1377,9 +1376,9 @@ namespace pipeann {
     assert(_delete_set.size() <= _nd);
     assert(_empty_slots.size() + _nd == _max_points);
 
-    const unsigned range = parameters.Get<unsigned>("R");
-    const unsigned maxc = parameters.Get<unsigned>("C");
-    const float alpha = parameters.Get<float>("alpha");
+    const unsigned range = parameters.R;
+    const unsigned maxc = parameters.C;
+    const float alpha = parameters.alpha;
 
     uint64_t total_pts = _max_points + _num_frozen_pts;
     unsigned block_size = 1 << 10;
@@ -1449,7 +1448,7 @@ namespace pipeann {
   }
 
   template<typename T, typename TagT>
-  void Index<T, TagT>::consolidate(Parameters &parameters) {
+  void Index<T, TagT>::consolidate(IndexBuildParameters &parameters) {
     consolidate_deletes(parameters);
     compact_data();
   }
@@ -1692,9 +1691,9 @@ namespace pipeann {
   }
 
   template<typename T, typename TagT>
-  int Index<T, TagT>::insert_point(const T *point, const Parameters &parameters, const TagT tag) {
+  int Index<T, TagT>::insert_point(const T *point, const IndexBuildParameters &parameters, const TagT tag) {
     std::shared_lock<std::shared_timed_mutex> lock(_update_lock);
-    unsigned range = parameters.Get<unsigned>("R");
+    unsigned range = parameters.R;
     //    assert(_has_built);
     std::vector<Neighbor> pool;
     std::vector<Neighbor> tmp;
@@ -1757,7 +1756,7 @@ namespace pipeann {
     tmp.clear();
     visited.clear();
     std::vector<unsigned> pruned_list;
-    unsigned Lindex = parameters.Get<unsigned>("L");
+    unsigned Lindex = parameters.L;
 
     std::vector<unsigned> init_ids;
     get_expanded_nodes(location, Lindex, init_ids, pool, visited);

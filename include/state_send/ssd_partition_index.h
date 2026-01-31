@@ -6,7 +6,6 @@
 #include "libcuckoo/cuckoohash_map.hh"
 #include "linux_aligned_file_reader.h"
 #include "neighbor.h"
-#include "parameters.h"
 #include "pq_table.h"
 #include "query_buf.h"
 #include "tsl/robin_set.h"
@@ -311,7 +310,7 @@ public:
                     std::shared_ptr<AlignedFileReader> &fileReader,
                     std::unique_ptr<P2PCommunicator> &communicator,
                     DistributedSearchMode dist_search_mode,
-                    pipeann::Parameters *parameters = nullptr,
+                    pipeann::IndexBuildParameters *parameters = nullptr,
                     uint64_t max_queries_balance = 8, bool use_batching = false,
                     uint64_t max_batch_size = 0,
                     bool use_counter_thread = false,
