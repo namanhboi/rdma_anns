@@ -10,16 +10,8 @@
 #include <malloc.h>
 #include <cstdio>
 #include "query_buf.h"
-#include <thread>
-#include "tsl/robin_map.h"
-#include <mutex>
 
 class AlignedFileReader {
-protected:
-  tsl::robin_map<std::thread::id, io_uring *> ctx_map;
-  tsl::robin_map<void *, std::unique_ptr<std::mutex>> ctx_submission_mutex_map;
-  std::mutex ctx_mut;
-  
  public:
   // returns the thread-specific io ring.
   // If not constructed, it will register the thread (using the flag) and return the context.
