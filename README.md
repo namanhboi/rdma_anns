@@ -14,44 +14,29 @@ Then you can Use the `scripts/create_indices.sh` file to create each individual 
 The resulting log files will be saved to a folder you specified.
 
 # Pre-Req: 
-
-## For no sudo , update bashrc
-add this to the end
+## sudo
 ```
-export PATH="$HOME/.local/bin:$PATH"
-eval "$(direnv hook bash)"
-export LD_LIBRARY_PATH="$HOME/.local/lib:$LD_LIBRARY_PATH"
-export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH"
-export INTEL_OMP_LIB=$(find ~/.local/intel-mkl -name "libiomp5.so" | head -1)
-export OMP_PATH=$(dirname "$INTEL_OMP_LIB")
-export MKL_LIB_PATH=$(find $HOME/.local/intel-mkl -name "libmkl_core.so" | head -1 | xargs dirname)
-export MKL_INCLUDE_PATH=$(find $HOME/.local/intel-mkl -name "mkl.h" | head -1 | xargs dirname)
-export CMAKE_PREFIX_PATH=$HOME/.local:$CMAKE_PREFIX_PATH
-```
+sudo apt update -y
+sudo apt-get install -y autoconf automake libtool pkg-config
+sudo apt install -y make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev libmkl-full-dev libjemalloc-dev
 
-## Install direnv first to make life easier
-for non sudo: 
-``` 
-export $bin_path=$HOME/.local/bin
-curl -sfL https://direnv.net/install.sh | bash
-```
 
-## Install derecho/cascade
-Follow the guide here: https://docs.google.com/document/d/108KxSywDMZ3suJ3kaoqFck7SFpBnq902Huu_4PerFM0/edit?tab=t.0
-- create you own [name]_env.sh file and run the files here step by step: https://github.com/aliciayuting/CloudlabSetup/tree/main/installation
+mkdir ~/workspace
 
-`git submodule update --init --recursive --remote`
-this downloads all the dependecies to extern, then we have to install some dependencies for these dependencies :(
-## install libzmq
-follow: https://zeromq.org/download/
-```
-echo "deb https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/ ./" | sudo tee -a /etc/apt/sources.list
-wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/Release.key -O- | sudo apt-key add
-sudo apt-get install libzmq3-dev
 
-```
+cd ~/workspace
+sudo apt install libssl-dev
+wget https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0.tar.gz
+tar -xvzf cmake-3.31.0.tar.gz
+cd cmake-3.31.0
+./bootstrap
+make -j
+sudo make install
 
-```
+
+
+
+cd ~/workspace
 git clone https://github.com/zeromq/libzmq/
 cd libzmq
 ./autogen.sh
@@ -61,75 +46,131 @@ sudo make install
 sudo ldconfig
 
 
+cd ~/workspace
+git clone https://github.com/cmuparlay/parlaylib
+cd parlaylib
+mkdir build && cd build
+cmake ..
+sudo cmake --build . --target install
+
+
+
+sudo apt-get install nlohmann-json3-dev
+
+
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF
+sudo cmake --build build/ -j --target install
+
+
+
+cd ~/workspace
+git clone git@github.com:namanhboi/rdma_anns.git
+cd ~/workspace/rdma_anns
+git submodule update --init --recursive --remote
+
+
+cd ~/workspace/rdma_anns/extern/liburing
+./configure
+make -j
+
+
+
+cd ~/workspace/rdma_anns/extern/gp-ann
+git submodule update --init --recursive
+sudo apt-get install libsparsehash-dev
+
+
+
+
+cd ~/workspace/rdma_anns
+git clone https://github.com/gabime/spdlog.git
+cd spdlog && mkdir build && cd build
+cmake .. 
+sudo cmake --build . --target install
+
+
+
+cd ~/workspace/rdma_anns
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
+
+
+
+cmake --build build/ -j
+
+cd ~/
+git clone https://github.com/harsha-simhadri/big-ann-benchmarks
+cd ~/big-ann-benchmarks
+sudo apt install -y python3-pip
+pip install -r requirements_py3.10.txt
+python create_dataset.py --dataset bigann-10M
+
+```
+## No sudo
+setting up .bashrc
+```
+source ~/.local/intel-mkl/setvars.sh
+
+# Library paths (runtime)
+export LD_LIBRARY_PATH="$HOME/.local/lib64:$HOME/.local/lib:$LD_LIBRARY_PATH"
+
+# Build-time library paths
+export LIBRARY_PATH="$HOME/.local/lib64:$HOME/.local/lib"
+
+# Include paths
+export C_INCLUDE_PATH="$HOME/.local/include"
+export CPLUS_INCLUDE_PATH="$HOME/.local/include"
+
+# Package config
+export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:$HOME/.local/lib64/pkgconfig"
+
+# Binaries
+export PATH="$HOME/.local/bin:$PATH"
+
+# Aliases
+if ! pgrep -u "$USER" emacs > /dev/null; then
+    emacs --daemon &
+fi
+alias ec='emacsclient -nw'
+
 ```
 
-
-## nholman json
-
-
-## gcc
-need to install gcc-10 and g++-10: 
-https://askubuntu.com/questions/1192955/how-to-install-g-10-on-ubuntu-18-04
 ```
-sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-sudo apt-get update
-sudo apt install gcc-10
-
-sudo apt install g++-10
-#Remove the previous alternatives
-sudo update-alternatives --remove-all gcc
-sudo update-alternatives --remove-all g++
-
-#Define the compiler
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 30
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 30
-
-sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 30
-sudo update-alternatives --set cc /usr/bin/gcc
-
-sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 30
-sudo update-alternatives --set c++ /usr/bin/g++
-
-#Confirm and update (You can use the default setting)
-sudo update-alternatives --config gcc
-sudo update-alternatives --config g++
-```
-
-
-## parlaylib: 
-https://cmuparlay.github.io/parlaylib/installation.html
-
-
-## catch2: 
-Follow: https://github.com/catchorg/Catch2/blob/devel/docs/cmake-integration.md#installing-catch2-from-git-repository
-
-## Diskann: 
-follow https://github.com/microsoft/DiskANN/
-- when installing mkl blas, yes to everything
-
-### Non sudo 
-have to install all the prereq manually, hardest is 
-clang-format
-
-
-```
-pip install --user clang-format
-which clang-format
-```
-
-
-libaio-dev
-```
+mkdir ~/workspace
+cd ~/workspace
 wget https://pagure.io/libaio/archive/libaio-0.3.113/libaio-libaio-0.3.113.tar.gz
 tar -xzf libaio-libaio-0.3.113.tar.gz
 cd libaio-libaio-0.3.113
 make prefix=$HOME/.local install
-```
 
 
-gperf
-```
+cd ~/workspace
+git clone https://github.com/zeromq/libzmq/
+cd libzmq
+./autogen.sh
+./configure --prefix=$HOME/.local --enable-drafts
+make -j
+make install
+
+cd ~/workspace
+git clone https://github.com/nlohmann/json
+cd json
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local -DJSON_BuildTests=Off
+cmake --build . --target install
+
+
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build/ -j --target install
+
+
 # Download gperftools (which provides tcmalloc)
+cd ~/workspace
 wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.15/gperftools-2.15.tar.gz
 tar -xzf gperftools-2.15.tar.gz
 cd gperftools-2.15
@@ -138,12 +179,8 @@ cd gperftools-2.15
 ./configure --prefix=$HOME/.local
 make -j$(nproc)
 make install
-```
 
-boost
-https://www.boost.org/doc/user-guide/getting-started.html
-```
-cd /tmp
+cd ~/workspace
 git clone https://github.com/boostorg/boost.git -b boost-1.85.0 boost_1_85_0 --depth 1
 cd boost_1_85_0
 git submodule update --depth 1 --init --recursive
@@ -155,119 +192,70 @@ cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local
 cmake --build .
 cmake --build . --target install
 
-```
 
-
-
-libmkl-full-dev
-```
 cd ~/workspace
 wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/47c7d946-fca1-441a-b0df-b094e3f045ea/intel-onemkl-2025.2.0.629_offline.sh
 
 sh ./intel-onemkl-2025.2.0.629_offline.sh -a --silent --cli --eula accept --install-dir $HOME/.local/intel-mkl
 # Navigate to the MKL lib directory
 cd ~/.local/intel-mkl/mkl/2025.2/lib
-
 # Create the symlink that DiskANN expects
 ln -sf libmkl_core.so libmkl_def.so
 
-# Find MKL library path
-MKL_LIB_PATH=$(find $HOME/.local/intel-mkl -name "libmkl_core.so" | head -1 | xargs dirname)
 
-# Find MKL include path
-MKL_INCLUDE_PATH=$(find $HOME/.local/intel-mkl -name "mkl.h" | head -1 | xargs dirname)
-
-# Find Intel OpenMP path
-INTEL_OMP_LIB=$(find ~/.local/intel-mkl -name "libiomp5.so" | head -1)
-OMP_PATH=$(dirname "$INTEL_OMP_LIB")
-
-# Verify paths
-echo "MKL_LIB_PATH: $MKL_LIB_PATH"
-echo "MKL_INCLUDE_PATH: $MKL_INCLUDE_PATH"
-echo "OMP_PATH: $OMP_PATH"
-```
-
-build diskann
-```
-
-# Navigate to DiskANN build directory
-mkdir ~/workspace/rdma_anns/extern/DiskANN/build
-cd ~/workspace/rdma_anns/extern/DiskANN/build
-
-# Clear any previous CMake cache
-rm -rf *
-
-# Configure with all required paths
-cmake .. \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DMKL_PATH="$MKL_LIB_PATH" \
-  -DMKL_INCLUDE_PATH="$MKL_INCLUDE_PATH" \
-  -DOMP_PATH="$OMP_PATH" \
-  -Wno-dev
-  
-make -j 
-```
+cd $HOME/.local/intel-mkl/mkl/2025.2/include
+ln -s mkl_cblas.h cblas.h
 
 
-## gp-ann
-`git submodule update --init --recursive`
-sudo
-`sudo apt-get install libsparsehash-dev` 
 
-non sudo variety
-```
-cd /tmp
-
-# Download sparsehash source
-wget https://github.com/sparsehash/sparsehash/archive/sparsehash-2.0.4.tar.gz
-tar -xzf sparsehash-2.0.4.tar.gz
-cd sparsehash-sparsehash-2.0.4
-
-# Configure and build
-./configure --prefix=$HOME/.local
-make -j$(nproc)
-make install
-```
+pip install --user clang-format
+which clang-format
 
 
 
 
-tbb
-```
-cd /tmp
-git clone https://github.com/oneapi-src/oneTBB.git
-cd oneTBB
-cmake -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local
-cmake --build build -j
-cmake --install build
-```
-
-## parlayann:
-`git submodule init`
-`git submodule update`
+cd ~/workspace
+git clone https://github.com/cmuparlay/parlaylib
+cd parlaylib
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local
+cmake --build . --target install
 
 
 
-## liburing
-```
+cd ~/workspace
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+cmake -B build -S . -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local
+cmake --build build/ -j --target install
+
+
+
+
+
+cd ~/workspace
+git clone git@github.com:namanhboi/rdma_anns.git
+cd ~/workspace/rdma_anns
+git submodule update --init --recursive --remote
+
+cd ~/workspace/rdma_anns/extern/liburing
 ./configure
 make -j
-```
 
-# Build
 
-no sudo 
-```
-cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE
+cd ~/workspace/rdma_anns
+git clone https://github.com/gabime/spdlog.git
+cd spdlog && mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX:PATH=$HOME/.local
+cmake --build . -j --target install
+
+
+cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF -DBALANCE_ALL=OFF -DCMAKE_BUILD_TYPE=RELEASE -DMKL_ROOT=$MKLROOT   -DCMAKE_CXX_FLAGS="-I$HOME/.local/intel-mkl/mkl/2025.2/include"
+
 cmake --build build -j
+
 ```
 
-
-
-`cmake -S. -B build -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DTEST_UDL2=OFF -DTEST_UDL1=OFF -DDISK_FS_DISKANN_WRAPPER=OFF -DDISK_FS_DISTRIBUTED=ON -DDISK_KV=OFF -DIN_MEM=OFF -DPQ_KV=OFF -DPQ_FS=ON -DDATA_TYPE=uint8 -DTEST_COMPUTE_PIPELINE=OFF`
-
-
-- TEST\_UDL1: run\_benchmark sends queries to udl1 pathname and receives back a GreedySearchQuery with cluster id = 0 and candidate queue is the results of the search. Used to test recall of udl 1
 - TEST\_UDL2: run\_benchmark sends queries to udl1 pathname and receives back ANNResult. Used to test udl 2
 - IN\_MEM: test the volatile keyvalue store implementation of searching the index. Data is fetched from kvstore instead of being preloaded from a file. Since we don't do in memory search anymore, we should probably delete this sometime in the future. 
 - DISK\_FS\_DISKANN\_WRAPPER: used for testing disk search where we load the index from file and just use a thin diskann::PQFlashIndex wrapper to search. This only works for 1 cluster scenario, no communication between clusters. Mainly used for testing and we will probably use this for the shard baseline in the future.
