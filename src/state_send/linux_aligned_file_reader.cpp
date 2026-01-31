@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
-#include <mutex>
-#include <thread>
+
 #define MAX_EVENTS 4096
 namespace {
 constexpr uint64_t kNoUserData = 0;
@@ -77,67 +76,32 @@ LinuxAlignedFileReader::~LinuxAlignedFileReader() {
   }
 }
 
+namespace ioctx {
+  static thread_local io_uring *ring = nullptr;
+};
+
 void *LinuxAlignedFileReader::get_ctx(int flag) {
-  std::unique_lock<std::mutex> lk(ctx_mut);
-  // perform checks only in DEBUG mode
-  if (ctx_map.find(std::this_thread::get_id()) == ctx_map.end()) {
-    std::cerr << "bad thread access; returning -1 as io_context_t" << std::endl;
-    return this->bad_ctx;
-  } else {
-    return ctx_map[std::this_thread::get_id()];
+  if (unlikely(ioctx::ring == nullptr)) {
+    register_thread(flag);
   }
+  return ioctx::ring;
 }
 
 void LinuxAlignedFileReader::register_thread(int flag) {
-  auto my_id = std::this_thread::get_id();
-  std::unique_lock<std::mutex> l(ctx_mut);
-  if (ctx_map.find(my_id) != ctx_map.end()){
-    std::cerr << "multiple calls to register_thread from the same thread" << std::endl;
-    return;
+  if (ioctx::ring == nullptr) {
+    ioctx::ring = new io_uring();
+    io_uring_queue_init(MAX_EVENTS, ioctx::ring, flag);
   }
-  io_uring* ctx = new io_uring();
-  int ret = io_uring_queue_init(MAX_EVENTS, ctx, flag);
-  if (ret < 0) {
-    throw std::runtime_error("Failed to create ring " +
-                             std::string(strerror(-ret)));
-  }
-  ctx_map[my_id] = ctx;
-  ctx_submission_mutex_map[reinterpret_cast<void *>(ctx)] = std::make_unique<std::mutex>();
-  assert(ctx_map.size() == ctx_submission_mutex_map.size());
-  l.unlock();
 }
-
 
 void LinuxAlignedFileReader::deregister_thread() {
-  auto my_id = std::this_thread::get_id();
-  std::unique_lock<std::mutex> lk(ctx_mut);
-  assert(ctx_map.find(my_id) != ctx_map.end());
-  lk.unlock();
-  io_uring *ctx = reinterpret_cast<io_uring *>(this->get_ctx());
-  
-  io_uring_queue_exit(ctx);
-
-  lk.lock();
-  ctx_map.erase(my_id);
-  ctx_submission_mutex_map.erase(reinterpret_cast<void*>(ctx));
-  if (ctx_map.size() != ctx_submission_mutex_map.size()) {
-    throw std::runtime_error("map is different sizes " +
-                             std::to_string(ctx_map.size()) +
-                             std::to_string(ctx_submission_mutex_map.size()));
-  }
-  std::cerr << "returned ctx from thread-id:" << my_id << std::endl;
-  lk.unlock();
+  io_uring_queue_exit(ioctx::ring);
+  delete ioctx::ring;
+  ioctx::ring = nullptr;
 }
 
-void LinuxAlignedFileReader::deregister_all_threads() {
-  std::unique_lock<std::mutex> lk(ctx_mut);
-  for (auto x = ctx_map.begin(); x != ctx_map.end(); x++) {
-    io_uring* ctx= x->second;
-    io_uring_queue_exit(ctx);
-  }
-  ctx_map.clear();
-  ctx_submission_mutex_map.clear();
-}
+// not sure if this is correct?
+void LinuxAlignedFileReader::deregister_all_threads() { return; }
 
 void LinuxAlignedFileReader::open(const std::string &fname,
                                   bool enable_writes = false,
@@ -165,10 +129,6 @@ void LinuxAlignedFileReader::close() {
 
 void LinuxAlignedFileReader::read(std::vector<IORequest> &read_reqs, void *ctx,
                                   bool async) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);
   assert(this->file_desc != -1);
   execute_io(ctx, this->file_desc, read_reqs);
   if (async == true) {
@@ -178,10 +138,6 @@ void LinuxAlignedFileReader::read(std::vector<IORequest> &read_reqs, void *ctx,
 
 void LinuxAlignedFileReader::write(std::vector<IORequest> &write_reqs,
                                    void *ctx, bool async) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);  
   assert(this->file_desc != -1);
   execute_io(ctx, this->file_desc, write_reqs, 0, true);
   if (async == true) {
@@ -191,10 +147,6 @@ void LinuxAlignedFileReader::write(std::vector<IORequest> &write_reqs,
 
 void LinuxAlignedFileReader::read_fd(int fd, std::vector<IORequest> &read_reqs,
                                      void *ctx) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);  
   assert(this->file_desc != -1);
   execute_io(ctx, fd, read_reqs);
 }
@@ -202,19 +154,11 @@ void LinuxAlignedFileReader::read_fd(int fd, std::vector<IORequest> &read_reqs,
 void LinuxAlignedFileReader::write_fd(int fd,
                                       std::vector<IORequest> &write_reqs,
                                       void *ctx) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);
   assert(this->file_desc != -1);
   execute_io(ctx, fd, write_reqs, 0, true);
 }
 
 void LinuxAlignedFileReader::send_io(IORequest &req, void *ctx, bool write) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);
   io_uring *ring = (io_uring *)ctx;
   auto sqe = io_uring_get_sqe(ring);
   req.finished = false;
@@ -228,10 +172,6 @@ void LinuxAlignedFileReader::send_io(IORequest &req, void *ctx, bool write) {
 }
 
 void LinuxAlignedFileReader::send_noop(IORequest *req,void *ctx) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);
   io_uring *ring = (io_uring *)ctx;
   auto sqe = io_uring_get_sqe(ring);
   req->finished = false;
@@ -243,10 +183,6 @@ void LinuxAlignedFileReader::send_noop(IORequest *req,void *ctx) {
 
 void LinuxAlignedFileReader::send_io(std::vector<IORequest> &reqs, void *ctx,
                                      bool write) {
-  std::unique_lock<std::mutex> l(ctx_mut);
-  std::unique_ptr<std::mutex> &ctx_sub_mut = ctx_submission_mutex_map[ctx];
-  l.unlock();
-  std::unique_lock<std::mutex> lock(*ctx_sub_mut);
   io_uring *ring = (io_uring *)ctx;
   for (uint64_t j = 0; j < reqs.size(); j++) {
     auto sqe = io_uring_get_sqe(ring);
