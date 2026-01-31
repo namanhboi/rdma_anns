@@ -1,11 +1,13 @@
-
 # How to create the indices
 
-For state send you need to create the graph file on the entire dataset with ParlayANN. 
+First, we need to partition the dataset with gp-ann graph via  `src/state_send/create_partition_loc_files`
 
-Then you need to run the partitioning of the dataset with `src/state_send/create_partition_loc_files`
+Then, for BatANN (StateSend), we need to build a large index encompassing all points in the dataset using ParlayANN. 
+- note that ParlayANN doesn't support cosine distance so we need to normalize the data first 
 
-Then you can Use the `scripts/create_indices.sh` file to create each individual partition's index.
+Then we build the indices for each partition individually with the scripts in `scripts/index_creation/`
+
+`scripts/create_indices.sh` is a sample script you can take a look at.
 
 # How to run experiments
 
@@ -13,7 +15,15 @@ Then you can Use the `scripts/create_indices.sh` file to create each individual 
 
 The resulting log files will be saved to a folder you specified.
 
-# Pre-Req: 
+# Build ParlayANN to create the indices
+```
+cd ~/workspace/rdma_anns
+git submodule init
+git submodule update
+cd extern/ParlayANN/algorithms/vamana
+make
+```
+# Build BatANN: 
 ## sudo
 ```
 sudo apt update -y
@@ -264,5 +274,4 @@ cmake --build build -j
   - PQ_FS
 - DISK\_KV: Should be the same idea as the above (currently only works for 1 cluster tho) but the vector embedding and neighbor ids are stored on cascade persistent kvstore instead of on file.
 - TEST\_COMPUTE\_PIPELINE: with this enabled, when the distance compute thread receives the compute query, it won't do any computation/read, just return with blank compute result
-
 
