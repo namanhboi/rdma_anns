@@ -19,6 +19,7 @@
 #include <filesystem>
 #include "points_io.h"
 #include "overlapping_partitioning.h"
+#include <type_traits>
 #include <unordered_set>
 #include "partitioning.h"
 #include <parlay/parallel.h>
@@ -128,39 +129,6 @@ void create_random_cluster_base_files(const std::string &base_file,
   }
 }
 
-template <typename T, typename TagT>
-void create_random_cluster_disk_indices(const std::string &index_path_prefix,
-                                        uint32_t num_clusters,
-                                        const char *indexBuildParameters,
-                                        pipeann::Metric _compareMetric,
-                                        bool single_file_index) {
-  std::vector<std::string> tag_files;
-  std::vector<std::string> base_files;
-  for (uint32_t i = 0; i < num_clusters; i++) {
-    std::string cluster_base_file =
-        index_path_prefix + "_cluster" + std::to_string(i) + ".bin";
-    if (!file_exists(cluster_base_file)) {
-      throw std::runtime_error("base file doesn't exist " + cluster_base_file);
-    }
-    base_files.push_back(cluster_base_file);
-
-    std::string cluster_tag_file =
-        index_path_prefix + "_cluster" + std::to_string(i) + ".tags";
-    if (!file_exists(cluster_tag_file)) {
-      throw std::runtime_error("tag file doesn't exist " + cluster_tag_file);
-    }
-    tag_files.push_back(cluster_tag_file);
-  }
-  for (uint32_t i = 0; i < num_clusters; i++) {
-    std::string index_path = index_path_prefix + "_cluster" + std::to_string(i);
-
-    if (!file_exists(index_path + "_disk.index")) {
-      pipeann::build_disk_index<T, TagT>(
-          base_files[i].c_str(), index_path.c_str(), indexBuildParameters,
-          _compareMetric, single_file_index, tag_files[i].c_str(), true);
-    }
-  }
-}
 
 template <typename T, typename TagT>
 void create_cluster_random_slices(const std::string &base_file,
@@ -235,9 +203,7 @@ int build_in_memory_index(const std::string &data_path,
 
   typedef uint32_t TagT;
 
-  pipeann::Index<T, TagT> index(distMetric, data_dim, data_num, dynamic_index,
-                                single_file_index,
-                                true); // enable_tags forced to true!
+  pipeann::Index<T, TagT> index(distMetric, data_dim); // enable_tags forced to true!
   if (dynamic_index) {
     std::vector<TagT> tags(data_num);
     std::iota(tags.begin(), tags.end(), 0);
@@ -344,16 +310,6 @@ void create_cluster_in_mem_indices(const std::string &base_file,
                                metric);
     }
   }
-}
-
-template <typename T, typename TagT>
-void dumb_way(const std::string &index_path_prefix,
-              const std::string &graph_path) {
-  pipeann::Index<T, TagT> index(pipeann::Metric::L2, 128, 10'000'000, false,
-                                false, false);
-  index.load_from_disk_index(index_path_prefix);
-  index.save_graph(graph_path);
-  index.save_data(graph_path + ".data");
 }
 
 // need to check that the file doesn't already exists?
@@ -775,6 +731,19 @@ void create_pq_data(const std::string &base_path,
                     "result in poor recall."
                  << " Consider using L2 distance with integral data types.";
     }
+  } else if (metric == pipeann::Metric::INNER_PRODUCT) {
+    if (std::is_floating_point<T>::value) {
+      normalized_file_path = base_path + "_data.normalized.bin";
+      float max_norm_of_base = pipeann::prepare_base_for_inner_products<float>(
+									       base_path, normalized_file_path);
+      // std::string norm_file = index_path_prefix + "_max_base_norm.bin";
+      // pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
+    } else {
+      LOG(ERROR) << "WARNING: Cannot normalize integral data types."
+                 << " Using mips distance with integer data types may "
+                    "result in poor recall."
+      << " Consider using L2 distance with integral data types.";
+    }
   }
 
   size_t points_num, dim;
@@ -795,10 +764,17 @@ void create_pq_data(const std::string &base_path,
   size_t train_size, train_dim;
   float *train_data; // maximum: 256000 * dim * data_size, 1GB for 1024-dim
                      // float vector.
-  double p_val = ((double)training_set_size / (double)points_num);
+  double p_val = ((double)pipeann::MAX_PQ_TRAINING_SET_SIZE / (double)points_num);
   // generates random sample and sets it to train_data and updates train_size
   gen_random_slice<T>(normalized_file_path, p_val, train_data, train_size,
                       train_dim);
+  for (size_t i = 0; i < 100; i++) {
+    std::cout << "data_point_" << i << ":";
+    for (size_t j = 0; j < train_dim; j++) {
+      std::cout << train_data[i * train_dim + j];
+    }
+    std::cout << std::endl;
+  }
 
   LOG(INFO) << "Generating PQ pivots with training data of size: " << train_size
             << " num PQ chunks: " << num_pq_chunks;
@@ -1220,20 +1196,6 @@ create_random_cluster_base_files<int8_t>(const std::string &base_file,
                                          const std::string &index_path_prefix,
                                          uint32_t num_clusters);
 
-template void create_random_cluster_disk_indices<float>(
-    const std::string &index_path_prefix, uint32_t num_clusters,
-    const char *indexBuildParameters, pipeann::Metric _compareMetric,
-    bool single_file_index);
-template void create_random_cluster_disk_indices<int8_t>(
-    const std::string &index_path_prefix, uint32_t num_clusters,
-    const char *indexBuildParameters, pipeann::Metric _compareMetric,
-    bool single_file_index);
-
-template void create_random_cluster_disk_indices<uint8_t>(
-    const std::string &index_path_prefix, uint32_t num_clusters,
-    const char *indexBuildParameters, pipeann::Metric _compareMetric,
-    bool single_file_index);
-
 template void
 write_graph_index_from_disk_index<float>(const std::string &index_path_prefix,
                                          const std::string &mem_index_path);
@@ -1244,15 +1206,6 @@ write_graph_index_from_disk_index<uint8_t>(const std::string &index_path_prefix,
 template void
 write_graph_index_from_disk_index<int8_t>(const std::string &index_path_prefix,
                                           const std::string &mem_index_path);
-
-template void dumb_way<float>(const std::string &index_path_prefix,
-                              const std::string &graph_path);
-
-template void dumb_way<uint8_t>(const std::string &index_path_prefix,
-                                const std::string &graph_path);
-
-template void dumb_way<int8_t>(const std::string &index_path_prefix,
-                               const std::string &graph_path);
 
 template void
 create_base_files_from_tags<float>(const std::string &base_file,

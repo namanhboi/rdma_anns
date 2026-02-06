@@ -1,4 +1,5 @@
 #include "communicator.h"
+#include "distance.h"
 #include "ssd_partition_index.h"
 #include "types.h"
 #include <chrono>
@@ -7,7 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <ratio>
 #include <stdexcept>
-
+#include "distance.h"
 #include <csignal>
 #include <thread>
 
@@ -220,12 +221,7 @@ int main(int argc, char **argv) {
     index_path_prefix += std::to_string(server_peer_id);
   }
 
-  pipeann::Metric m =
-      metric == "cosine" ? pipeann::Metric::COSINE : pipeann::Metric::L2;
-  if (metric != "l2" && m == pipeann::Metric::L2) {
-    std::cout << "Unknown distance metric: " << metric
-              << ". Using default(L2) instead." << std::endl;
-  }
+  pipeann::Metric m = pipeann::get_metric(metric);
 
   if (data_type == "uint8") {
     auto server = std::make_unique<StateSendServer<uint8_t>>(

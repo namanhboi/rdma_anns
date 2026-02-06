@@ -1,6 +1,8 @@
 #pragma once
+
 #include <immintrin.h>
 #include <fcntl.h>
+#include <cfloat>
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
@@ -484,6 +486,86 @@ namespace pipeann {
   void normalize_data_file(const std::string &inFileName,
                            const std::string &outFileName);
 
+  // taken from diskann cpp_main branch
+  // this function will take in_file of n*d dimensions and save the output as a
+  // floating point matrix
+  // with n*(d+1) dimensions. All vectors are scaled by a large value M so that
+  // the norms are <=1 and the final coordinate is set so that the resulting
+  // norm (in d+1 coordinates) is equal to 1 this is a classical transformation
+  // from MIPS to L2 search from "On Symmetric and Asymmetric LSHs for Inner
+  // Product Search" by Neyshabur and Srebro
+  template <typename T> float prepare_base_for_inner_products(const std::string in_file, const std::string out_file)
+  {
+    std::cout << "Pre-processing base file by adding extra coordinate" << std::endl;
+    std::ifstream in_reader(in_file.c_str(), std::ios::binary);
+    std::ofstream out_writer(out_file.c_str(), std::ios::binary);
+    uint64_t npts, in_dims, out_dims;
+    float max_norm = 0;
+
+    uint32_t npts32, dims32;
+    in_reader.read((char *)&npts32, sizeof(uint32_t));
+    in_reader.read((char *)&dims32, sizeof(uint32_t));
+
+    npts = npts32;
+    in_dims = dims32;
+    out_dims = in_dims + 1;
+    uint32_t outdims32 = (uint32_t)out_dims;
+
+    out_writer.write((char *)&npts32, sizeof(uint32_t));
+    out_writer.write((char *)&outdims32, sizeof(uint32_t));
+
+    size_t BLOCK_SIZE = 100000;
+    size_t block_size = npts <= BLOCK_SIZE ? npts : BLOCK_SIZE;
+    std::unique_ptr<T[]> in_block_data = std::make_unique<T[]>(block_size * in_dims);
+    std::unique_ptr<float[]> out_block_data = std::make_unique<float[]>(block_size * out_dims);
+
+    std::memset(out_block_data.get(), 0, sizeof(float) * block_size * out_dims);
+    uint64_t num_blocks = DIV_ROUND_UP(npts, block_size);
+
+    std::vector<float> norms(npts, 0);
+
+    for (uint64_t b = 0; b < num_blocks; b++)
+      {
+        uint64_t start_id = b * block_size;
+        uint64_t end_id = (b + 1) * block_size < npts ? (b + 1) * block_size : npts;
+        uint64_t block_pts = end_id - start_id;
+        in_reader.read((char *)in_block_data.get(), block_pts * in_dims * sizeof(T));
+        for (uint64_t p = 0; p < block_pts; p++)
+          {
+            for (uint64_t j = 0; j < in_dims; j++)
+              {
+                norms[start_id + p] += in_block_data[p * in_dims + j] * in_block_data[p * in_dims + j];
+              }
+            max_norm = max_norm > norms[start_id + p] ? max_norm : norms[start_id + p];
+          }
+      }
+
+    max_norm = std::sqrt(max_norm);
+
+    in_reader.seekg(2 * sizeof(uint32_t), std::ios::beg);
+    for (uint64_t b = 0; b < num_blocks; b++)
+      {
+        uint64_t start_id = b * block_size;
+        uint64_t end_id = (b + 1) * block_size < npts ? (b + 1) * block_size : npts;
+        uint64_t block_pts = end_id - start_id;
+        in_reader.read((char *)in_block_data.get(), block_pts * in_dims * sizeof(T));
+        for (uint64_t p = 0; p < block_pts; p++)
+          {
+            for (uint64_t j = 0; j < in_dims; j++)
+              {
+                out_block_data[p * out_dims + j] = in_block_data[p * in_dims + j] / max_norm;
+              }
+            float res = 1 - (norms[start_id + p] / (max_norm * max_norm));
+            res = res <= 0 ? 0 : std::sqrt(res);
+            out_block_data[p * out_dims + out_dims - 1] = res;
+          }
+        out_writer.write((char *)out_block_data.get(), block_pts * out_dims * sizeof(float));
+      }
+    out_writer.close();
+    return max_norm;
+  }
+
+
 
 
 
@@ -514,6 +596,53 @@ namespace pipeann {
                 << " saturate_graph: " << saturate_graph;
     }
   };
+    /*
+   * For float, we normalize to 1.
+   * For non-float types, we do not normalize to 1 to avoid underflow.
+   * Instead, we normalize to TYPE_MAX:
+   * - For uint8_t, we normalize to 255.
+   * - For int8_t, we normalize to 127.
+   */
+  template<typename T>
+  inline void normalize_data(T *data_out, const T *data_in, size_t dim) {
+    float norm_sq = 0.0f;
+
+#pragma omp simd reduction(+ : norm_sq) aligned(data_in : 8)
+    for (size_t i = 0; i < dim; i++) {
+      norm_sq += (float) (data_in[i]) * (float) (data_in[i]);
+    }
+
+    if (unlikely(norm_sq < FLT_EPSILON)) {
+      memset(data_out, 0, dim * sizeof(T));
+      return;
+    }
+
+    float norm = std::sqrt(norm_sq);
+    float scale = 1.0f;
+
+    if constexpr (std::is_same_v<T, uint8_t>) {
+      scale = 255.0f / norm;
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+      scale = 127.0f / norm;
+    } else if constexpr (std::is_same_v<T, float>) {
+      scale = 1.0f / norm;
+    } else {
+      LOG(ERROR) << "Unsupported type: " << typeid(T).name();
+      crash();
+    }
+
+    // Round up for integer types.
+#pragma omp simd aligned(data_out, data_in : 8)
+    for (size_t i = 0; i < dim; i++) {
+      float val = (float) data_in[i] * scale;
+      if constexpr (std::is_same_v<T, float>) {
+        data_out[i] = val;
+      } else {
+        data_out[i] = static_cast<T>(std::round(val));
+      }
+    }
+  }
+
     // We reserve kInvalidID to mark an invalid ID or location.
   static constexpr uint32_t kInvalidID = std::numeric_limits<uint32_t>::max();
 }  // namespace pipeann

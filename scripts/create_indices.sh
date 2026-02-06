@@ -105,14 +105,14 @@ if [[ ! -f "${PARTITION_BASE_FILE_PATH}" ]]; then
 fi
 
 # now we need to create the pq file
-if [[ (! -f "${SCATTER_GATHER_INDEX_PREFIX}_pq_compressed.bin") || (! -f "${SCATTER_GATHER_INDEX_PREFIX}_pq_pivots.bin") ]]; then
-    "${WORKDIR}/build/src/state_send/create_pq_data" \
-	"${DATA_TYPE}" \
-	"${PARTITION_BASE_FILE_PATH}" \
-	"${SCATTER_GATHER_INDEX_PREFIX}" \
-	"${METRIC}" \
-	"${SCATTER_GATHER_NUM_PQ_CHUNKS}"
-fi
+# if [[ (! -f "${SCATTER_GATHER_INDEX_PREFIX}_pq_compressed.bin") || (! -f "${SCATTER_GATHER_INDEX_PREFIX}_pq_pivots.bin") ]]; then
+#     "${WORKDIR}/build/src/state_send/create_pq_data" \
+# 	"${DATA_TYPE}" \
+# 	"${PARTITION_BASE_FILE_PATH}" \
+# 	"${SCATTER_GATHER_INDEX_PREFIX}" \
+# 	"${METRIC}" \
+# 	"${SCATTER_GATHER_NUM_PQ_CHUNKS}"
+# fi
 
 # now we need to do create the mem index
 SCATTER_GATHER_SLICE_PREFIX="${SCATTER_GATHER_INDEX_PREFIX}_SAMPLE_RATE_${MEM_INDEX_SAMPLING_RATE}"
@@ -146,7 +146,7 @@ if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
 	"${SCATTER_GATHER_INDEX_PREFIX}" \
 	"${SCATTER_GATHER_R}" \
 	"${SCATTER_GATHER_L}" \
-	3.3 \
+	"${NUM_PQ_CHUNKS}" \
 	"${RAM_BUDGET}" \
 	"${NUM_THREADS}" \
 	"${METRIC}" \

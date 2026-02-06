@@ -45,10 +45,10 @@ namespace pipeann {
     virtual float compare(const float *a, const float *b, uint32_t size) const __attribute__((hot));
   };
 
-  template<typename T>
-  class DistanceInnerProduct : public Distance<T> {
+  // taken from diskann cpp_main branch
+  class AVXDistanceInnerProductFloat : public Distance<float> {
    public:
-    virtual float compare(const T *a, const T *b, unsigned size);
+    virtual float compare(const float *a, const float *b, unsigned size) const;
   };
 
   inline Metric get_metric(const std::string &metric_str) {

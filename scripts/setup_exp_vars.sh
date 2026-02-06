@@ -31,8 +31,9 @@ USE_COUNTER_THREAD=${12}
 USE_LOGGING=${13}
 SEND_RATE=${14}
 WRITE_QUERY_CSV=${15}
+NUM_QUERIES_TO_SEND=${16:-99999999}
 
-if [ $# -ne 15 ]; then
+if [ $# -ne 16 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
@@ -48,12 +49,13 @@ if [ $# -ne 15 ]; then
     echo "  use_logging : logging is to get the message sizes in the handler and the serialization time rn. Need to remove the serialization time stuff"
     echo "  send_rate : this is the number of queries you want to send per second. "
     echo "  write_query_csv : whether or not to record information about each individual query into a csv file for each L "
+    echo "  num_queries_to_send : num queries to send, default to a large number"
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
 
 # --- Input validation ---
-[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" ]] && { echo "Error: dataset_name must be 'bigann' or deep1b"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" && "$DATASET_NAME" != "OpenAIArXiv" ]] && { echo "Error: dataset_name must be 'bigann', deep1b, 'MSSPACEV1B', 'text2image1B', 'OpenAIArxiv'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+# [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
@@ -98,8 +100,29 @@ elif [[ "$DATASET_NAME" == "MSSPACEV1B" ]]; then
     else
 	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/msspacev-gt-100M"	
     fi
+elif [[ "$DATASET_NAME" == "text2image1B" ]]; then
+    DATA_TYPE="float"
+    DIMENSION=200
+    METRIC="mips"
+    if [[ "$MODE" == "local" ]]; then
+	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.heldout.30K.fbin"
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/recomputed_gt100-heldout.30K.fbin"
+    else
+	echo "ERROR: text2image only supported for local currently"
+	exit 1
+    fi
+elif [[ "$DATASET_NAME" == "OpenAIArXiv" ]]; then
+    DATA_TYPE="float"
+    DIMENSION=1536
+    METRIC="cosine"
+    if [[ "$MODE" == "local" ]]; then
+	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/openai_query.bin"
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/openai-100K"
+    else
+	echo "ERROR: OpenAIArXiv only supports local rn"
+	exit 1
+    fi
 fi
-
 
 
 
@@ -195,7 +218,7 @@ fi
 
 # --- Server parameters ---
 
-USE_MEM_INDEX=true
+USE_MEM_INDEX=false
 NUM_QUERIES_BALANCE=8
 USE_BATCHING=true
 
@@ -205,11 +228,11 @@ COUNTER_SLEEP_MS=100
 # 10 15 20 25 30 35 40 50 60 80 120 200 400
 # LVEC="10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 32 34 36 38 40 45 50 55 60 65 70 80 90 100 120 140 160 180 200 225 250 275 300 375"
 # LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
-LVEC="10"
-# LVEC="65 70 80 100 120 140 160"
 # LVEC="400"
+# LVEC="65 70 80 100 120 140 160"
+LVEC="100"
 K_VALUE=10
-MEM_L=10
+MEM_L=0
 RECORD_STATS=true
 
 
@@ -218,7 +241,7 @@ EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NU
 
 
 export NUM_SEARCH_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BATCH_SIZE USE_COUNTER_THREAD COUNTER_SLEEP_MS 
-export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE WRITE_QUERY_CSV
+export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE WRITE_QUERY_CSV NUM_QUERIES_TO_SEND
 export NUM_SERVERS DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
 export ANNGRAHPS_PREFIX GRAPH_PREFIX QUERY_BIN TRUTHSET_BIN
 export PEER_IPS

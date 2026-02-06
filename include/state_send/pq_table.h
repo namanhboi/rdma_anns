@@ -278,6 +278,7 @@ namespace pipeann {
         }
       }
 #else
+      LOG(INFO) << "bruh";
       populate_chunk_distances_ip_scalar(query_vec, dist_vec);
 #endif
     }

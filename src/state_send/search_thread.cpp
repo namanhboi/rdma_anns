@@ -1,3 +1,4 @@
+#include "distance.h"
 #include "query_buf.h"
 #include "ssd_partition_index.h"
 #include "types.h"
@@ -72,12 +73,44 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             parent->query_emb_map.find(allocated_states[i]->query_id);
         }
 
+
+        if (!allocated_states[i]->query_emb->normalized) {
+          LOG(INFO) << "NOT NORMALIZED";
+          if (parent->metric == pipeann::Metric::COSINE ||
+              parent->metric == pipeann::Metric::INNER_PRODUCT) {
+            LOG(INFO) << "normalizing metric " << pipeann::get_metric_str(parent->metric);
+            uint64_t inherent_dim =
+                allocated_states[i]->query_emb->dim -
+                ((parent->metric == pipeann::Metric::COSINE) ? 0
+                 : (uint64_t)(1));
+            float query_norm = 0;
+            for (size_t j = 0; j < inherent_dim; j++) {
+              query_norm += allocated_states[i]->query_emb->query[j] *
+                            allocated_states[i]->query_emb->query[j];
+            }
+            if (parent->metric == pipeann::Metric::INNER_PRODUCT) {
+              allocated_states[i]
+                  ->query_emb->query[allocated_states[i]->query_emb->dim - 1] = 0;
+            }
+            query_norm = std::sqrt(query_norm);
+            for (size_t j = 0; j < inherent_dim; j++) {
+              allocated_states[i]->query_emb->query[j] =
+                (allocated_states[i]->query_emb->query[j] / query_norm);
+            }
+            allocated_states[i]->query_emb->query_norm = query_norm;
+          }
+          allocated_states[i]->query_emb->normalized = true;
+        }
         if (!allocated_states[i]->query_emb->populated_pq_dists) {
+          LOG(INFO) << "NOT INITIALIZED YET";
           parent->pq_table.populate_chunk_distances(
               allocated_states[i]->query_emb->query,
 						    allocated_states[i]->query_emb->pq_dists);
           allocated_states[i]->query_emb->populated_pq_dists = true;
-        }
+        }        
+        // if (allocated_states[i]->query_emb->query_norm == 0.0 && ) {
+
+        // }
         // initialize the result set: either with in mem index or by just using
         // the medoid
         // brand new state, must be sent from client
@@ -168,7 +201,8 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     if (state->stats) {
       state->stats->io_us += state->io_timer.elapsed();
     }
-
+    parent->state_print_detailed(state);
+    
     SearchExecutionState s = SearchExecutionState::FRONTIER_EMPTY;
     // this loop will advance the state until there is something to read or
     // the state ends
@@ -186,6 +220,8 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       } else {
 	number_foreign_states--;
       }
+      // LOG(INFO) << "DONE WITH QUERY " << state->query_emb->query_id;
+      // this->parent->state_finalize_distance(state);
       this->parent->notify_client(state);
     } else if (s == SearchExecutionState::FRONTIER_ON_SERVER) {
       // LOG(INFO) << "Issuing io";

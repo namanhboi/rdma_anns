@@ -47,10 +47,11 @@ namespace pipeann {
                                 const char *tag_file = nullptr);
 
   template <typename T, typename TagT = uint32_t>
-  bool build_disk_index(const char *dataFilePath, const char *indexFilePath,
-                        const char *indexBuildParameters,
+  bool build_disk_index(const char *dataPath, const char *indexFilePath,
+                        uint32_t R, uint32_t L, uint32_t num_pq_chunks,
+                        uint32_t num_threads, double indexing_ram_budget,
                         pipeann::Metric _compareMetric, bool single_file_index,
-                        const char *tag_file = nullptr, bool remove_mem_index = true);
+                        const char *tag_file, bool remove_mem_index);
   template<typename T, typename TagT = uint32_t>
   bool build_disk_index_py(const char *dataPath, const char *indexFilePath, uint32_t R, uint32_t L, uint32_t M,
                            uint32_t num_threads, uint32_t PQ_bytes, pipeann::Metric _compareMetric,

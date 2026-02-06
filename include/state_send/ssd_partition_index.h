@@ -154,7 +154,13 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
   void query_emb_print(std::shared_ptr<QueryEmbedding<T>> query_emb);
 
 
-  bool state_io_finished(SearchState<T, TagT>* state);
+  bool state_io_finished(SearchState<T, TagT> *state);
+
+  /*
+    in case of inner product, we have to conver the distance to l2 because of
+    the normalization
+   */
+  void state_finalize_distance(SearchState<T, TagT> *state); 
 
 private:
   class CounterThread {
@@ -433,7 +439,7 @@ public:
      need the random for the overlap case (which turns out to not help as much
      as I thought)
    */
-  uint8_t get_random_partition_assignment(uint32_t node_id) {
+  uint8_t get_partition_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND)
       return my_partition_id;
     return partition_assignment[node_id];
@@ -460,6 +466,7 @@ private:
   uint64_t aligned_dim = 0;
   uint64_t size_per_io = 0;
 
+  double query_norm;
 
   std::string _disk_index_file;
 
@@ -476,7 +483,12 @@ private:
   pipeann::FixedChunkPQTable<T> pq_table;
 
   // distance comparator
+  pipeann::Metric metric;
   std::shared_ptr<pipeann::Distance<T>> dist_cmp;
+
+  // used only for inner product search to re-scale the result value
+  // (due to the pre-processing of base during index build)
+  float _max_base_norm = 0.0f;
 
   // Are we dealing with normalized data? This will be true
   // if distance == COSINE and datatype == float. Required

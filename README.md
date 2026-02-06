@@ -9,6 +9,9 @@ Then we build the indices for each partition individually with the scripts in `s
 
 `scripts/create_indices.sh` is a sample script you can take a look at.
 
+
+Note that system doesn't support datasets that is extremely high dimensional, data needs to fit into 1 page on disk.
+
 # How to run experiments
 
 `scripts/run_experiment.sh` is how you run an experiments. It calls `scripts/setup_exp_vars.sh` which parses the user arguments and sets up the variables in the `run_experiment.sh` script.
@@ -275,3 +278,9 @@ cmake --build build -j
 - DISK\_KV: Should be the same idea as the above (currently only works for 1 cluster tho) but the vector embedding and neighbor ids are stored on cascade persistent kvstore instead of on file.
 - TEST\_COMPUTE\_PIPELINE: with this enabled, when the distance compute thread receives the compute query, it won't do any computation/read, just return with blank compute result
 
+# DATASET info
+- bigann: l2, 128, uint8
+- msspacev: l2, 100, int8
+- deep: l2, 96, float
+- text2image: mips, 200, float
+- openaiarxiv: cosine, 1536, float

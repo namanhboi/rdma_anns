@@ -21,14 +21,15 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::IndexBuildParameters *params, uint64_t num_queries_balance,
     bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
     std::string counter_csv, uint64_t counter_sleep_ms, bool use_logging,
-					      const std::string &log_file)
+    const std::string &log_file)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
       distributed_ann_head_index_ptok(distributed_ann_task_queue),
       distributed_ann_scoring_ptok(distributed_ann_task_queue),
       dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
-      use_batching(use_batching), use_counter_thread(use_counter_thread), pq_table(m) {
+      use_batching(use_batching), use_counter_thread(use_counter_thread),
+      pq_table(m), metric(m) {
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     prealloc_distributedann_result =
@@ -101,18 +102,18 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   data_is_normalized = false;
   // this->enable_tags = tags;
   // this->enable_locs = enable_locs;
-  if (m == pipeann::Metric::COSINE) {
-    if (std::is_floating_point<T>::value) {
-      LOG(INFO) << "Cosine metric chosen for (normalized) float data."
-                   "Changing distance to L2 to boost accuracy.";
-      m = pipeann::Metric::L2;
-      data_is_normalized = true;
-    } else {
-      LOG(ERROR) << "WARNING: Cannot normalize integral data types."
-                 << " This may result in erroneous results or poor recall."
-                 << " Consider using L2 distance with integral data types.";
-    }
-  }
+  // if (m == pipeann::Metric::COSINE) {
+  //   if (std::is_floating_point<T>::value) {
+  //     LOG(INFO) << "Cosine metric chosen for (normalized) float data."
+  //                  "Changing distance to L2 to boost accuracy.";
+  //     m = pipeann::Metric::L2;
+  //     data_is_normalized = true;
+  //   } else {
+  //     LOG(ERROR) << "WARNING: Cannot normalize integral data types."
+  //                << " This may result in erroneous results or poor recall."
+  //                << " Consider using L2 distance with integral data types.";
+  //   }
+  // }
 
   this->dist_cmp.reset(pipeann::get_distance_function<T>(m));
   // this->pq_reader = new LinuxAlignedFileReader();
@@ -188,6 +189,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   disk_index_file = iprefix + "_disk.index";
   this->_disk_index_file = disk_index_file;
   centroids_file = disk_index_file + "_centroids.bin";
+
 
   std::ifstream index_metadata(disk_index_file, std::ios::binary);
 
@@ -290,6 +292,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
   size_t npts_u64, nchunks_u64;
   pipeann::load_bin<uint8_t>(pq_compressed_vectors, data, npts_u64, nchunks_u64,
                              pq_vectors_offset);
+
   this->n_chunks = nchunks_u64;
   this->global_graph_num_points = npts_u64;
   this->cur_id = this->num_points;
@@ -396,6 +399,18 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     LOG(INFO) << "cluster assignment file loaded successfully.";
   }
 
+  std::string norm_file = std::string(_disk_index_file) + "_max_base_norm.bin";
+  if (file_exists(norm_file) &&
+      this->metric == pipeann::Metric::INNER_PRODUCT) {
+    uint64_t dumr, dumc;
+    float *norm_val;
+    pipeann::load_bin(norm_file, norm_val, dumr, dumc);
+    this->_max_base_norm = norm_val[0];
+    LOG(INFO) << "Setting rescaling factor of base vector to "
+    << this->_max_base_norm;
+    delete[] norm_val;
+  }
+
   LOG(INFO) << "SSDIndex loaded successfully.";
 
   load_flag = true;
@@ -498,8 +513,7 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     LOG(ERROR) << "mem_index_path is needed";
     exit(1);
   }
-  mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(
-      metric, query_dim, 0, false, false, true);
+  mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(metric, query_dim);
   mem_index_->load(mem_index_path.c_str());
 }
 
@@ -856,7 +870,7 @@ void SSDPartitionIndex<T, TagT>::send_state(
     return;
   }
   uint8_t receiver_partition_id =
-      this->get_random_partition_assignment(search_state->frontier[0]);
+      this->get_partition_assignment(search_state->frontier[0]);
   assert(receiver_partition_id != this->my_partition_id);
   bool send_with_embedding;
 

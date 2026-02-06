@@ -1,5 +1,6 @@
 #include "ssd_partition_index.h"
 #include "types.h"
+#include "utils.h"
 #include <cstdint>
 #include <stdexcept>
 
@@ -23,7 +24,8 @@ void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
             << " visited size: " << state->visited.size()
             << " frontier size: " << state->frontier.size()
             << " frontier nhood size: " << state->frontier_nhoods.size()
-            << " frontier read reqs size: " << state->frontier_read_reqs.size();
+  << " frontier read reqs size: " << state->frontier_read_reqs.size();
+  // std::string
 }
 
 template <typename T, typename TagT>
@@ -185,12 +187,11 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
   // updates frontier
   UpdateFrontierValue ret_val = state_update_frontier(state);
   if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER) {
-    // LOG(INFO) << 
     return SearchExecutionState::FRONTIER_EMPTY;
   } else if (ret_val == UpdateFrontierValue::FRONTIER_HAS_ON_SERVER) {
     return SearchExecutionState::FRONTIER_ON_SERVER;
   } else if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_ONLY_OFF_SERVER) {
-    if (this->get_random_partition_assignment(state->retset[state->k].id) == my_partition_id && state->retset[state->k].flag) {
+    if (this->get_partition_assignment(state->retset[state->k].id) == my_partition_id && state->retset[state->k].flag) {
       throw std::runtime_error("current position is still my partition id, why not explore ");
     }
     return SearchExecutionState::FRONTIER_OFF_SERVER;
@@ -239,7 +240,7 @@ UpdateFrontierValue SSDPartitionIndex<T, TagT>::state_update_frontier(
          num_seen < state->beam_width) {
     if (state->retset[marker].flag) {
       num_seen++;
-      if (get_random_partition_assignment(state->retset[marker].id) !=
+      if (get_partition_assignment(state->retset[marker].id) !=
           my_partition_id) {
 	num_off_server_nodes++;
       } else {
@@ -272,7 +273,7 @@ uint8_t SSDPartitionIndex<T, TagT>::state_top_cand_random_partition(
          num_seen < state->beam_width) {
     if (state->retset[marker].flag) {
       num_seen++;
-      uint8_t node_partition_id = get_random_partition_assignment(state->retset[marker].id);
+      uint8_t node_partition_id = get_partition_assignment(state->retset[marker].id);
       if (node_partition_id != my_partition_id) {
         return node_partition_id;
       }
@@ -298,15 +299,12 @@ std::string neighbors_to_string(pipeann::Neighbor *neighbors,
                                 uint32_t num_neighbors) {
   std::stringstream str;
   for (auto i = 0; i < num_neighbors; i++) {
-    str << "[" << neighbors[i].id << "," << neighbors[i].distance << "]";
+    str << "(" << neighbors[i].id << "," << neighbors[i].distance << ")";
     if (i != num_neighbors - 1)
       str << ",";
   }
   return str.str();
 }
-
-
-
 
 
 
@@ -366,9 +364,10 @@ bool SSDPartitionIndex<T, TagT>::state_io_finished(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_print_detailed(
-    SearchState<T, TagT> *state) {
-  LOG(INFO) << "State for query " << state->query_id << ", hop "
-            << state->stats->n_hops;
+						      SearchState<T, TagT> *state) {
+
+  LOG(INFO) << "=================State for query " << state->query_id << ", hop "
+            << state->stats->n_hops << "==============";
   LOG(INFO) << "frontier size " << state->frontier.size();
   if (state->frontier.size() == 1) {
     LOG(INFO) << "frontier: " << state->frontier[0];
@@ -393,6 +392,28 @@ void SSDPartitionIndex<T, TagT>::state_print_detailed(
             << state_partition_history_to_string(state);
   // LOG(INFO) << "client_peer_id " <<state->client_peer_id;
 }
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::state_finalize_distance(
+							 SearchState<T, TagT> *state) {
+  if (metric != pipeann::Metric::INNER_PRODUCT) {
+    return;
+  }
+  if (unlikely(state->query_emb->query_norm == 0.0)) {
+    throw std::runtime_error("query norm needs to be 0");
+  }
+  std::vector<pipeann::Neighbor> &result = state->full_retset;
+  for (auto &neighbor : result) {
+    neighbor.distance = -neighbor.distance;
+    if (_max_base_norm != 0) {
+      neighbor.distance *= (_max_base_norm * state->query_emb->query_norm);
+      // LOG(INFO) << this->_max_base_norm;
+      // need to calculate query norm
+    }
+  }
+}
+
+
 
 // Explicit instantiations for the SSDPartitionIndex specializations used by the
 // program. Put these in this .cpp because the template definitions are here.

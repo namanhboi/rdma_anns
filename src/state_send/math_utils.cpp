@@ -318,7 +318,7 @@ namespace kmeans {
     std::vector<size_t> picked;
     std::random_device rd;
     auto x = rd();
-    std::mt19937 generator(x);
+    std::mt19937 generator(0);
     std::uniform_int_distribution<size_t> distribution(0, num_points - 1);
 
     size_t tmp_pivot;
@@ -343,7 +343,7 @@ namespace kmeans {
     std::vector<size_t> picked;
     std::random_device rd;
     auto x = rd();
-    std::mt19937 generator(x);
+    std::mt19937 generator(0);
     std::uniform_real_distribution<> distribution(0, 1);
     std::uniform_int_distribution<size_t> int_dist(0, num_points - 1);
     size_t init_id = int_dist(generator);

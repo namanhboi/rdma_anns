@@ -236,11 +236,18 @@ template <typename T> struct QueryEmbedding {
   uint64_t beam_width;
   uint32_t dim;
   uint32_t num_chunks;
+  float query_norm = 0.0; // used for mips at reranking step
   bool record_stats;
   bool populated_pq_dists = false;
-  void* distributed_ann_state_ptr = nullptr;
-  T query[kMaxVectorDim];
-  float pq_dists[32768];
+  // don't serialize this one since each time we receive a query we
+  // need to populate the table. 
+  bool normalized = false;  
+  void *distributed_ann_state_ptr = nullptr;
+  alignas(8 * sizeof(T)) T query[kMaxVectorDim];
+  alignas(256) float pq_dists[32768];
+  // alignment same as pipeann init_query_buf to speed up distance calc?
+  // haven't benchmarked so don't know fs
+  // https://github.com/thustorage/PipeANN/blob/main/include/ssd_index.h#L102
 
   /**
      we don't send pq dists because its big, initialize it upon receiving query

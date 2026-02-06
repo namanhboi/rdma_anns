@@ -656,10 +656,13 @@ void QueryEmbedding<T>::deserialize(const char *buffer, QueryEmbedding *query) {
   offset += sizeof(query->dim);
   std::memcpy(&query->num_chunks, buffer + offset, sizeof(query->num_chunks));
   offset += sizeof(query->num_chunks);
+  std::memcpy(&query->query_norm, buffer + offset, sizeof(query->query_norm));
+  offset += sizeof(query->query_norm);  
   std::memcpy(&query->record_stats, buffer + offset,
               sizeof(query->record_stats));
   offset += sizeof(query->record_stats);
-
+  std::memcpy(&query->normalized, buffer + offset, sizeof(query->normalized));
+  offset += sizeof(query->normalized);
 
   bool has_distributed_ann_state_ptr;
   std::memcpy(&has_distributed_ann_state_ptr, buffer + offset,
@@ -712,8 +715,12 @@ size_t QueryEmbedding<T>::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(&dim), sizeof(dim), offset);
   write_data(buffer, reinterpret_cast<const char *>(&num_chunks),
              sizeof(num_chunks), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&query_norm),
+             sizeof(query_norm), offset);
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&normalized),
+             sizeof(normalized), offset);
 
   bool has_distributed_ann_state_ptr = (distributed_ann_state_ptr != nullptr);
   write_data(buffer, (char *)&has_distributed_ann_state_ptr,
@@ -731,7 +738,8 @@ size_t QueryEmbedding<T>::write_serialize(char *buffer) const {
 template <typename T> size_t QueryEmbedding<T>::get_serialize_size() const {
   size_t num_bytes = sizeof(query_id) + sizeof(client_peer_id) + sizeof(mem_l) +
                      sizeof(l_search) + sizeof(k_search) + sizeof(beam_width) +
-                     sizeof(dim) + sizeof(num_chunks) + sizeof(record_stats) +
+                     sizeof(dim) + sizeof(num_chunks) + sizeof(query_norm) +
+                     sizeof(record_stats) + sizeof(normalized) +
                      sizeof(T) * dim;
 
   num_bytes += sizeof(bool);
@@ -771,6 +779,8 @@ template <typename T> void QueryEmbedding<T>::reset(QueryEmbedding<T> *query) {
   query->populated_pq_dists = false;
   query->query_id = std::numeric_limits<uint64_t>::max();
   query->distributed_ann_state_ptr = nullptr;
+  query->query_norm = 0.0;
+  query->normalized = false;
 }
 
 size_t ack::write_serialize(char *buffer) const {

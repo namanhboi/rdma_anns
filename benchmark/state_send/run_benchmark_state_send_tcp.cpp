@@ -9,14 +9,13 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
-
 void write_results_csv(
     const std::vector<std::shared_ptr<search_result_t>> &results,
     const std::vector<double> &send_timestamp,
     const std::vector<double> &receive_timestamp,
-		       const std::string &output_file) {
+    const std::string &output_file) {
   std::ofstream output(output_file);
-  output << std::setprecision (15);
+  output << std::setprecision(15);
   auto partition_history_to_str = [](std::shared_ptr<search_result_t> result) {
     std::stringstream str;
     str << "[";
@@ -43,16 +42,16 @@ void write_results_csv(
             "\n";
   for (auto i = 0; i < results.size(); i++) {
     output << results[i]->query_id << "," << send_timestamp[i] << ","
-    << receive_timestamp[i] << ",";
+           << receive_timestamp[i] << ",";
     if (results[i]->stats) {
       output << results[i]->stats->total_us << "," << results[i]->stats->io_us
              << "," << results[i]->stats->n_hops << ","
              << results[i]->stats->n_ios << "," << results[i]->stats->n_cmps
-      << ",";
+             << ",";
     } else {
       output << 0 << "," << 0 << "," << 0 << "," << 0 << "," << 0 << ",";
     }
-    
+
     output << partition_history_to_str(results[i]) << "\n";
   }
 }
@@ -62,13 +61,14 @@ namespace po = boost::program_options;
 template <typename T>
 int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       std::string query_bin, std::string truthset_bin,
-                      std::vector<uint64_t> &Lvec, uint64_t beam_width,
-                      uint64_t K, uint64_t mem_L, bool record_stats, bool write_query_csv, 
+                      uint32_t num_queries_to_send, std::vector<uint64_t> &Lvec,
+                      uint64_t beam_width, uint64_t K, uint64_t mem_L,
+                      bool record_stats, bool write_query_csv,
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
                       const std::vector<std::string> &address_list,
                       const std::string &result_output_folder,
-                      const std::string& partition_assignment_file) {
+                      const std::string &partition_assignment_file) {
 
   uint64_t microsecond_sleep_time = 0;
   if (send_rate_per_second != 0) {
@@ -80,12 +80,11 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
 
   DistributedSearchMode dist_search_mode;
 
-
   if (dist_search_mode_str == "STATE_SEND") {
     dist_search_mode = DistributedSearchMode::STATE_SEND;
   } else if (dist_search_mode_str == "SCATTER_GATHER") {
     dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
-  }else if (dist_search_mode_str == "SINGLE_SERVER") {
+  } else if (dist_search_mode_str == "SINGLE_SERVER") {
     dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
   } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
     dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
@@ -98,8 +97,6 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   // DistributedSearchMode::DISTRIBUTED_ANN) { throw std::invalid_argument(
   // "beam_width should be 1, other sizes not yet impl");
   // }
-
-
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     if (beam_width > distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN) {
@@ -129,22 +126,28 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   unsigned *gt_ids = nullptr;
   float *gt_dists = nullptr;
   uint32_t *tags = nullptr;
-  size_t query_num, query_dim, gt_num, gt_dim;
+  size_t total_query_num, query_dim, gt_num, gt_dim;
 
   bool calc_recall_flag = false;
 
-  pipeann::load_bin<T>(query_bin, query, query_num, query_dim);
+  pipeann::load_bin<T>(query_bin, query, total_query_num, query_dim);
   if (file_exists(truthset_bin)) {
     pipeann::load_truthset(truthset_bin, gt_ids, gt_dists, gt_num, gt_dim,
                            &tags);
-    if (gt_num != query_num) {
+    if (gt_num != total_query_num) {
       std::cout << "Error. Mismatch in number of queries and ground truth data"
                 << std::endl;
     }
     calc_recall_flag = true;
   }
 
-  
+  if (total_query_num < num_queries_to_send) {
+    LOG(INFO)
+        << "number of queries smaller than requested num_queries_to_send: "
+        << total_query_num << " " << num_queries_to_send;
+    num_queries_to_send = total_query_num;
+  }
+
   // for debugging purposes
   // size_t num_queries_to_run = 1;
   // query_num = std::min(num_queries_to_run, query_num);
@@ -152,15 +155,15 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   auto run_tests = [&](uint32_t test_id, bool output) {
     uint64_t L = Lvec[test_id];
 
-    query_result_ids[test_id].resize(K * query_num);
-    query_result_dists[test_id].resize(K * query_num);
-    query_result_tags[test_id].resize(K * query_num);
+    query_result_ids[test_id].resize(K * num_queries_to_send);
+    query_result_dists[test_id].resize(K * num_queries_to_send);
+    query_result_tags[test_id].resize(K * num_queries_to_send);
 
-    std::vector<uint64_t> query_result_tags_64(K * query_num);
-    std::vector<uint32_t> query_result_tags_32(K * query_num);
+    std::vector<uint64_t> query_result_tags_64(K * num_queries_to_send);
+    std::vector<uint32_t> query_result_tags_32(K * num_queries_to_send);
 
     std::vector<uint64_t> query_ids;
-    for (int i = 0; i < (int64_t)query_num; i += 1) {
+    for (int i = 0; i < (int64_t)num_queries_to_send; i += 1) {
       uint64_t query_id = client.search(query + (i * query_dim), K, mem_L, L,
                                         beam_width, record_stats);
       query_ids.push_back(query_id);
@@ -169,7 +172,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
             std::chrono::microseconds(microsecond_sleep_time));
       }
     }
-    client.wait_results(query_num);
+    client.wait_results(num_queries_to_send);
 
     std::vector<std::shared_ptr<search_result_t>> results;
     std::vector<double> e2e_latencies;
@@ -217,7 +220,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       i++;
     }
     std::string result_file =
-      result_output_folder + "/result_L_" + std::to_string(L) + ".csv";
+        result_output_folder + "/result_L_" + std::to_string(L) + ".csv";
     if (write_query_csv) {
       LOG(INFO) << "WRITE_QUERY_CSV " << write_query_csv;
       write_results_csv(results, send_timestamp, receive_timestamp,
@@ -227,45 +230,47 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     std::chrono::duration<double> total_elapsed = last - first;
     // std::cout << "total time is " << (double) total_elapsed.count() <<
     // std::endl;
-    float qps = (float)((1.0 * (double)query_num) /
+    float qps = (float)((1.0 * (double)num_queries_to_send) /
                         (1.0 * (double)total_elapsed.count()));
 
     pipeann::convert_types<uint32_t, uint32_t>(
         query_result_tags_32.data(), query_result_tags[test_id].data(),
-        (size_t)query_num, (size_t)K);
+        (size_t)num_queries_to_send, (size_t)K);
 
-    float mean_latency = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
-          return stats ? stats->total_us : 0;
-        });
+    float mean_latency =
+        (float)get_mean_stats(query_stats, num_queries_to_send,
+                              [](const std::shared_ptr<QueryStats> &stats) {
+                                return stats ? stats->total_us : 0;
+                              });
 
     float latency_999 = (float)get_percentile_stats(
-        query_stats, query_num, 0.999f,
+        query_stats, num_queries_to_send, 0.999f,
         [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->total_us : 0;
         });
 
-    float mean_hops = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
-          return stats ? stats->n_hops : 0;
-        });
+    float mean_hops =
+        (float)get_mean_stats(query_stats, num_queries_to_send,
+                              [](const std::shared_ptr<QueryStats> &stats) {
+                                return stats ? stats->n_hops : 0;
+                              });
 
-    float mean_ios = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
-          return stats ? stats->n_ios : 0;
-        });
-    float mean_cmps = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
-          return stats ? stats->n_cmps : 0;
-    });
-
+    float mean_ios =
+        (float)get_mean_stats(query_stats, num_queries_to_send,
+                              [](const std::shared_ptr<QueryStats> &stats) {
+                                return stats ? stats->n_ios : 0;
+                              });
+    float mean_cmps =
+        (float)get_mean_stats(query_stats, num_queries_to_send,
+                              [](const std::shared_ptr<QueryStats> &stats) {
+                                return stats ? stats->n_cmps : 0;
+                              });
 
     float mean_inter_partition_hops = (float)get_mean_stats(
-        query_stats, query_num, [](const std::shared_ptr<QueryStats> &stats) {
+        query_stats, num_queries_to_send,
+        [](const std::shared_ptr<QueryStats> &stats) {
           return stats ? stats->n_inter_partition_hops : 0;
-    });
-    
-    
+        });
 
     // double mean_query_completion_time =
     // sum_query_completion_time / query_completion_time.size();
@@ -284,7 +289,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-            (uint32_t)query_num, gt_ids, gt_dists, (uint32_t)gt_dim,
+            (uint32_t)num_queries_to_send, gt_ids, gt_dists, (uint32_t)gt_dim,
             query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 
@@ -292,7 +297,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                 << std::setw(12) << qps << std::setw(12) << mean_e2e_latency
                 << std::setw(12) << p999_latency << std::setw(12) << mean_hops
                 << std::setw(12) << mean_inter_partition_hops << std::setw(12)
-      << mean_ios << std::setw(12) << mean_cmps;
+                << mean_ios << std::setw(12) << mean_cmps;
       if (calc_recall_flag) {
         std::cout << std::setw(12) << recall << std::endl;
       }
@@ -314,15 +319,14 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
             << std::setw(12) << "QPS" << std::setw(12) << "AvgLat(us)"
             << std::setw(12) << "P99 Lat" << std::setw(12) << "Mean Hops"
             << std::setw(12) << "Mean inter" << std::setw(12) << "Mean IOs"
-  << std::setw(12) << "Mean cmps" << std::setw(12);
+            << std::setw(12) << "Mean cmps" << std::setw(12);
   if (calc_recall_flag) {
     std::cout << std::setw(12) << recall_string << std::endl;
   } else
     std::cout << std::endl;
   std::cout << "=============================================="
                "======================================================="
-  << "==============="
-            << std::endl;
+            << "===============" << std::endl;
 
   for (uint32_t test_id = 0; test_id < Lvec.size(); test_id++) {
     run_tests(test_id, true);
@@ -340,12 +344,13 @@ int main(int argc, char **argv) {
   uint64_t dim;
   std::string query_bin;
   std::string truthset_bin;
+  uint32_t num_queries_to_send;
   std::vector<uint64_t> Lvec;
   uint64_t beam_width;
   uint64_t K;
   uint64_t mem_L;
   bool record_stats;
-  bool write_query_csv; 
+  bool write_query_csv;
   std::string dist_search_mode_str;
   uint64_t client_peer_id;
   uint64_t send_rate_per_second;
@@ -361,6 +366,9 @@ int main(int argc, char **argv) {
                    "Query binary file path")(
       "truthset_bin", po::value<std::string>(&truthset_bin)->required(),
       "Truthset binary file path")(
+      "num_queries_to_send",
+      po::value<uint32_t>(&num_queries_to_send)
+          ->default_value(std::numeric_limits<uint32_t>::max()))(
       "L", po::value<std::vector<uint64_t>>(&Lvec)->multitoken()->required(),
       "L values")("beam_width", po::value<uint64_t>(&beam_width)->required(),
                   "Beam width")("K", po::value<uint64_t>(&K)->required(),
@@ -407,24 +415,24 @@ int main(int argc, char **argv) {
   }
 
   if (data_type == "uint8") {
-    search_disk_index<uint8_t>(num_client_thread, dim, query_bin, truthset_bin,
-                               Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
-                               dist_search_mode_str, client_peer_id,
-                               send_rate_per_second, address_list,
-                               result_output_folder, partition_assignment_file);
+    search_disk_index<uint8_t>(
+        num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
+        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+        dist_search_mode_str, client_peer_id, send_rate_per_second,
+        address_list, result_output_folder, partition_assignment_file);
   } else if (data_type == "int8") {
-    search_disk_index<int8_t>(num_client_thread, dim, query_bin, truthset_bin,
-                              Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
-                              dist_search_mode_str, client_peer_id,
-                              send_rate_per_second, address_list,
-                              result_output_folder, partition_assignment_file);
-    
+    search_disk_index<int8_t>(
+        num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
+        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+        dist_search_mode_str, client_peer_id, send_rate_per_second,
+        address_list, result_output_folder, partition_assignment_file);
+
   } else if (data_type == "float") {
-    search_disk_index<float>(num_client_thread, dim, query_bin, truthset_bin,
-                             Lvec, beam_width, K, mem_L, record_stats, write_query_csv, 
-                             dist_search_mode_str, client_peer_id,
-                             send_rate_per_second, address_list,
-                             result_output_folder, partition_assignment_file);
+    search_disk_index<float>(
+        num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
+        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+        dist_search_mode_str, client_peer_id, send_rate_per_second,
+        address_list, result_output_folder, partition_assignment_file);
   } else {
     throw std::invalid_argument(
         "data type in json file is not uint8, int8, float " + data_type);

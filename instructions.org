@@ -1,7 +1,6 @@
 * Installation guide for cloudlab machines
 
 ** WITH SUDO 
-
 #+BEGIN_SRC
 
 sudo apt update -y
@@ -464,8 +463,6 @@ scp -o ProxyJump=user@server1 user@server2:/path/to/bigfile user@server1:/path/t
 
 * Running experiments
 #+BEGIN_SRC
-
-
 
 
 #+END_SRc

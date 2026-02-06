@@ -10,8 +10,10 @@ namespace pipeann {
   pipeann::Distance<float> *get_distance_function(pipeann::Metric m) {
     if (m == pipeann::Metric::L2) {
       return new pipeann::DistanceL2Float();  // compile-time dispatch
-    } else if (m == pipeann::Metric::COSINE || m == pipeann::Metric::INNER_PRODUCT) {
+    } else if (m == pipeann::Metric::COSINE) {
       return new pipeann::DistanceCosineFloat();
+    } else if (m == pipeann::Metric::INNER_PRODUCT) {
+      return new pipeann::AVXDistanceInnerProductFloat();
     } else {
       LOG(ERROR) << "Only L2 and cosine metric supported as of now.";
       crash();
@@ -23,10 +25,10 @@ namespace pipeann {
   pipeann::Distance<int8_t> *get_distance_function(pipeann::Metric m) {
     if (m == pipeann::Metric::L2) {
       return new pipeann::DistanceL2Int8();
-    } else if (m == pipeann::Metric::COSINE || m == pipeann::Metric::INNER_PRODUCT) {
+    } else if (m == pipeann::Metric::COSINE) {
       return new pipeann::DistanceCosineInt8();
     } else {
-      LOG(ERROR) << "Only L2 and cosine metric supported as of now";
+      LOG(ERROR) << "For int8, Only L2 and cosine metric supported as of now";
       crash();
       return nullptr;
     }
@@ -36,10 +38,10 @@ namespace pipeann {
   pipeann::Distance<uint8_t> *get_distance_function(pipeann::Metric m) {
     if (m == pipeann::Metric::L2) {
       return new pipeann::DistanceL2UInt8();
-    } else if (m == pipeann::Metric::COSINE || m == pipeann::Metric::INNER_PRODUCT) {
+    } else if (m == pipeann::Metric::COSINE) {
       return new pipeann::DistanceCosineUInt8();
     } else {
-      LOG(ERROR) << "Only L2 and Cosine metric supported as of now.";
+      LOG(ERROR) << "For uint8, Only L2 and Cosine metric supported as of now.";
       crash();
       return nullptr;
     }
@@ -565,7 +567,51 @@ namespace pipeann {
       diff += (*pX++) * (*pY++);
     return 1 - diff;
   }
-}  // namespace pipeann
+
+
+  float AVXDistanceInnerProductFloat::compare(const float *a, const float *b,
+                                             uint32_t size) const {
+    float result = 0.0f;
+#define AVX_DOT(addr1, addr2, dest, tmp1, tmp2)                                                                        \
+    tmp1 = _mm256_loadu_ps(addr1);                                                                                     \
+    tmp2 = _mm256_loadu_ps(addr2);                                                                                     \
+    tmp1 = _mm256_mul_ps(tmp1, tmp2);                                                                                  \
+    dest = _mm256_add_ps(dest, tmp1);
+
+    __m256 sum;
+    __m256 l0, l1;
+    __m256 r0, r1;
+    uint32_t D = (size + 7) & ~7U;
+    uint32_t DR = D % 16;
+    uint32_t DD = D - DR;
+    const float *l = (float *)a;
+    const float *r = (float *)b;
+    const float *e_l = l + DD;
+    const float *e_r = r + DD;
+#ifndef _WINDOWS
+    float unpack[8] __attribute__((aligned(32))) = {0, 0, 0, 0, 0, 0, 0, 0};
+#else
+    __declspec(align(32)) float unpack[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+#endif
+
+    sum = _mm256_loadu_ps(unpack);
+    if (DR)
+    {
+        AVX_DOT(e_l, e_r, sum, l0, r0);
+    }
+
+    for (uint32_t i = 0; i < DD; i += 16, l += 16, r += 16)
+    {
+        AVX_DOT(l, r, sum, l0, r0);
+        AVX_DOT(l + 8, r + 8, sum, l1, r1);
+    }
+    _mm256_storeu_ps(unpack, sum);
+    result = unpack[0] + unpack[1] + unpack[2] + unpack[3] + unpack[4] + unpack[5] + unpack[6] + unpack[7];
+
+    return -result;    
+  }    
+
+ }  // namespace pipeann
 
 
 

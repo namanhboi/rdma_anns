@@ -11,7 +11,7 @@ echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Now source relative to script location
-source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15}
+source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15} ${16}
 
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"
@@ -208,6 +208,7 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --dim=$DIMENSION \
   --query_bin=$QUERY_BIN \
   --truthset_bin=$TRUTHSET_BIN \
+  --num_queries_to_send=$NUM_QUERIES_TO_SEND \
   --L $LVEC \
   --beam_width=$BEAM_WIDTH \
   --K=$K_VALUE \

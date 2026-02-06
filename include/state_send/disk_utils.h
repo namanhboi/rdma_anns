@@ -46,18 +46,6 @@ void create_random_cluster_base_files(const std::string &base_file,
                                       const std::string &index_path_prefix,
                                       uint32_t num_clusters);
 
-/**
-   create disk index files from the base files, must check that they exist. If
-   the disk index files arealdy exists then don't need to recreate
-*/
-template <typename T, typename TagT = uint32_t>
-void create_random_cluster_disk_indices(const std::string &index_path_prefix,
-                                        uint32_t num_clusters,
-                                        const char *indexBuildParameters,
-                                        pipeann::Metric _compareMetric,
-                                        bool single_file_index);
-
-
 template <typename T, typename TagT = uint32_t>
 void create_cluster_random_slices(const std::string &base_file,
                                   const std::string &index_path_prefix,

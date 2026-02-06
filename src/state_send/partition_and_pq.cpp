@@ -88,16 +88,19 @@ void gen_random_slice(const std::string base_file, const std::string output_pref
 // and returns a matrix of size slice_size* ndims as floating point type.
 // the slice_size and ndims are set inside the function.
 
-template<typename T>
-void gen_random_slice(const std::string data_file, double p_val, std::unique_ptr<float[]> &sampled_data,
+template <typename T>
+void gen_random_slice(const std::string data_file, double p_val,
+                      std::unique_ptr<float[]> &sampled_data,
                       size_t &slice_size, size_t &ndims) {
+  p_val = p_val < 1 ? p_val : 1;
   float *sampled_ptr = sampled_data.get();
   gen_random_slice<T>(data_file, p_val, sampled_ptr, slice_size, ndims);
   sampled_data.reset(sampled_ptr);
 }
-template<typename T>
-void gen_random_slice(const std::string data_file, double p_val, float *&sampled_data, size_t &slice_size,
-                      size_t &ndims) {
+template <typename T>
+void gen_random_slice(const std::string data_file, double p_val,
+                      float *&sampled_data, size_t &slice_size, size_t &ndims) {
+  p_val = p_val < 1 ? p_val : 1;  
   size_t npts;
   uint32_t npts32, ndims32;
   std::vector<std::vector<float>> sampled_vectors;
@@ -117,7 +120,7 @@ void gen_random_slice(const std::string data_file, double p_val, float *&sampled
 
   std::random_device rd;  // Will be used to obtain a seed for the random number
   size_t x = rd();
-  std::mt19937 generator((unsigned) x);
+  std::mt19937 generator((unsigned) 0);
   std::uniform_real_distribution<float> distribution(0, 1);
 
   for (size_t i = 0; i < npts; i++) {
