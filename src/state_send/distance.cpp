@@ -13,7 +13,8 @@ namespace pipeann {
     } else if (m == pipeann::Metric::COSINE) {
       return new pipeann::DistanceCosineFloat();
     } else if (m == pipeann::Metric::INNER_PRODUCT) {
-      return new pipeann::AVXDistanceInnerProductFloat();
+      // return new pipeann::AVXDistanceInnerProductFloat();
+      return new pipeann::DistanceL2Float();
     } else {
       LOG(ERROR) << "Only L2 and cosine metric supported as of now.";
       crash();

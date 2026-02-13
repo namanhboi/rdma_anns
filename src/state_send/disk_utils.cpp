@@ -768,19 +768,21 @@ void create_pq_data(const std::string &base_path,
   // generates random sample and sets it to train_data and updates train_size
   gen_random_slice<T>(normalized_file_path, p_val, train_data, train_size,
                       train_dim);
-  for (size_t i = 0; i < 100; i++) {
-    std::cout << "data_point_" << i << ":";
-    for (size_t j = 0; j < train_dim; j++) {
-      std::cout << train_data[i * train_dim + j];
-    }
-    std::cout << std::endl;
-  }
+  // for (size_t i = 0; i < 100; i++) {
+  //   std::cout << "data_point_" << i << ":";
+  //   for (size_t j = 0; j < train_dim; j++) {
+  //     std::cout << train_data[i * train_dim + j];
+  //   }
+  //   std::cout << std::endl;
+  // }
 
   LOG(INFO) << "Generating PQ pivots with training data of size: " << train_size
-            << " num PQ chunks: " << num_pq_chunks;
-  generate_pq_pivots(train_data, train_size, (uint32_t)dim, 256,
-                     (uint32_t)num_pq_chunks, NUM_KMEANS_DUPLICATE,
-                     pq_pivots_path);
+  << " num PQ chunks: " << num_pq_chunks;
+  if (!file_exists(pq_pivots_path)) {
+    generate_pq_pivots(train_data, train_size, (uint32_t)dim, 256,
+                       (uint32_t)num_pq_chunks, NUM_KMEANS_DUPLICATE,
+                       pq_pivots_path);
+  }
   auto end = std::chrono::high_resolution_clock::now();
 
   generate_pq_data_from_pivots<T>(normalized_file_path, 256,

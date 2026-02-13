@@ -408,11 +408,6 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result() {
   result->partition_history_hop_idx = this->partition_history_hop_idx;
 
   auto &full_retset = this->full_retset;
-  std::sort(full_retset.begin(), full_retset.end(),
-            [](const pipeann::Neighbor &left, const pipeann::Neighbor &right) {
-              return left < right;
-            });
-  size_t offset = 0;
   result->query_id = query_id;
   // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
   // sizeof(this->query_id), offset);
