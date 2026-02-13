@@ -273,7 +273,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     LOG(INFO) << ", max node len (bytes): " << max_node_len;
     LOG(INFO) << ", max node degree: " << max_degree;
   }
-
+  std::cout << "max_degree is " << max_degree<<std::endl; 
   this->num_points = this->init_num_pts = disk_nnodes;
   size_per_io =
       SECTOR_LEN *

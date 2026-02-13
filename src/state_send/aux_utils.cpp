@@ -757,7 +757,7 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
       normalized_file_path =
           std::string(indexFilePath) + "_data.normalized.bin";
       normalize_data_file(dataFilePath, normalized_file_path);
-      _compareMetric = pipeann::Metric::L2;
+      // _compareMetric = pipeann::Metric::L2;
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
                  << " Using cosine distance with integer data types may "
@@ -775,7 +775,7 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
           dataFilePath, normalized_file_path);
       std::string norm_file = disk_index_path + "_max_base_norm.bin";
       pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
-      _compareMetric = pipeann::Metric::L2;
+      // _compareMetric = pipeann::Metric::L2;
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
                  << " Using cosine distance with integer data types may "
@@ -831,10 +831,11 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
               << std::chrono::duration<double>(end - start).count() << "s.";
   }
   auto start = std::chrono::high_resolution_clock::now();
-  pipeann::build_merged_vamana_index<T>(normalized_file_path, _compareMetric,
-                                        single_file_index, L, R, p_val,
-                                        indexing_ram_budget, mem_index_path,
-                                        medoids_path, centroids_path, tag_file);
+  pipeann::build_merged_vamana_index<T>(
+      normalized_file_path, pipeann::Metric::L2, single_file_index, L, R, p_val,
+      indexing_ram_budget, mem_index_path, medoids_path, centroids_path,
+					tag_file);
+  
   auto end = std::chrono::high_resolution_clock::now();
   LOG(INFO) << "Vamana index built in: "
             << std::chrono::duration<double>(end - start).count() << "s.";

@@ -41,7 +41,7 @@ void write_results_csv(
          << ",partition_history_hop_idx"
             "\n";
   for (auto i = 0; i < results.size(); i++) {
-    output << results[i]->query_id << "," << send_timestamp[i] << ","
+    output << results[i]->query_id << "," << send_timestamp[i] << "," 
            << receive_timestamp[i] << ",";
     if (results[i]->stats) {
       output << results[i]->stats->total_us << "," << results[i]->stats->io_us
@@ -188,10 +188,9 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     std::vector<std::shared_ptr<QueryStats>> query_stats;
     for (const auto &query_id : query_ids) {
       auto result = client.get_result(query_id);
-      // results.push_back(client.get_result(query_id));
       results.push_back(result);
+
       query_stats.push_back(result->stats);
-      // query_completion_time.push_back(result->stats);
       auto sent = client.get_query_send_time(query_id);
       send_timestamp.push_back(
           std::chrono::duration<double, std::nano>(sent.time_since_epoch())
@@ -207,11 +206,9 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       double lat = static_cast<double>(elapsed.count());
       e2e_latencies.push_back(lat);
       sum_e2e_latencies += lat;
-      // sum_query_completion_time += result->query_time;
 
       first = std::min(first, sent);
       last = std::max(last, received);
-      // std::cout << client.get_query_latency_milli(query_id) << std::endl;
 
       std::memcpy(query_result_tags_32.data() + i * K, result->node_id,
                   sizeof(uint32_t) * K);
@@ -289,7 +286,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-            (uint32_t)num_queries_to_send, gt_ids, gt_dists, (uint32_t)gt_dim,
+            (uint32_t)num_queries_to_send, gt_ids, nullptr, (uint32_t)gt_dim,
             query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 
@@ -304,12 +301,12 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     }
   };
 
-  LOG(INFO) << "Use two ANNS for warming up...";
-  uint32_t prev_L = Lvec[0];
-  Lvec[0] = 50;
-  run_tests(0, false);
-  Lvec[0] = prev_L;
-  LOG(INFO) << "Warming up finished.";
+  // LOG(INFO) << "Use two ANNS for warming up...";
+  // uint32_t prev_L = Lvec[0];
+  // Lvec[0] = 50;
+  // run_tests(0, false);
+  // Lvec[0] = prev_L;
+  // LOG(INFO) << "Warming up finished.";
 
   std::cout.setf(std::ios_base::fixed, std::ios_base::floatfield);
   std::cout.precision(2);
@@ -412,6 +409,11 @@ int main(int argc, char **argv) {
     throw std::invalid_argument(
         "partition_assignment_file has to exist if mode is distributed ann: " +
         partition_assignment_file);
+  }
+  if (beam_width > BALANCE_BATCH_MAX_BEAMWIDTH) {
+    LOG(ERROR) << "Beam width can't be larger than "
+    << BALANCE_BATCH_MAX_BEAMWIDTH;
+    return 1;
   }
 
   if (data_type == "uint8") {

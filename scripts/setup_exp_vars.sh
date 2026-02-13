@@ -106,7 +106,7 @@ elif [[ "$DATASET_NAME" == "text2image1B" ]]; then
     METRIC="mips"
     if [[ "$MODE" == "local" ]]; then
 	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.heldout.30K.fbin"
-	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/recomputed_gt100-heldout.30K.fbin"
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/diskann_recomputed_gt100-heldout.30K.fbin"
     else
 	echo "ERROR: text2image only supported for local currently"
 	exit 1
@@ -230,7 +230,7 @@ COUNTER_SLEEP_MS=100
 # LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
 # LVEC="400"
 # LVEC="65 70 80 100 120 140 160"
-LVEC="100"
+LVEC="10"
 K_VALUE=10
 MEM_L=0
 RECORD_STATS=true

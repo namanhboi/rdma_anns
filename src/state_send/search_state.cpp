@@ -68,6 +68,7 @@ void SSDPartitionIndex<T, TagT>::state_issue_next_io_batch(
     uint64_t offset = this->loc_sector_no(loc) * SECTOR_LEN;
     auto sector_buf = state->sectors + state->sector_idx * this->size_per_io;
     fnhood_t fnhood = std::make_tuple(state->frontier[i], loc, sector_buf);
+    // std::cout << "id " << loc << " " << "node_sector "<< offset<< std::endl;
     state->sector_idx++;
     state->frontier_nhoods.push_back(fnhood);
     state->frontier_read_reqs.emplace_back(
@@ -93,12 +94,21 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     unsigned *node_buf = this->offset_to_node_nhood(node_disk_buf);
     uint64_t nnbrs = (uint64_t)(*node_buf);
     T *node_fp_coords = this->offset_to_node_coords(node_disk_buf);
+    // std::cout << "node_id " << id << " loc " << loc<< std::endl;
+    // std::cout << "num neighbors of node " << id<< ": " << nnbrs << std::endl;
+    // uint32_t* nbrs = node_buf + 1;
+    // for (size_t i = 0; i < nnbrs; i++)
+      // {
+	// std::cout << nbrs[i] << ",";
+      // }
+    // std::cout << std::endl << std::endl;
 
     T *node_fp_coords_copy = state->data_buf;
-    memcpy(node_fp_coords_copy, node_fp_coords, this->data_dim * sizeof(T));
+    memcpy(node_fp_coords_copy, node_fp_coords,
+           this->data_dim * sizeof(T)); // check dim here
     float cur_expanded_dist =
         this->dist_cmp->compare(state->query_emb->query, node_fp_coords_copy,
-                                (unsigned)this->aligned_dim);
+                                (unsigned)this->data_dim);
 
     pipeann::Neighbor n(id, cur_expanded_dist, true);
     state->full_retset.push_back(n);
@@ -396,13 +406,21 @@ void SSDPartitionIndex<T, TagT>::state_print_detailed(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_finalize_distance(
 							 SearchState<T, TagT> *state) {
+  std::vector<pipeann::Neighbor> &result = state->full_retset;
+  std::sort(result.begin(), result.end());
+  
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
   }
   if (unlikely(state->query_emb->query_norm == 0.0)) {
     throw std::runtime_error("query norm needs to be 0");
   }
-  std::vector<pipeann::Neighbor> &result = state->full_retset;
+  // std::cout << "top_k final retset after sorting" << std::endl;
+  // for (size_t i = 0; i < state->k_search; i++) {
+    // std::cout << "("<< result[i].id << ","<<result[i].distance<<"),";
+  // }
+  // std::cout << std::endl;
+
   for (auto &neighbor : result) {
     neighbor.distance = -neighbor.distance;
     if (_max_base_norm != 0) {
@@ -411,6 +429,12 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
       // need to calculate query norm
     }
   }
+  // std::cout << "top_k final retset after normalizing" << std::endl;
+  // for (size_t i = 0; i < state->k_search; i++) {
+    // std::cout << "("<< result[i].id << ","<<result[i].distance<<"),";
+  // }
+  // std::cout << std::endl;
+  
 }
 
 
