@@ -312,16 +312,18 @@ int generate_pq_pivots(const float *passed_train_data, size_t num_train, unsigne
   }
   LOG(INFO) << "Kmeans time: " << kmeans_time << " Lloyds time: " << lloyds_time << " Copy time: " << copy_time;
 
-  std::vector<size_t> cumul_bytes(5, 0);
+  std::vector<size_t> cumul_bytes(4, 0);
   cumul_bytes[0] = METADATA_SIZE;
   cumul_bytes[1] = cumul_bytes[0] + pipeann::save_bin<float>(pq_pivots_path.c_str(), full_pivot_data.get(),
                                                              (size_t) num_centers, dim, cumul_bytes[0]);
   cumul_bytes[2] = cumul_bytes[1] +
                    pipeann::save_bin<float>(pq_pivots_path.c_str(), centroid.get(), (size_t) dim, 1, cumul_bytes[1]);
-  cumul_bytes[3] = cumul_bytes[2] + pipeann::save_bin<uint32_t>(pq_pivots_path.c_str(), rearrangement.data(),
-                                                                rearrangement.size(), 1, cumul_bytes[2]);
-  cumul_bytes[4] = cumul_bytes[3] + pipeann::save_bin<uint32_t>(pq_pivots_path.c_str(), chunk_offsets.data(),
-                                                                chunk_offsets.size(), 1, cumul_bytes[3]);
+  // cumul_bytes[3] = cumul_bytes[2] + pipeann::save_bin<uint32_t>(pq_pivots_path.c_str(), rearrangement.data(),
+                                                                // rearrangement.size(), 1, cumul_bytes[2]);
+  cumul_bytes[3] =
+      cumul_bytes[2] +
+      pipeann::save_bin<uint32_t>(pq_pivots_path.c_str(), chunk_offsets.data(),
+                                  chunk_offsets.size(), 1, cumul_bytes[2]);
   pipeann::save_bin<uint64_t>(pq_pivots_path.c_str(), cumul_bytes.data(), cumul_bytes.size(), 1, 0);
 
   LOG(INFO) << "Saved pq pivot data to " << pq_pivots_path << " of size " << cumul_bytes[cumul_bytes.size() - 1]
@@ -367,9 +369,9 @@ int generate_pq_data_from_pivots(const std::string data_file, unsigned num_cente
 
     pipeann::load_bin<uint64_t>(pq_pivots_path.c_str(), file_offset_data, nr, nc, 0);
 
-    if (nr != 5) {
+    if (nr != 4) {
       LOG(INFO) << "Error reading pq_pivots file " << pq_pivots_path
-                << ". Offsets dont contain correct metadata, # offsets = " << nr << ", but expecting 5.";
+                << ". Offsets dont contain correct metadata, # offsets = " << nr << ", but expecting 4.";
       crash();
     }
 
@@ -389,15 +391,7 @@ int generate_pq_data_from_pivots(const std::string data_file, unsigned num_cente
       crash();
     }
 
-    pipeann::load_bin<uint32_t>(pq_pivots_path.c_str(), rearrangement, nr, nc, file_offset_data[2]);
-
-    if ((nr != dim) || (nc != 1)) {
-      LOG(INFO) << "Error reading pq_pivots file " << pq_pivots_path << ". file_dim  = " << nr << ", file_cols = " << nc
-                << " but expecting " << dim << " entries in 1 dimension.";
-      crash();
-    }
-
-    pipeann::load_bin<uint32_t>(pq_pivots_path.c_str(), chunk_offsets, nr, nc, file_offset_data[3]);
+    pipeann::load_bin<uint32_t>(pq_pivots_path.c_str(), chunk_offsets, nr, nc, file_offset_data[2]);
 
     if (nr != (uint64_t) num_pq_chunks + 1 || nc != 1) {
       LOG(INFO) << "Error reading pq_pivots file at chunk offsets; file has nr=" << nr << ",nc=" << nc
@@ -449,7 +443,7 @@ int generate_pq_data_from_pivots(const std::string data_file, unsigned num_cente
 
     for (uint64_t p = 0; p < cur_blk_size; p++) {
       for (uint64_t d = 0; d < dim; d++) {
-        block_data_float[p * dim + d] = block_data_tmp[p * dim + rearrangement[d]];
+        block_data_float[p * dim + d] = block_data_tmp[p * dim + d];
       }
     }
 

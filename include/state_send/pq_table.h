@@ -5,7 +5,7 @@
 #include <cmath>
 
 #define NUM_PQ_CENTROIDS 256
-#define NUM_PQ_OFFSETS 5
+#define NUM_PQ_OFFSETS 4
 
 namespace pipeann {
   template<typename T>
@@ -106,15 +106,7 @@ namespace pipeann {
         crash();
       }
 
-      // Load and discard rearrangement for backward compatibility (no longer used)
-      std::vector<uint32_t> dummy_rearrangement(this->ndims);
-      pipeann::load_bin_impl<uint32_t>(reader, dummy_rearrangement, nr, nc, file_offset_data[2] + offset);
-      if ((nr != this->ndims) || (nc != 1)) {
-        LOG(ERROR) << "Rearrangement incorrect: row " << nr << ", col " << nc << " expecting " << this->ndims;
-        crash();
-      }
-
-      pipeann::load_bin_impl<uint32_t>(reader, chunk_offsets, nr, nc, file_offset_data[3] + offset);
+      pipeann::load_bin_impl<uint32_t>(reader, chunk_offsets, nr, nc, file_offset_data[2] + offset);
 
       if (nr != (uint64_t) num_chunks + 1 || nc != 1) {
         LOG(ERROR) << "Chunk offsets: nr=" << nr << ", nc=" << nc << ", expecting nr=" << num_chunks + 1 << ", nc=1.";
@@ -128,18 +120,12 @@ namespace pipeann {
 
     void save_pq_pivots(const char *pq_pivots_path) {
       // Create dummy identity rearrangement for backward compatibility
-      std::vector<uint32_t> dummy_rearrangement(this->ndims);
-      for (uint32_t d = 0; d < this->ndims; d++) {
-        dummy_rearrangement[d] = d;
-      }
 
       std::vector<size_t> offs(NUM_PQ_OFFSETS, 0);
       offs[0] = SECTOR_LEN;
       offs[1] = offs[0] + pipeann::save_bin<float>(pq_pivots_path, tables, NUM_PQ_CENTROIDS, this->ndims, offs[0]);
       offs[2] = offs[1] + pipeann::save_bin<float>(pq_pivots_path, centroid, this->ndims, 1, offs[1]);
-      offs[3] =
-          offs[2] + pipeann::save_bin<uint32_t>(pq_pivots_path, dummy_rearrangement.data(), this->ndims, 1, offs[2]);
-      offs[4] = offs[3] + pipeann::save_bin<uint32_t>(pq_pivots_path, chunk_offsets, this->n_chunks + 1, 1, offs[3]);
+      offs[3] = offs[2] + pipeann::save_bin<uint32_t>(pq_pivots_path, chunk_offsets, this->n_chunks + 1, 1, offs[2]);
       pipeann::save_bin<uint64_t>(pq_pivots_path, offs.data(), offs.size(), 1, 0);
     }
 
