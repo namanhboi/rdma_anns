@@ -420,16 +420,16 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
     // std::cout << "("<< result[i].id << ","<<result[i].distance<<"),";
   // }
   // std::cout << std::endl;
-
-  for (auto &neighbor : result) {
-    neighbor.distance = -neighbor.distance;
-    if (_max_base_norm != 0) {
-      neighbor.distance *= (_max_base_norm * state->query_emb->query_norm);
-      // LOG(INFO) << this->_max_base_norm;
-      // need to calculate query norm
-    }
-  }
-  // std::cout << "top_k final retset after normalizing" << std::endl;
+  // TODO fix norm later
+  // for (auto &neighbor : result) {
+  //   neighbor.distance = -neighbor.distance;
+  //   if (_max_base_norm != 0) {
+  //     neighbor.distance *= (_max_base_norm * state->query_emb->query_norm);
+  //     // LOG(INFO) << this->_max_base_norm;
+  //     // need to calculate query norm
+  //   }
+  // }
+  // // std::cout << "top_k final retset after normalizing" << std::endl;
   // for (size_t i = 0; i < state->k_search; i++) {
     // std::cout << "("<< result[i].id << ","<<result[i].distance<<"),";
   // }

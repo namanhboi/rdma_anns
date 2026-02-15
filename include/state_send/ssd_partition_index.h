@@ -157,7 +157,7 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
   bool state_io_finished(SearchState<T, TagT> *state);
 
   /*
-    in case of inner product, we have to conver the distance to l2 because of
+    sort the distances. In case of inner product, we have to conver the distance to l2 because of
     the normalization
    */
   void state_finalize_distance(SearchState<T, TagT> *state); 

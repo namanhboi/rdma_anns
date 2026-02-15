@@ -8,32 +8,12 @@
 SOURCED=0
 (return 0 2>/dev/null) && SOURCED=1
 
-# Usage:
-# ./setup_exp_vars.sh <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode>
-# mode: local or distributed
 
 SERVER_STARTING_ADDRESS="10.10.1.1"
 BASE_PORT=8000
 
-# --- Argument parsing ---
-MASTER_LOG_FOLDER_NAME=$1
-NUM_SERVERS=$2
-DATASET_NAME=$3
-DATASET_SIZE=$4
-DIST_SEARCH_MODE=$5
-MODE=$6
-NUM_SEARCH_THREADS=$7
-MAX_BATCH_SIZE=$8
-OVERLAP=$9
-BEAM_WIDTH=${10}
-NUM_CLIENT_THREADS=${11}
-USE_COUNTER_THREAD=${12}
-USE_LOGGING=${13}
-SEND_RATE=${14}
-WRITE_QUERY_CSV=${15}
-NUM_QUERIES_TO_SEND=${16:-99999999}
 
-if [ $# -ne 16 ]; then
+if [ $# -lt 18 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  dataset_name: bigann"
@@ -50,8 +30,32 @@ if [ $# -ne 16 ]; then
     echo "  send_rate : this is the number of queries you want to send per second. "
     echo "  write_query_csv : whether or not to record information about each individual query into a csv file for each L "
     echo "  num_queries_to_send : num queries to send, default to a large number"
+    
     [ $SOURCED -eq 1 ] && return 1 || exit 1
 fi
+
+
+MASTER_LOG_FOLDER_NAME=$1
+NUM_SERVERS=$2
+DATASET_NAME=$3
+DATASET_SIZE=$4
+DIST_SEARCH_MODE=$5
+MODE=$6
+NUM_SEARCH_THREADS=$7
+MAX_BATCH_SIZE=$8
+OVERLAP=$9
+BEAM_WIDTH=${10}
+NUM_CLIENT_THREADS=${11}
+USE_COUNTER_THREAD=${12}
+USE_LOGGING=${13}
+SEND_RATE=${14}
+WRITE_QUERY_CSV=${15}
+NUM_QUERIES_TO_SEND=${16}
+MEM_L=${17}
+K_VALUE=${18}
+shift 18
+LVEC=$(printf " %s" "$@")
+LVEC=${LVEC:1}
 
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" && "$DATASET_NAME" != "OpenAIArXiv" ]] && { echo "Error: dataset_name must be 'bigann', deep1b, 'MSSPACEV1B', 'text2image1B', 'OpenAIArxiv'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
@@ -62,6 +66,12 @@ fi
 # Numeric validation
 [[ ! "$NUM_SERVERS" =~ ^[0-9]+$ ]] && { echo "Error: num_servers must be a positive integer"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$NUM_SERVERS" -lt 1 ]] && { echo "Error: num_servers must be at least 1"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+
+
+USE_MEM_INDEX=false
+if [[ $MEM_L != "0" ]]; then
+    USE_MEM_INDEX=true
+fi
 
 
 # --- Mode-based prefix path ---
@@ -141,7 +151,6 @@ else
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
 	fi	
     else
-	
 	if [[ ("$DIST_SEARCH_MODE" == "STATE_SEND") || ("$DIST_SEARCH_MODE" == "DISTRIBUTED_ANN") ]]; then
 	    PREFIX="global_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
@@ -218,7 +227,7 @@ fi
 
 # --- Server parameters ---
 
-USE_MEM_INDEX=false
+
 NUM_QUERIES_BALANCE=8
 USE_BATCHING=true
 
@@ -230,9 +239,8 @@ COUNTER_SLEEP_MS=100
 # LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
 # LVEC="400"
 # LVEC="65 70 80 100 120 140 160"
-LVEC="10"
+# LVEC="400"
 K_VALUE=10
-MEM_L=0
 RECORD_STATS=true
 
 

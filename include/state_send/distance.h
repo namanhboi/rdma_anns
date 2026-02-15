@@ -47,7 +47,7 @@ namespace pipeann {
 
   // taken from diskann cpp_main branch
   class AVXDistanceInnerProductFloat : public Distance<float> {
-   public:
+  public:
     virtual float compare(const float *a, const float *b, unsigned size) const;
   };
 

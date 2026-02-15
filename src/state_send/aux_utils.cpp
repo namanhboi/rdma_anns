@@ -768,7 +768,6 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "INNER PRODUCT metric chosen, normalizing vectors and "
                    "changing distance to L2 just like diskann";
-      LOG(INFO) << "not yet implemented";
       normalized_file_path =
           std::string(indexFilePath) + "_data.normalized.bin";
       float max_norm_of_base = pipeann::prepare_base_for_inner_products<float>(

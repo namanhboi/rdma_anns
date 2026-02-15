@@ -6,6 +6,11 @@
 
 
 int main(int argc, char **argv) {
+  if (argc != 5) {
+    std::cout << "Usage: <data_type> <base_file> <num_partitions> "
+                 "<output_index_path_prefix>" << std::endl;
+    return 1;
+  }
   std::string data_type(argv[1]);
   std::string base_file(argv[2]);
   uint32_t num_partitions = std::atoi(argv[3]);

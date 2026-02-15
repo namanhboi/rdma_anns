@@ -189,7 +189,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           // on this server
           allocated_states[i]->io_timer.reset();
           allocated_states[i]->query_timer.reset();
-	  parent->state_update_frontier(allocated_states[i]);
+          parent->state_update_frontier(allocated_states[i]);
           parent->state_issue_next_io_batch(allocated_states[i], ctx);
         }
       }
@@ -221,6 +221,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     // the state ends
     while (s == SearchExecutionState::FRONTIER_EMPTY) {
       s = parent->state_explore_frontier(state);
+      // LOG(INFO) << "bruh";
     }
     if (s == SearchExecutionState::FINISHED) {
       if (state->stats != nullptr) {

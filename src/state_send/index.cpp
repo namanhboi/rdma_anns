@@ -648,7 +648,7 @@ namespace pipeann {
 
       if (normalize_cosine && _dist_metric == Metric::COSINE) {
         for (size_t i = 0; i < file_num_points; i++) {
-          pipeann::normalize_data(_data.data() + i * _dim, _data.data() + i * _dim, _dim);
+          pipeann::normalize_data_cosine(_data.data() + i * _dim, _data.data() + i * _dim, _dim);
         }
       }
 
@@ -735,7 +735,7 @@ namespace pipeann {
     alloc_aligned(((void **) &aligned_query), allocSize, 8 * sizeof(T));
     memset(aligned_query, 0, _dim * sizeof(T));
     if (_dist_metric == pipeann::Metric::COSINE) {
-      pipeann::normalize_data(aligned_query, query, _dim);
+      pipeann::normalize_data_cosine(aligned_query, query, _dim);
     } else {
       memcpy(aligned_query, query, _dim * sizeof(T));
     }
@@ -1049,7 +1049,7 @@ namespace pipeann {
     auto offset_data = _data.data() + _dim * location;
     memset((void *) offset_data, 0, sizeof(T) * _dim);
     if (_dist_metric == pipeann::Metric::COSINE) {
-      pipeann::normalize_data(offset_data, point, _dim);
+      pipeann::normalize_data_cosine(offset_data, point, _dim);
     } else {
       memcpy((void *) offset_data, point, sizeof(T) * _dim);
     }

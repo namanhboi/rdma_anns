@@ -197,3 +197,19 @@ target_compile_options(create_partition_graph_file PRIVATE
   $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
+
+
+add_executable(convert_partition_txt_to_bin convert_partition_txt_to_bin.cpp)
+target_link_libraries(convert_partition_txt_to_bin ssd_state_send)
+target_compile_options(convert_partition_txt_to_bin PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)
+
+
+add_executable(create_normalized_base_file_mips create_normalized_base_file_mips.cpp)
+target_link_libraries(create_normalized_base_file_mips ssd_state_send)
+target_compile_options(create_normalized_base_file_mips PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)

@@ -1,16 +1,23 @@
 # How to create the indices
 
-First, we need to partition the dataset with gp-ann graph via  `src/state_send/create_partition_loc_files`
-
-Then, for BatANN (StateSend), we need to build a large index encompassing all points in the dataset using ParlayANN. 
-- note that ParlayANN doesn't support cosine distance so we need to normalize the data first 
-
-Then we build the indices for each partition individually with the scripts in `scripts/index_creation/`
-
-`scripts/create_indices.sh` is a sample script you can take a look at.
-
-
 Note that system doesn't support datasets that is extremely high dimensional, data needs to fit into 1 page on disk.
+Currently only support l2 and mips
+
+By convention, this repo should be placed in `$HOME/workspace/rdma_anns`
+
+First, we need to build the gp-ann repo. Navigate to `extern/gp-ann`
+- by default its l2: `cmake -S. -Bbuild_l2`
+- to use mips, need to include `-DMIPS_DISTANCE=ON` when building: `cmake -S. -Bbuild_mips -DMIPS_DISTANCE=ON`
+then do `cmake --build build -j`
+
+Then you can partition with the script in `scripts/index_creation/parition.sh`, then you can convert it to the format that is used with `src/state_send/convert_partition_txt_to_bin.cpp`
+	
+
+Then, for BatANN (StateSend), we need to build a large index encompassing all points in the dataset using ParlayANN. The script to do this can be found in `scripts/index_creation/create_parlayann_graph.sh`
+
+Then we build the indices for each partition individually with `scripts/index_creation/create_indices.sh`.
+
+Calculate groundtruth with diskann (important for dataset using mips)
 
 # How to run experiments
 

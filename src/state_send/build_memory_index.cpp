@@ -1,4 +1,5 @@
 #include "disk_utils.h"
+#include "distance.h"
 #include "utils.h"
 #include <stdexcept>
 
@@ -18,9 +19,30 @@ int main(int argc, char** argv) {
   bool single_file_index = false;
 
 
-  pipeann::Metric m = dist_metric == "cosine" ? pipeann::Metric::COSINE : pipeann::Metric::L2;
-  if (dist_metric != "l2" && m == pipeann::Metric::L2) {
-    std::cout << "Metric " << dist_metric << " is not supported. Using L2" << std::endl;
+  pipeann::Metric m = pipeann::get_metric(dist_metric);
+  auto is_normalized_file = [](const std::string &data_path) {
+    std::string normalized_suffix = "_data.normalized.bin";
+    if (data_path.length() < normalized_suffix.length()) {
+      return false;
+    }
+    std::string data_path_suffix =
+        data_path.substr(data_path.length() - normalized_suffix.length(),
+                         normalized_suffix.length());
+    return data_path_suffix == normalized_suffix;
+  };
+  if (m == pipeann::Metric::INNER_PRODUCT) {
+    LOG(INFO) << "for inner product, we require that the input file has to be "
+                 "normalized first, which means it must end in "
+                 "_data.normalized.bin. This allows L2 to be used. You can "
+                 "normalize a file with create_normalized_base_file_mips.cpp";
+    if (data_type != "float") {
+      throw std::invalid_argument("data_type must be float for mips");
+    }
+    if (!is_normalized_file(data_path)) {
+      throw std::invalid_argument(
+				  "file must be normalized aka ending in _data.normalized.bin");
+    }
+    m = pipeann::Metric::L2;
   }
 
   if (data_type == "float") {

@@ -11,7 +11,7 @@ echo "Loading configuration..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Now source relative to script location
-source "${SCRIPT_DIR}/setup_exp_vars.sh" $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15} ${16}
+source "${SCRIPT_DIR}/setup_exp_vars.sh" "$@"
 
 # --- Helper Functions ---
 WORKDIR="$HOME/workspace/rdma_anns/"

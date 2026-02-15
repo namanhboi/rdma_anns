@@ -604,7 +604,7 @@ namespace pipeann {
    * - For int8_t, we normalize to 127.
    */
   template<typename T>
-  inline void normalize_data(T *data_out, const T *data_in, size_t dim) {
+  inline void normalize_data_cosine(T *data_out, const T *data_in, size_t dim) {
     float norm_sq = 0.0f;
 
 #pragma omp simd reduction(+ : norm_sq) aligned(data_in : 8)

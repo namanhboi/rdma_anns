@@ -2,38 +2,47 @@
 
 # assuming that the data is in namanh@nfs:/mydata/local/anngraphs/{dataset_name}/{scale}
 # this file will create the indices for both the scatter gather and state send
-# approach from the partition file and put them in the specified folders
+# approach from the partition, graph (parlayann), and datafile and put them in the specified folders
 
-set -euxo pipefail
+set -euo pipefail
 
-DATASET_NAME=$1
-DATASET_SIZE=$2
-DATA_TYPE=$3
-PARTITION_FILE=$4
-BASE_FILE=$5
-GRAPH_FILE=$6
-SCATTER_GATHER_OUTPUT=$7
-SCATTER_GATHER_R=$8
-SCATTER_GATHER_L=$9
-STATE_SEND_OUTPUT=${10}
-
-if [ $# -ne 10 ]; then
-    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output>"
+if [ $# -ne 13 -a $# -ne 14 ]; then
+    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output> <mode> <metric> <partition_assignment_file> <max_norm_file>"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M or 1B"
     echo "  data_type: uint8 or int8 or float"
-    echo "  partition_file: /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin"
+    echo "  partition_id_file: /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin"
     echo "  base_file: /mydata/local/anngraphs/bigann/1B/base.1B.u8bin"
     echo "  graph_file: /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2"
     echo "  scatter_gather_output: /mydata/local/anngraphs/bigann/1B/clusters_5/"
     echo "  scatter_gather_r: 64"
     echo "  scatter_gather_l: 128"
     echo "  state_send_output: /mydata/local/anngraphs/bigann/1B/global_partitions_5/"
+    echo "  mode: local or distributed"
+    echo "  metric: l2, mips"
+    echo "  partition_assignment_file:  /home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition_assignment.bin"
+    echo "  MAX_NORM_FILE: used for mips, can leave blank "
     exit 1
 fi
 
+
+DATASET_NAME=$1
+DATASET_SIZE=$2
+DATA_TYPE=$3
+PARTITION_ID_FILE=$4
+BASE_FILE=$5
+GRAPH_FILE=$6
+SCATTER_GATHER_OUTPUT=$7
+SCATTER_GATHER_R=$8
+SCATTER_GATHER_L=$9
+STATE_SEND_OUTPUT=${10}
+MODE=${11}
+METRIC=${12}
+PARTITION_ASSIGNMENT_FILE=${13}
+MAX_NORM_FILE=${14:-""}
+
+
 NUM_THREADS=56
-METRIC=l2
 MEM_INDEX_SAMPLING_RATE=0.01
 MEM_INDEX_R=32
 MEM_INDEX_L=64
@@ -42,15 +51,26 @@ SCATTER_GATHER_ALPHA=1.2
 SCATTER_GATHER_NUM_PQ_CHUNKS=32
 
 
-[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" ]] && { echo "Error: dataset_name must be 'bigann or deep1b'"; exit 1; }
-[[ "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 100M or 1B"; exit 1; }
+[[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" ]] && { echo "Error: dataset_name must be 'bigann, deep1b, MSSPACEV1B, text2image1B'"; exit 1; }
+[[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; exit 1; }
+[[ "$METRIC" != "l2" && "$METRIC" != "mips" ]] && { echo "Error: metric must be l2 or mips"; exit 1; }
 
-DATA_FOLDER="/mydata/local/anngraphs/${DATASET_NAME}/${DATASET_SIZE}/"
+if [[ "$METRIC" == "mips" && $MAX_NORM_FILE == "" ]]; then
+    echo "max norm file can't be empty if using mips"
+    exit 1
+fi
+
+
+if [[ $MODE == "local" ]]; then
+    DATA_FOLDER="$HOME/big-ann-benchmarks/data/${DATASET_NAME}/${DATASET_SIZE}/"
+else 
+    DATA_FOLDER="/mydata/local/anngraphs/${DATASET_NAME}/${DATASET_SIZE}/"
+fi
+
 if [[ ! -d "$DATA_FOLDER" ]]; then
     echo "${DATA_FOLDER} doesn't exist"
     exit 1
 fi
-
 
 if [[ ! -f "$GRAPH_FILE" ]]; then
     echo "${GRAPH_FILE} doesn't exist"
@@ -62,15 +82,19 @@ if [[ ! -f "$BASE_FILE" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$PARTITION_FILE" ]]; then
-    echo "${PARTITION_FILE} doesn't exist"
+if [[ ! -f "$PARTITION_ASSIGNMENT_FILE" ]]; then
+    echo "${PARTITION_ASSIGNMENT_FILE} doesn't exist"
+    exit 1
+fi
+
+if [[ ! -f "$PARTITION_ID_FILE" ]]; then
+    echo "${PARTITION_ID_FILE} doesn't exist"
     exit 1
 fi
 
 
-
 # Extract partition number early - we'll need it later
-filename=$(basename "$PARTITION_FILE" .bin)
+filename=$(basename "$PARTITION_ID_FILE" .bin)
 if [[ "$filename" =~ partition([0-9]+) ]]; then
     PARTITION_NUM="${BASH_REMATCH[1]}"
     PARTITION_ID="partition${PARTITION_NUM}"
@@ -100,7 +124,7 @@ if [[ ! -f "${PARTITION_BASE_FILE_PATH}" ]]; then
 "${WORKDIR}/build/src/state_send/create_base_file_from_loc_file" \
     "${DATA_TYPE}" \
     "${BASE_FILE}" \
-    "${PARTITION_FILE}" \
+    "${PARTITION_ID_FILE}" \
     "${PARTITION_BASE_FILE_PATH}"
 fi
 
@@ -146,7 +170,7 @@ if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
 	"${SCATTER_GATHER_INDEX_PREFIX}" \
 	"${SCATTER_GATHER_R}" \
 	"${SCATTER_GATHER_L}" \
-	"${NUM_PQ_CHUNKS}" \
+	"${SCATTER_GATHER_NUM_PQ_CHUNKS}" \
 	"${RAM_BUDGET}" \
 	"${NUM_THREADS}" \
 	"${METRIC}" \
@@ -156,10 +180,27 @@ fi
 
 PARTITION_SCATTER_GATHER_TAG_FILE="${SCATTER_GATHER_INDEX_PREFIX}_disk.index.tags"
 if [[ ! -f ${PARTITION_SCATTER_GATHER_TAG_FILE} ]]; then
-    ln -sf ${PARTITION_FILE} ${PARTITION_SCATTER_GATHER_TAG_FILE}
+    ln -sf ${PARTITION_ID_FILE} ${PARTITION_SCATTER_GATHER_TAG_FILE}
 fi
 
+PARTITION_SCATTER_GATHER_MAX_NORM_FILE="${SCATTER_GATHER_INDEX_PREFIX}_disk.index_max_base_norm.bin"
+if [[ ! -f ${PARTITION_SCATTER_GATHER_MAX_NORM_FILE} ]]; then
+    ln -sf ${MAX_NORM_FILE} ${PARTITION_SCATTER_GATHER_MAX_NORM_FILE}
+fi
+
+
+
 echo "Scatter-gather index creation complete!"
+
+
+
+PARTITION_STATE_SEND_TAG_FILE="${STATE_SEND_OUTPUT}/$(basename ${PARTITION_ID_FILE})"
+
+if [[ ! -f $PARTITION_STATE_SEND_TAG_FILE ]]; then
+    echo "creating $PARTITION_STATE_SEND_TAG_FILE"
+    ln -s ${PARTITION_ID_FILE} ${PARTITION_STATE_SEND_TAG_FILE}
+fi
+
 
 # Now create STATE_SEND indices
 PARTITION_STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/${dirname}"
@@ -170,9 +211,19 @@ PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${
 if [[ ! -f "${PARTITION_STATE_SEND_GRAPH_FILE}" ]]; then
     "${WORKDIR}/build/src/state_send/create_partition_graph_file" \
 	"${GRAPH_FILE}" \
-	"${PARTITION_FILE}" \
+	"${PARTITION_ID_FILE}" \
 	"${PARTITION_STATE_SEND_GRAPH_FILE}"
 fi
+
+# PARTITION_STATE_SEND_NORMALIZED_BIN_FILE=$PARTITION_BASE_FILE_PATH
+# if [[ $METRIC == "mips" ]]; then
+#     if [[ ! -f "${PARTITION_BASE_FILE_PATH}_data.normalized.bin" ]]; then
+# 	"${WORKDIR}/build/src/state_send/create_normalized_base_file_mips" \
+# 	    ${PARTITION_BASE_FILE_PATH} \
+# 	    ${DATA_TYPE}
+#     fi
+#     PARTITION_BASE_FILE_PATH="${PARTITION_BASE_FILE_PATH}_data.normalized.bin"
+# fi
 
 
 if [[ ! -f "${STATE_SEND_INDEX_PREFIX}_disk.index" ]]; then
@@ -233,29 +284,20 @@ if [[ -f "${PQ_COMPRESSED_PATH}" && -f "${PQ_PIVOT_PATH}" ]]; then
     ln -sf "${PQ_PIVOT_PATH}" "${PARTITION_STATE_SEND_PQ_PIVOT_PATH}"
     echo "Symlinked existing PQ files"
 else
-    # create the pq files
-    echo "Creating new PQ files..."
-    "${WORKDIR}/build/src/state_send/create_pq_data" \
-        "${DATA_TYPE}" \
-        "${BASE_FILE}" \
-        "${INDEX_PREFIX}" \
-        "${METRIC}" \
-        "${SCATTER_GATHER_NUM_PQ_CHUNKS}"
-    
-    # Now symlink them
-    ln -sf "${PQ_COMPRESSED_PATH}" "${PARTITION_STATE_SEND_PQ_COMPRESSED_PATH}"
-    ln -sf "${PQ_PIVOT_PATH}" "${PARTITION_STATE_SEND_PQ_PIVOT_PATH}"
-fi
-
-
-PARTITION_ASSIGNMENT_PATH="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_partition_assignment.bin"
-PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH="${STATE_SEND_INDEX_PREFIX}_partition_assignment.bin"
-if [[ -f ${PARTITION_ASSIGNMENT_PATH} ]]; then
-    ln -sf ${PARTITION_ASSIGNMENT_PATH} ${PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH}
-else
-    echo "file doesn't exist, need to cp from nfs: ${PARTITION_ASSIGNMENT_PATH}"
+    echo "${PQ_COMPRESSED_PATH} and ${PQ_PIVOT_PATH} doesn't exist "
     exit 1
 fi
+
+
+
+PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH="${STATE_SEND_INDEX_PREFIX}_partition_assignment.bin"
+ln -sf ${PARTITION_ASSIGNMENT_FILE} ${PARTITION_STATE_SEND_PARTITION_ASSIGNMENT_PATH}
+
+PARTITION_STATE_SEND_MAX_NORM_FILE="${STATE_SEND_INDEX_PREFIX}_disk.index_max_base_norm.bin"
+if [[ ! -f ${PARTITION_STATE_SEND_MAX_NORM_FILE} ]]; then
+    ln -sf ${MAX_NORM_FILE} ${PARTITION_STATE_SEND_MAX_NORM_FILE}
+fi
+
 
 
 echo "All index creation complete!"
