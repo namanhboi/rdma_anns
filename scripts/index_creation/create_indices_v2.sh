@@ -10,7 +10,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 source ${SCRIPT_DIR}/common_vars.sh
 
-if [ $# -ne 13 -a $# -ne 14 ]; then
+if [ $# -ne 15 -a $# -ne 16 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output> <mode> <metric> <partition_assignment_file> <max_norm_file>"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M or 1B"
@@ -25,6 +25,8 @@ if [ $# -ne 13 -a $# -ne 14 ]; then
     echo "  mode: local or distributed"
     echo "  metric: l2, mips"
     echo "  partition_assignment_file:  /home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition_assignment.bin"
+    echo "  data_folder: folder to store the data and graph file created, for local it shuold be $HOME/big-ann-benchmarks/data/<DATASET_NAME>/<DATASET_SIZE>/ , on cloudlab /mydata/local/anngraphs/<DATASET_NAME>/<DATASET_SIZE>"
+    echo "  global_index_prefix: used to get the mem index and pq data"
     echo "  MAX_NORM_FILE: used for mips, can leave blank "
     exit 1
 fi
@@ -43,7 +45,9 @@ STATE_SEND_OUTPUT=${10}
 MODE=${11}
 METRIC=${12}
 PARTITION_ASSIGNMENT_FILE=${13}
-MAX_NORM_FILE=${14:-""}
+DATA_FOLDER=${14}
+GLOBAL_INDEX_PREFIX=${15}
+MAX_NORM_FILE=${16:-""}
 
 NUM_THREADS=56
 MEM_INDEX_SAMPLING_RATE=0.01
@@ -51,7 +55,7 @@ MEM_INDEX_R=32
 MEM_INDEX_L=64
 MEM_INDEX_ALPHA=1.2
 SCATTER_GATHER_ALPHA=1.2
-SCATTER_GATHER_NUM_PQ_CHUNKS=32
+NUM_PQ_CHUNKS=32
 
 [[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" ]] && { echo "Error: dataset_name must be 'bigann, deep1b, MSSPACEV1B, text2image1B'"; exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; exit 1; }
@@ -64,10 +68,8 @@ fi
 
 
 if [[ $MODE == "local" ]]; then
-    DATA_FOLDER="$HOME/big-ann-benchmarks/data/${DATASET_NAME}/${DATASET_SIZE}/"
     RAM_BUDGET=32
 else 
-    DATA_FOLDER="/mydata/local/anngraphs/${DATASET_NAME}/${DATASET_SIZE}/"
     RAM_BUDGET=64
 fi
 
@@ -127,7 +129,7 @@ fi
 
 
 BASE_AND_GRAPH_FILE_DIRNAME=$(basename "$STATE_SEND_OUTPUT")
-STATE_SEND_INDEX_PREFIX="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_partitions${PARTITION_NUM}"
+STATE_SEND_INDEX_PREFIX="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_partition${PARTITION_NUM}"
 SCATTER_GATHER_INDEX_PREFIX="${SCATTER_GATHER_OUTPUT}/pipeann_${DATASET_SIZE}_cluster${PARTITION_NUM}"
 
 # making directory to store all the bin files
@@ -159,7 +161,7 @@ ${SCRIPT_DIR}/create_scatter_gather_index.sh \
 	     $METRIC \
 	     $SCATTER_GATHER_R \
 	     $SCATTER_GATHER_L \
-	     $SCATTER_GATHER_NUM_PQ_CHUNKS \
+	     $NUM_PQ_CHUNKS \
 	     $RAM_BUDGET \
 	     $NUM_THREADS \
 	     $SCATTER_GATHER_INDEX_PREFIX \
@@ -167,4 +169,81 @@ ${SCRIPT_DIR}/create_scatter_gather_index.sh \
 	     $PARTITION_ID_FILE \
 	     $PARTITION_BASE_FILE_PATH \
 	     $MAX_NORM_FILE
+
+
+# Now create STATE_SEND indice
+# first need to create the partition graph file
+PARTITION_STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/${BASE_AND_GRAPH_FILE_DIRNAME}"
+mkdir -p "${PARTITION_STATE_SEND_GRAPH_FOLDER}"
+PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${DATASET_SIZE}_${PARTITION_ID}_graph"
+
+if [[ ! -f "${PARTITION_STATE_SEND_GRAPH_FILE}" ]]; then
+    "${WORKDIR}/build/src/state_send/create_partition_graph_file" \
+	"${GRAPH_FILE}" \
+	"${PARTITION_ID_FILE}" \
+	"${PARTITION_STATE_SEND_GRAPH_FILE}"
+fi
+
+
+# check if global mem index is created, if not create it
+MEM_INDEX_PATH="${GLOBAL_INDEX_PREFIX}_mem.index"
+if [[ ! -f "${MEM_INDEX_PATH}" ]]; then
+    echo "mem index at ${MEM_INDEX_PATH} doesnt exist"
+    echo "Creating global memory index..."
+    SLICE_PREFIX="${GLOBAL_INDEX_PREFIX}_SAMPLE_RATE_${MEM_INDEX_SAMPLING_RATE}"
+    "${WORKDIR}/build/src/state_send/gen_random_slice" \
+	"${DATA_TYPE}" \
+	"${BASE_FILE}" \
+	"${SLICE_PREFIX}" \
+	"${MEM_INDEX_SAMPLING_RATE}"
+
+    SLICE_TAG="${SLICE_PREFIX}_ids.bin"   
+    
+    if [[ $METRIC == "mips" ]]; then
+	SLICE_DATA="${SLICE_PREFIX}${NORMALIZED_SUFFIX}"
+    else
+	SLICE_DATA="${SLICE_PREFIX}_data.bin"
+    fi    
+
+    "${WORKDIR}/build/src/state_send/build_memory_index" \
+	"${DATA_TYPE}" \
+	"${SLICE_DATA}" \
+	"${SLICE_TAG}" \
+	"${MEM_INDEX_R}" \
+	"${MEM_INDEX_L}" \
+	"${MEM_INDEX_ALPHA}" \
+	"${MEM_INDEX_PATH}" \
+	"${NUM_THREADS}" \
+	"${METRIC}"
+fi
+
+
+
+# check if global pq is created, if not create it
+PQ_COMPRESSED_PATH="${GLOBAL_INDEX_PREFIX}_pq_compressed.bin"
+PQ_PIVOT_PATH="${GLOBAL_INDEX_PREFIX}_pq_pivots.bin"
+if [[ (! -f "${PQ_COMPRESSED_PATH}") || (! -f "${PQ_PIVOT_PATH}") ]]; then
+    # create global pq data
+    "$WORKDIR/build/src/state_send/create_pq_data" \
+	$DATA_TYPE \
+	$BASE_FILE \
+	$GLOBAL_INDEX_PREFIX \
+	$METRIC \
+	$NUM_PQ_CHUNKS 
+fi
+
+
+
+$SCRIPT_DIR/create_state_send_index.sh \
+    $DATA_TYPE \
+    $METRIC \
+    $STATE_SEND_INDEX_PREFIX \
+    $PARTITION_ID_FILE \
+    $PARTITION_BASE_FILE_PATH \
+    $PARTITION_STATE_SEND_GRAPH_FILE \
+    $PARTITION_ASSIGNMENT_FILE \
+    $GLOBAL_INDEX_PREFIX \
+    $MAX_NORM_FILE
+
+
 

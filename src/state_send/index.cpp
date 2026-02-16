@@ -731,9 +731,9 @@ namespace pipeann {
       init_ids.emplace_back(_ep);
     }
     T *aligned_query;
-    size_t allocSize = _dim * sizeof(T);
+    size_t allocSize = ROUND_UP(_dim * sizeof(T), 8 * sizeof(T));
     alloc_aligned(((void **) &aligned_query), allocSize, 8 * sizeof(T));
-    memset(aligned_query, 0, _dim * sizeof(T));
+    memset(aligned_query, 0, allocSize);
     if (_dist_metric == pipeann::Metric::COSINE) {
       pipeann::normalize_data_cosine(aligned_query, query, _dim);
     } else {

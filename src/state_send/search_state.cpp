@@ -1,3 +1,4 @@
+#include "neighbor.h"
 #include "ssd_partition_index.h"
 #include "types.h"
 #include "utils.h"
@@ -38,15 +39,20 @@ void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
     throw std::invalid_argument("n_ids larger than max capacity for dist_scratch");
   }
   state_compute_dists(state, node_ids, n_ids, state->dist_scratch);
-  for (uint64_t i = 0; i < n_ids; ++i) {
-    auto &item = state->retset[state->cur_list_size];
-    item.id = node_ids[i];
-    item.distance = state->dist_scratch[i];
-    item.flag = true;
-    state->cur_list_size++;
-    // state->visited.insert(node_ids[i]);
+  std::vector<pipeann::Neighbor> res(n_ids);
+  for (size_t i = 0; i < n_ids; i++) {
+    res[i].id = node_ids[i];
+    res[i].distance = state->dist_scratch[i];
+    res[i].flag = true;
+    // pipeann::InsertIntoPool(state->retset, state->cur_list_size, tmp);
+    // if (state->cur_list_size < state->l_search) {
+    // state->cur_list_size++;
   }
-
+  std::sort(res.begin(), res.end());
+  for (uint64_t i = 0; i < std::min(state->l_search, n_ids); ++i) {
+    state->retset[state->cur_list_size] = res[i];
+    state->cur_list_size++;
+  }
 }
 
 template <typename T, typename TagT>
@@ -98,9 +104,9 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     // std::cout << "num neighbors of node " << id<< ": " << nnbrs << std::endl;
     // uint32_t* nbrs = node_buf + 1;
     // for (size_t i = 0; i < nnbrs; i++)
-      // {
-	// std::cout << nbrs[i] << ",";
-      // }
+    //   {
+    // 	std::cout << nbrs[i] << ",";
+    //   }
     // std::cout << std::endl << std::endl;
 
     T *node_fp_coords_copy = state->data_buf;
@@ -113,7 +119,6 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
     pipeann::Neighbor n(id, cur_expanded_dist, true);
     state->full_retset.push_back(n);
     // LOG(INFO) << id << " " << cur_expanded_dist;
-    
     unsigned *node_nbrs = (node_buf + 1);
     // state->cpu_timer.reset();
     // compute node_nbrs <-> query dist in PQ space

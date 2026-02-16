@@ -91,7 +91,7 @@ if [[ $MEM_INDEX_SAMPLING_RATE != "0" || $MEM_INDEX_SAMPLING_RATE != "0.0" || $M
 	"${WORKDIR}/build/src/state_send/gen_random_slice" \
 	    "${DATA_TYPE}" \
 	    "${PARTITION_BASE_FILE}" \
-	    "${SCATTER_GATHER_SLICE_DATA}" \
+	    "${SCATTER_GATHER_SLICE_PREFIX}" \
 	    "${MEM_INDEX_SAMPLING_RATE}"
     fi
 

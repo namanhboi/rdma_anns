@@ -74,11 +74,12 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           allocated_states[i]->query_emb =
             parent->query_emb_map.find(allocated_states[i]->query_id);
         }
+
         // for (size_t j = 0; j < parent->data_dim; j++) {
         //   std::cout << j << "," << std::fixed << std::setprecision(9)
         //   << allocated_states[i]->query_emb->query[j] << " ";
         // }
-	// std::cout << std::endl;
+        // std::cout << std::endl;
 
         if (!allocated_states[i]->query_emb->normalized) {
           // LOG(INFO) << "NOT NORMALIZED";
@@ -144,11 +145,13 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 allocated_states[i]->query_emb->query,
                 allocated_states[i]->mem_l, allocated_states[i]->mem_l,
 						 mem_tags.data(), mem_dists.data());
+            // TODO need to actually sort the shit you receiven from mem index?
+            // std::cout << 
             parent->state_compute_and_add_to_retset(
                 allocated_states[i], mem_tags.data(),
                 std::min((unsigned)allocated_states[i]->mem_l,
                          (unsigned)allocated_states[i]->l_search));
-
+            // parent->state_print_detailed(allocated_states[i]);
             assert(allocated_states[i]->cur_list_size > 0);
           } else {
 	    uint32_t best_medoid = parent->medoids[0];

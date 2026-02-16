@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+
+
 namespace pipeann {
 
   void block_convert(std::ofstream &writr, std::ifstream &readr, float *read_buf, uint64_t npts, uint64_t ndims) {
