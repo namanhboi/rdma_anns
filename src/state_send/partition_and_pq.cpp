@@ -32,8 +32,17 @@ void gen_random_slice(const std::string base_file, const std::string output_pref
   std::ifstream base_reader(base_file.c_str());
   base_reader.seekg(offset, std::ios::beg);
 
-  std::ofstream sample_writer(std::string(output_prefix + "_data.bin").c_str(), std::ios::binary);
-  std::ofstream sample_id_writer(std::string(output_prefix + "_ids.bin").c_str(), std::ios::binary);
+
+  std::string data_file, id_file;
+  if (is_normalized_file(base_file)) {
+    data_file = output_prefix + "_data.normalized.bin";
+  } else {
+    data_file = output_prefix + "_data.bin";
+  }
+  id_file = output_prefix + "_ids.bin";
+
+  std::ofstream sample_writer(data_file.c_str(), std::ios::binary);
+  std::ofstream sample_id_writer(id_file.c_str(), std::ios::binary);
 
   std::random_device rd;  // Will be used to obtain a seed for the random number engine
   auto x = rd();
@@ -83,6 +92,8 @@ void gen_random_slice(const std::string base_file, const std::string output_pref
   sample_id_writer.close();
   LOG(INFO) << "Wrote " << num_sampled_ptsuint32_t << " points to sample file: " << output_prefix + "_data.bin";
 }
+
+
 
 // streams data from the file, and samples each vector with probability p_val
 // and returns a matrix of size slice_size* ndims as floating point type.

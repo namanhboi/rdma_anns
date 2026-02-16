@@ -17,10 +17,10 @@ USE_LOGGING=false
 WRITE_QUERY_CSV=false
 SEND_RATE=0
 BASE_EXPERIMENT_NAME=local_${DATASET_NAME}_${DATASET_SIZE}
-NUM_QUERIES_TO_SEND=1
-DISTRIBUTED_MODE="SCATTER_GATHER"
+NUM_QUERIES_TO_SEND=1000000
+DISTRIBUTED_MODE="SINGLE_SERVER"
 LVEC="100"
-MEM_L=0
+MEM_L=10
 K_VALUE=10
 # Helper function to run experiment with sleep
 run_with_sleep() {
@@ -55,8 +55,15 @@ echo "WRITE_QUERY_CSV is ${WRITE_QUERY_CSV}"
 #     done
 # done
 
+NUM_SERVERS_LIST=(2)
+if [[ $DISTRIBUTED_MODE == "SINGLE_SERVER" ]]; then
+    NUM_SERVERS_LIST=(1)
+fi
+
+
+
 for SEND_RATE in 0; do 
-    for NUM_SERVERS in 2; do
+    for NUM_SERVERS in ${NUM_SERVERS_LIST[@]}; do
 	for BEAM_WIDTH in 1; do
             EXPERIMENT_NAME="${BASE_EXPERIMENT_NAME}_${NUM_SERVERS}_server_beam_${BEAM_WIDTH}"
             run_with_sleep "${EXPERIMENT_NAME}" \
