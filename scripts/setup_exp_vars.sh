@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 
 # This script can be sourced or executed
 # - When sourced: exports all variables for use by parent script

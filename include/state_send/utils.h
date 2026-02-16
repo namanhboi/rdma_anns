@@ -88,6 +88,18 @@ static inline bool file_exists(const std::string &name, bool dirCheck = false) {
   }
 }
 
+inline bool is_normalized_file(const std::string &data_path) {
+    std::string normalized_suffix = "_data.normalized.bin";
+    if (data_path.length() < normalized_suffix.length()) {
+      return false;
+    }
+    std::string data_path_suffix =
+        data_path.substr(data_path.length() - normalized_suffix.length(),
+                         normalized_suffix.length());
+    return data_path_suffix == normalized_suffix;
+  }
+
+
 inline void open_file_to_write(std::ofstream &writer, const std::string &filename) {
   writer.exceptions(std::ofstream::failbit | std::ofstream::badbit);
   if (!file_exists(filename))

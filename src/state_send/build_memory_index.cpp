@@ -20,16 +20,7 @@ int main(int argc, char** argv) {
 
 
   pipeann::Metric m = pipeann::get_metric(dist_metric);
-  auto is_normalized_file = [](const std::string &data_path) {
-    std::string normalized_suffix = "_data.normalized.bin";
-    if (data_path.length() < normalized_suffix.length()) {
-      return false;
-    }
-    std::string data_path_suffix =
-        data_path.substr(data_path.length() - normalized_suffix.length(),
-                         normalized_suffix.length());
-    return data_path_suffix == normalized_suffix;
-  };
+
   if (m == pipeann::Metric::INNER_PRODUCT) {
     LOG(INFO) << "for inner product, we require that the input file has to be "
                  "normalized first, which means it must end in "

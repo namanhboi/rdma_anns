@@ -753,10 +753,12 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "Cosine metric chosen. Normalizing vectors and "
                    "changing distance to L2 to boost accuracy.";
+      if (!is_normalized_file(normalized_file_path)) {
+        normalized_file_path =
+            std::string(indexFilePath) + "_data.normalized.bin";
+        normalize_data_file(dataFilePath, normalized_file_path);
+      }
 
-      normalized_file_path =
-          std::string(indexFilePath) + "_data.normalized.bin";
-      normalize_data_file(dataFilePath, normalized_file_path);
       // _compareMetric = pipeann::Metric::L2;
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
@@ -768,12 +770,19 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "INNER PRODUCT metric chosen, normalizing vectors and "
                    "changing distance to L2 just like diskann";
-      normalized_file_path =
-          std::string(indexFilePath) + "_data.normalized.bin";
-      float max_norm_of_base = pipeann::prepare_base_for_inner_products<float>(
-          dataFilePath, normalized_file_path);
-      std::string norm_file = disk_index_path + "_max_base_norm.bin";
-      pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
+      if (!is_normalized_file(normalized_file_path)) {
+        LOG(INFO) << "normalizing file";
+        normalized_file_path =
+            std::string(indexFilePath) + "_data.normalized.bin";
+        float max_norm_of_base =
+            pipeann::prepare_base_for_inner_products<float>(
+                dataFilePath, normalized_file_path);
+        std::string norm_file = disk_index_path + "_max_base_norm.bin";
+        pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
+      } else {
+	LOG(INFO) << "normalized file already exists, don't need to remake";
+
+      }
       // _compareMetric = pipeann::Metric::L2;
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
@@ -833,8 +842,8 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
   pipeann::build_merged_vamana_index<T>(
       normalized_file_path, pipeann::Metric::L2, single_file_index, L, R, p_val,
       indexing_ram_budget, mem_index_path, medoids_path, centroids_path,
-					tag_file);
-  
+      tag_file);
+
   auto end = std::chrono::high_resolution_clock::now();
   LOG(INFO) << "Vamana index built in: "
             << std::chrono::duration<double>(end - start).count() << "s.";
@@ -854,7 +863,7 @@ bool build_disk_index(const char *dataPath, const char *indexFilePath,
     LOG(INFO) << "Deleting memory index file: " << mem_index_path;
     std::remove(mem_index_path.c_str());
     std::remove((mem_index_path + ".data").c_str());
-    std::remove((mem_index_path + ".tags").c_str());    
+    std::remove((mem_index_path + ".tags").c_str());
   }
   // TODO: This is poor design. The decision to add the ".data" prefix
   // is taken by build_vamana_index. So, we shouldn't repeate it here.

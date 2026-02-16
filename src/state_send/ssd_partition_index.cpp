@@ -514,6 +514,14 @@ void SSDPartitionIndex<T, TagT>::load_mem_index(
     LOG(ERROR) << "mem_index_path is needed";
     exit(1);
   }
+  // pipeann::Metric mem_metric =
+      // pipeann::Metric::L2; // Inner product also uses l2 because we normalized
+  // the mips data into l2
+
+  // if (metric == pipeann::Metric::INNER_PRODUCT) {
+    
+  // }
+  LOG(INFO) << "query_dim is " << query_dim;
   mem_index_ = std::make_unique<pipeann::Index<T, uint32_t>>(metric, query_dim);
   mem_index_->load(mem_index_path.c_str());
 }
