@@ -102,7 +102,7 @@ def parse_client_log(log_file_path):
             
             # Split by whitespace and extract relevant columns
             parts = line.split()
-            if len(parts) < 9:
+            if len(parts) < 10:
                 continue
             
             try:
@@ -110,7 +110,7 @@ def parse_client_log(log_file_path):
                 qps = float(parts[2])
                 avg_latency = float(parts[3])
                 # p99_latency = float(parts[4])
-                recall = float(parts[8])
+                recall = float(parts[-1])
                 
                 data_points.append((qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
             except (ValueError, IndexError):
@@ -150,7 +150,7 @@ def collect_data(logs_root_folder):
         if metadata is None:
             print(f"Skipping folder (couldn't parse): {folder.name}")
             continue
-        
+        print(metadata)
         # Store dataset info from first valid folder
         if dataset_info['name'] is None and metadata['dataset_name']:
             dataset_info['name'] = metadata['dataset_name']
@@ -185,6 +185,7 @@ def plot_tput_acc(data, dataset_info, min_recall):
     data: {num_servers: {dist_search_mode: [(qps, latency, recall), ...]}}
     dataset_info: {'name': str, 'size': str}
     """
+    print(data)
     num_configs = len(data)
     if num_configs == 0:
         print("No data to plot!")
