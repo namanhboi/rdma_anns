@@ -10,7 +10,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 source ${SCRIPT_DIR}/common_vars.sh
 
-if [ $# -ne 15 -a $# -ne 16 ]; then
+if [[ $# -ne 14 && $# -ne 15 ]]; then
     echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output> <mode> <metric> <partition_assignment_file> <max_norm_file>"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M or 1B"
@@ -18,10 +18,9 @@ if [ $# -ne 15 -a $# -ne 16 ]; then
     echo "  partition_id_file: /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin"
     echo "  base_file: /mydata/local/anngraphs/bigann/1B/base.1B.u8bin"
     echo "  graph_file: /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2"
-    echo "  scatter_gather_output: /mydata/local/anngraphs/bigann/1B/clusters_5/"
     echo "  scatter_gather_r: 64"
     echo "  scatter_gather_l: 128"
-    echo "  state_send_output: /mydata/local/anngraphs/bigann/1B/global_partitions_5/"
+    echo "  num_servers"
     echo "  mode: local or distributed"
     echo "  metric: l2, mips"
     echo "  partition_assignment_file:  /home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition_assignment.bin"
@@ -38,16 +37,17 @@ DATA_TYPE=$3
 PARTITION_ID_FILE=$4
 BASE_FILE=$5
 GRAPH_FILE=$6
-SCATTER_GATHER_OUTPUT=$7
-SCATTER_GATHER_R=$8
-SCATTER_GATHER_L=$9
-STATE_SEND_OUTPUT=${10}
-MODE=${11}
-METRIC=${12}
-PARTITION_ASSIGNMENT_FILE=${13}
-DATA_FOLDER=${14}
-GLOBAL_INDEX_PREFIX=${15}
-MAX_NORM_FILE=${16:-""}
+# SCATTER_GATHER_OUTPUT=$7
+SCATTER_GATHER_R=$7
+SCATTER_GATHER_L=$8
+# STATE_SEND_OUTPUT=${10}
+NUM_SERVERS=$9
+MODE=${10}
+METRIC=${11}
+PARTITION_ASSIGNMENT_FILE=${12}
+DATA_FOLDER=${13}
+GLOBAL_INDEX_PREFIX=${14}
+MAX_NORM_FILE=${15:-""}
 
 NUM_THREADS=56
 MEM_INDEX_SAMPLING_RATE=0.01
@@ -65,7 +65,6 @@ if [[ "$METRIC" == "mips" && $MAX_NORM_FILE == "" ]]; then
     echo "max norm file can't be empty if using mips"
     exit 1
 fi
-
 
 if [[ $MODE == "local" ]]; then
     RAM_BUDGET=32
@@ -98,6 +97,10 @@ if [[ ! -f "$PARTITION_ID_FILE" ]]; then
     exit 1
 fi
 
+
+SCATTER_GATHER_OUTPUT="$DATA_FOLDER/clusters_${NUM_SERVERS}"
+STATE_SEND_OUTPUT="$DATA_FOLDER/global_partitions_${NUM_SERVERS}"
+
 if [[ ! -d "$SCATTER_GATHER_OUTPUT" ]]; then
     mkdir "$SCATTER_GATHER_OUTPUT"
 fi
@@ -115,26 +118,36 @@ if [[ $METRIC == "mips" ]]; then
 fi
 
 
+PARTITION_BASE_FILE_FOLDER="${DATA_FOLDER}/base_files/global_partitions_${NUM_SERVERS}"
+mkdir -p "${PARTITION_BASE_FILE_FOLDER}"
+
+SCATTER_GATHER_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/clusters_${NUM_SERVERS}"
+STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/global_partitions_${NUM_SERVERS}"
+
+if [[ ! -d $SCATTER_GATHER_GRAPH_FOLDER ]]; then
+    echo "$SCATTER_GATHER_GRAPH_FOLDER doesn't exist, need to run create_graph_files.sh"
+    exit 1
+fi
+
+if [[ ! -d $STATE_SEND_GRAPH_FOLDER ]]; then
+    echo "$STATE_SEND_GRAPH_FOLDER doesn't exist, need to run create_graph_files.sh"
+    exit 1
+fi
 
 
 filename=$(basename "$PARTITION_ID_FILE" .bin)
 if [[ "$filename" =~ partition([0-9]+) ]]; then
     PARTITION_NUM="${BASH_REMATCH[1]}"
-    PARTITION_ID="partition${PARTITION_NUM}"
-    echo "Processing partition: $PARTITION_ID (number: $PARTITION_NUM)"
+    # echo "Processing partition: $PARTITION_ID (number: $PARTITION_NUM)"
 else
     echo "Error: Could not extract partition number from $filename"
     exit 1
 fi
 
-
-BASE_AND_GRAPH_FILE_DIRNAME=$(basename "$STATE_SEND_OUTPUT")
 STATE_SEND_INDEX_PREFIX="${STATE_SEND_OUTPUT}/pipeann_${DATASET_SIZE}_partition${PARTITION_NUM}"
 SCATTER_GATHER_INDEX_PREFIX="${SCATTER_GATHER_OUTPUT}/pipeann_${DATASET_SIZE}_cluster${PARTITION_NUM}"
 
-# making directory to store all the bin files
-PARTITION_BASE_FILE_FOLDER="${DATA_FOLDER}/base_files/${BASE_AND_GRAPH_FILE_DIRNAME}"
-mkdir -p "${PARTITION_BASE_FILE_FOLDER}"
+
 
 # here we are slicing the big base file into the partition base file based on the partition ids file
 # We need to check if the big base file we provided is normalized or not
@@ -148,13 +161,31 @@ fi
 
 echo "partition base file path is $PARTITION_BASE_FILE_PATH"
 if [[ ! -f "${PARTITION_BASE_FILE_PATH}" ]]; then 
-"${WORKDIR}/build/src/state_send/create_base_file_from_loc_file" \
-    "${DATA_TYPE}" \
-    "${BASE_FILE}" \
-    "${PARTITION_ID_FILE}" \
-    "${PARTITION_BASE_FILE_PATH}"
+    "${WORKDIR}/build/src/state_send/create_base_file_from_loc_file" \
+	"${DATA_TYPE}" \
+	"${BASE_FILE}" \
+	"${PARTITION_ID_FILE}" \
+	"${PARTITION_BASE_FILE_PATH}"
 fi
 
+
+PARTITION_SCATTER_GATHER_GRAPH_FILE="$SCATTER_GATHER_GRAPH_FOLDER/pipeann_${DATASET_SIZE}_partition${PARTITION_NUM}_graph"
+
+if [[ ! -f $PARTITION_SCATTER_GATHER_GRAPH_FILE ]]; then
+    echo "$PARTITION_SCATTER_GATHER_GRAPH_FILE doesn't exist, need to run create_graph_files.sh"
+    exit 1
+fi
+
+
+PARTITION_STATE_SEND_GRAPH_FILE="${STATE_SEND_GRAPH_FOLDER}/pipeann_${DATASET_SIZE}_partition${PARTITION_NUM}_graph"
+
+if [[ ! -f $PARTITION_STATE_SEND_GRAPH_FILE ]]; then
+    echo "$PARTITION_STATE_SEND_GRAPH_FILE doesn't exist, need to run create_graph_files.sh"
+    exit 1
+fi
+
+
+echo "Begin craeteing scatter gather index"
 # NOW, we begin creating the ScatterGather index
 ${SCRIPT_DIR}/create_scatter_gather_index.sh \
 	     $DATA_TYPE \
@@ -168,21 +199,11 @@ ${SCRIPT_DIR}/create_scatter_gather_index.sh \
 	     $MEM_INDEX_SAMPLING_RATE \
 	     $PARTITION_ID_FILE \
 	     $PARTITION_BASE_FILE_PATH \
+	     $PARTITION_SCATTER_GATHER_GRAPH_FILE \
 	     $MAX_NORM_FILE
-
 
 # Now create STATE_SEND indice
 # first need to create the partition graph file
-PARTITION_STATE_SEND_GRAPH_FOLDER="${DATA_FOLDER}/graph_files/${BASE_AND_GRAPH_FILE_DIRNAME}"
-mkdir -p "${PARTITION_STATE_SEND_GRAPH_FOLDER}"
-PARTITION_STATE_SEND_GRAPH_FILE="${PARTITION_STATE_SEND_GRAPH_FOLDER}/pipeann_${DATASET_SIZE}_${PARTITION_ID}_graph"
-
-if [[ ! -f "${PARTITION_STATE_SEND_GRAPH_FILE}" ]]; then
-    "${WORKDIR}/build/src/state_send/create_partition_graph_file" \
-	"${GRAPH_FILE}" \
-	"${PARTITION_ID_FILE}" \
-	"${PARTITION_STATE_SEND_GRAPH_FILE}"
-fi
 
 
 # check if global mem index is created, if not create it

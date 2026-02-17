@@ -1081,6 +1081,7 @@ void load_parlayann_graph_file(const std::string &graph_file, std::vector<std::v
 }
 
 
+
 void write_graph_file_from_parlayann_graph_file(
     const std::string &parlayann_graph_file, const std::vector<uint32_t> &ids,
     const std::string &output_graph_file) {
@@ -1126,11 +1127,11 @@ void write_graph_file_from_parlayann_graph_file(
   }
   
   uint64_t output_file_size = 24;
-  uint32_t output_max_degree = 0, output_num_points = ids.size();
+  uint32_t output_max_degree = 0, output_num_points = ids.size(), entry_point=0;
   uint64_t output_num_frozen_points = 0;
   graph_writer.write((char *)&output_file_size, sizeof(output_file_size));
   graph_writer.write((char *)&output_max_degree, sizeof(output_max_degree));
-  graph_writer.write((char *)&output_num_points, sizeof(output_num_points));
+  graph_writer.write((char *)&entry_point, sizeof(entry_point)); // this is wrong, need to be fixed to the medoid of the graph
   graph_writer.write((char *)&output_num_frozen_points,
                      sizeof(output_num_frozen_points));
   

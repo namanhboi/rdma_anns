@@ -4,6 +4,8 @@ echo $SCRIPT_DIR
 
 PARTITION_IDS=(0 1)
 
+
+
 for i in "${PARTITION_IDS[@]}"
 do
     $SCRIPT_DIR/create_indices_v2.sh \
@@ -13,10 +15,9 @@ do
     "/home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition${i}_ids_uint32.bin" \
     /home/nam/big-ann-benchmarks/data/text2image1B/base.1B.fbin.crop_nb_1000000_data.normalized.bin \
     /home/nam/big-ann-benchmarks/data/text2image1B/1M/vamana_32_64_1.0 \
-    /home/nam/big-ann-benchmarks/data/text2image1B/1M/clusters_2/ \
     32 \
     64 \
-    /home/nam/big-ann-benchmarks/data/text2image1B/1M/global_partitions_2/ \
+    2 \
     local \
     mips \
     /home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition_assignment.bin \

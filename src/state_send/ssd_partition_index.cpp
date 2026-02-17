@@ -598,8 +598,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 
     for (uint64_t i = 0; i < num_queries; i++) {
       QueryEmbedding<T> *query = query_scratch[i];
-      // std::cout << "received new query "<< query->query_id << std::endl;
-      // assert(query->dim == this->dim);
+      query->query[query->dim] =
+        0; // this is for mips, to ensure that d + 1 is zero as well
+      
       query->num_chunks = this->n_chunks;
       // lets check how long this takes, if it takes long then we can do it
       // lazily (ie when the search thread first accesses it

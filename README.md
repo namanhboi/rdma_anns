@@ -13,9 +13,8 @@ then do `cmake --build build -j`
 Then you can partition with the script in `scripts/index_creation/parition.sh`, then you can convert it to the format that is used with `src/state_send/convert_partition_txt_to_bin.cpp`
 	
 
-Then, for BatANN (StateSend), we need to build a large index encompassing all points in the dataset using ParlayANN. The script to do this can be found in `scripts/index_creation/create_parlayann_graph.sh`
-
-Then we build the indices for each partition individually with `scripts/index_creation/create_indices.sh`.
+Then to build the indices for scatter gather and statesend (batann), you use `scripts/index_creation/create_graph_files.sh` to make the graph files, then use  `scripts/index_creation/create_indices_v2.sh` to make all the disk indices.
+for mips, You need to do normaliztion on the base dataset, do this with `create_normalized_base_file_mips.cpp`
 
 Calculate groundtruth with diskann (important for dataset using mips)
 

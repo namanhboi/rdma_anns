@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source ${SCRIPT_DIR}/common_vars.sh
 
-if [[ $# -lt 11 ]]; then
+if [[ $# -lt 12 ]]; then
     echo "Usage: <data_type> <metric> <R> <L> <scatter_gather_index_prefix> <partition_id_file> <partition_base_file> <max_norm_file(optional)>"
     echo "  data_type: uint8, int8, float"
     echo "  metric: mips, l2"
@@ -29,7 +29,8 @@ SCATTER_GATHER_INDEX_PREFIX=$8
 MEM_INDEX_SAMPLING_RATE=$9
 PARTITION_ID_FILE=${10}
 PARTITION_BASE_FILE=${11}
-MAX_NORM_FILE=${12:-""}
+PARTITION_GRAPH_FILE=${12}
+MAX_NORM_FILE=${13:-""}
 
 if [[ ! -f $PARTITION_BASE_FILE ]]; then
     echo "$PARTITION_BASE_FILE doesn't exist"
@@ -59,19 +60,38 @@ if [[ $METRIC == "mips" ]]; then
     fi
 fi
 
-# build the actual disk index
-if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
-    "${WORKDIR}/build/src/state_send/build_disk_index" \
+# first make pq compressed data
+SCATTER_GATHER_PQ_COMPRESSED=${SCATTER_GATHER_INDEX_PREFIX}_pq_compressed.bin
+SCATTER_GATHER_PQ_PIVOT=${SCATTER_GATHER_INDEX_PREFIX}_pq_pivots.bin
+if [[ (! -f "${SCATTER_GATHER_PQ_COMPRESSED}") || (! -f "${SCATTER_GATHER_PQ_PIVOT}") ]]; then
+    "$WORKDIR/build/src/state_send/create_pq_data" \
 	$DATA_TYPE \
 	$PARTITION_BASE_FILE \
 	$SCATTER_GATHER_INDEX_PREFIX \
-	$R \
-	$L \
-	$RAM_BUDGET \
-	$NUM_PQ_CHUNKS \
-	$NUM_THREADS \
 	$METRIC \
-	0
+	$NUM_PQ_CHUNKS 
+fi
+
+
+
+# build the actual disk index
+if [[ ! -f "${SCATTER_GATHER_INDEX_PREFIX}_disk.index" ]]; then
+    # "${WORKDIR}/build/src/state_send/build_disk_index" \
+    # 	$DATA_TYPE \
+    # 	$PARTITION_BASE_FILE \
+    # 	$SCATTER_GATHER_INDEX_PREFIX \
+    # 	$R \
+    # 	$L \
+    # 	$RAM_BUDGET \
+    # 	$NUM_PQ_CHUNKS \
+    # 	$NUM_THREADS \
+    # 	$METRIC \
+    # 	0
+    "${WORKDIR}/build/src/state_send/build_disk_index_from_bin_graph" \
+	"${DATA_TYPE}" \
+	"${PARTITION_BASE_FILE}" \
+	"${PARTITION_GRAPH_FILE}" \
+	"${SCATTER_GATHER_INDEX_PREFIX}_disk.index"
 fi
 
 
@@ -127,5 +147,3 @@ fi
 echo "Scatter-gather index creation complete!"
 
    
-
-

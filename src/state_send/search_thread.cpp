@@ -85,19 +85,26 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           // LOG(INFO) << "NOT NORMALIZED";
           if (parent->metric == pipeann::Metric::COSINE ||
               parent->metric == pipeann::Metric::INNER_PRODUCT) {
-            // LOG(INFO) << "normalizing metric " << pipeann::get_metric_str(parent->metric);
+            // LOG(INFO) << "normalizing metric " <<
+            // pipeann::get_metric_str(parent->metric);
+
+            // inherent_dim is the dim of the actuall query
             uint64_t inherent_dim =
                 parent->metric == pipeann::Metric::INNER_PRODUCT
                     ? parent->data_dim - 1
                 : parent->data_dim;
+            if (unlikely(inherent_dim != allocated_states[i]->query_emb->dim)) {
+              throw std::runtime_error("inherint dim diff from query dim");
+            }
             float query_norm = 0;
             for (size_t j = 0; j < inherent_dim; j++) {
               query_norm += allocated_states[i]->query_emb->query[j] *
                             allocated_states[i]->query_emb->query[j];
             }
             if (parent->metric == pipeann::Metric::INNER_PRODUCT) {
-              allocated_states[i]
-                  ->query_emb->query[parent->data_dim - 1] = 0;
+              allocated_states[i]->query_emb->query[parent->data_dim - 1] = 0;
+              // zero the extra dim because of mips conversion to l2 having 1
+              // extra dim
             }
             query_norm = std::sqrt(query_norm);
             // query_norm = 1;
