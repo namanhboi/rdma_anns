@@ -6,16 +6,14 @@
 #include <cstdint>
 #include <limits>
 
-
 // void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs) {
-  // for (const auto &nbr : nbrs) {
-    // LOG(INFO) << nbr.id << " " << nbr.distance;
-  // }
+// for (const auto &nbr : nbrs) {
+// LOG(INFO) << nbr.id << " " << nbr.distance;
+// }
 // }
 // template <typename T>  {
 
 // }
-
 
 inline size_t write_data(char *buffer, const char *data, size_t size,
                          size_t &offset) {
@@ -80,8 +78,9 @@ std::shared_ptr<QueryStats> QueryStats::deserialize(const char *buffer) {
 
   std::memcpy(&stats->n_hops, buffer + offset, sizeof(stats->n_hops));
   offset += sizeof(stats->n_hops);
-  
-  std::memcpy(&stats->n_inter_partition_hops, buffer + offset, sizeof(stats->n_inter_partition_hops));
+
+  std::memcpy(&stats->n_inter_partition_hops, buffer + offset,
+              sizeof(stats->n_inter_partition_hops));
   offset += sizeof(stats->n_inter_partition_hops);
   return stats;
 }
@@ -119,7 +118,6 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
     write_data(buffer, reinterpret_cast<const char *>(&node_id),
                sizeof(node_id), offset);
   }
-  
 
   size_t size_full_retset = full_retset.size();
   write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
@@ -155,10 +153,10 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
   // size_t size_frontier = frontier.size();
 
   // write_data(buffer, reinterpret_cast<const char *>(&size_frontier),
-             // sizeof(size_frontier), offset);
+  // sizeof(size_frontier), offset);
   // for (const auto &frontier_ele : frontier) {
-    // write_data(buffer, reinterpret_cast<const char *>(&frontier_ele),
-               // sizeof(frontier_ele), offset);
+  // write_data(buffer, reinterpret_cast<const char *>(&frontier_ele),
+  // sizeof(frontier_ele), offset);
   // }
 
   write_data(buffer, reinterpret_cast<const char *>(&cmps), sizeof(cmps),
@@ -208,7 +206,7 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
 
   // num_bytes += sizeof(frontier.size());
   // for (const auto &frontier_ele : frontier) {
-    // num_bytes += sizeof(frontier_ele);
+  // num_bytes += sizeof(frontier_ele);
   // }
 
   num_bytes += sizeof(cmps);
@@ -248,15 +246,15 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   offset += sizeof(size_partition_history);
   uint64_t log_msg_id =
       query_id << 32 | static_cast<uint32_t>(size_partition_history);
-  // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_STATE",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // SingletonLogger::get_logger().info("[{}] [{}]
+  // [{}]:BEGIN_DESERIALIZE_STATE", SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ALLOCATE_STATE",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ALLOCATE_STATE",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
   state->query_id = query_id;
   state->full_retset.reserve(1024);
 
@@ -266,9 +264,7 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
       std::vector<uint8_t>(start_partition_history,
                            start_partition_history + size_partition_history);
 
-
   offset += size_partition_history * sizeof(uint8_t);
-
 
   size_t num_partition_history_hop_idx;
   std::memcpy(&num_partition_history_hop_idx, buffer + offset,
@@ -278,11 +274,11 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   std::memcpy(state->partition_history_hop_idx.data(), buffer + offset,
               sizeof(uint32_t) * num_partition_history_hop_idx);
   offset += sizeof(uint32_t) * num_partition_history_hop_idx;
-  
+
   state->query_emb = nullptr;
   // SingletonLogger::get_logger().info(
-      // "[{}] [{}] [{}]:BEGIN_DESERIALIZE_FULL_RETSET",
-      // SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
+  // "[{}] [{}] [{}]:BEGIN_DESERIALIZE_FULL_RETSET",
+  // SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
   // --- full_retset ---
   size_t size_full_retset;
   std::memcpy(&size_full_retset, buffer + offset, sizeof(size_full_retset));
@@ -303,11 +299,11 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
     offset += sizeof(state->full_retset[i].flag);
   }
   // SingletonLogger::get_logger().info(
-      // "[{}] [{}] [{}]:END_DESERIALIZE_FULL_RETSET",
-      // SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
-  // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_RETSET",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // "[{}] [{}] [{}]:END_DESERIALIZE_FULL_RETSET",
+  // SingletonLogger::get_timestamp_ns(), log_msg_id, "STATE");
+  // SingletonLogger::get_logger().info("[{}] [{}]
+  // [{}]:BEGIN_DESERIALIZE_RETSET", SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
   // --- retset ---
   std::memcpy(&state->cur_list_size, buffer + offset,
               sizeof(state->cur_list_size));
@@ -328,8 +324,8 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
     // state->retset[i] = {id, distance, f};
   }
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_RETSET",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
   // --- misc fields ---
   std::memcpy(&state->cmps, buffer + offset, sizeof(state->cmps));
   offset += sizeof(state->cmps);
@@ -368,8 +364,8 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
               sizeof(state->client_peer_id));
   offset += sizeof(state->client_peer_id);
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_STATE",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // log_msg_id, "STATE");
+  // SingletonLogger::get_timestamp_ns(),
+  // log_msg_id, "STATE");
 }
 
 template <typename T, typename TagT>
@@ -398,37 +394,6 @@ size_t SearchState<T, TagT>::write_serialize_states(
     }
   }
   return offset;
-}
-
-template <typename T, typename TagT>
-std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result() {
-  std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
-  result->client_peer_id = this->client_peer_id;
-  result->partition_history = this->partition_history;
-  result->partition_history_hop_idx = this->partition_history_hop_idx;
-
-  auto &full_retset = this->full_retset;
-  result->query_id = query_id;
-  // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
-  // sizeof(this->query_id), offset);
-
-  uint64_t num_res = 0;
-  // static uint32_t res_id[256];
-  // static uint32_t res_dist[256];
-
-  for (uint64_t i = 0; i < full_retset.size() && num_res < this->k_search;
-       i++) {
-    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
-      continue; // deduplicate.
-    }
-    // write_data(char *buffer, const char *data, size_t size, size_t &offset)
-    result->node_id[num_res] = full_retset[i].id; // use ID to replace tags
-    result->distance[num_res] = full_retset[i].distance;
-    num_res++;
-  }
-  result->num_res = num_res;
-  result->stats = stats;
-  return result;
 }
 
 template <typename T, typename TagT>
@@ -465,6 +430,42 @@ void SearchState<T, TagT>::deserialize_states(const char *buffer,
 }
 
 template <typename T, typename TagT>
+std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result(
+    DistributedSearchMode dist_search_mode) {
+  std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
+  result->client_peer_id = this->client_peer_id;
+  result->partition_history = this->partition_history;
+  result->partition_history_hop_idx = this->partition_history_hop_idx;
+
+  auto &full_retset = this->full_retset;
+  result->query_id = query_id;
+  // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
+  // sizeof(this->query_id), offset);
+
+  uint64_t num_res = 0;
+  // static uint32_t res_id[256];
+  // static uint32_t res_dist[256];
+
+  for (uint64_t i = 0;
+       i < full_retset.size() &&
+       ((dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER)
+            ? true
+            : num_res < this->k_search);
+       i++) {
+    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
+      continue; // deduplicate.
+    }
+    // write_data(char *buffer, const char *data, size_t size, size_t &offset)
+    result->node_id[num_res] = full_retset[i].id; // use ID to replace tags
+    result->distance[num_res] = full_retset[i].distance;
+    num_res++;
+  }
+  result->num_res = num_res;
+  result->stats = stats;
+  return result;
+}
+
+template <typename T, typename TagT>
 void SearchState<T, TagT>::reset(SearchState *state) {
   state->frontier.clear();
   state->sector_idx = 0;
@@ -476,13 +477,15 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   state->frontier_nhoods.clear();
   state->frontier_read_reqs.clear();
   state->partition_history.clear();
-  state->partition_history_hop_idx.clear();  
+  state->partition_history_hop_idx.clear();
   state->query_id = std::numeric_limits<uint64_t>::max();
   state->stats = nullptr;
   state->client_peer_id = std::numeric_limits<uint64_t>::max();
   state->io_timer.reset();
   state->query_timer.reset();
   state->cpu_timer.reset();
+  // state->need_to_send_result_when_send_state = false;
+  // state->sent_state = false;
 }
 
 std::shared_ptr<search_result_t>
@@ -495,6 +498,9 @@ search_result_t::deserialize(const char *buffer) {
   std::memcpy(&res->client_peer_id, buffer + offset,
               sizeof(res->client_peer_id));
   offset += sizeof(res->client_peer_id);
+
+  std::memcpy(&res->k_search, buffer + offset, sizeof(k_search));
+  offset += sizeof(res->k_search);
 
   std::memcpy(&res->num_res, buffer + offset, sizeof(res->num_res));
   offset += sizeof(res->num_res);
@@ -511,11 +517,9 @@ search_result_t::deserialize(const char *buffer) {
 
   res->partition_history.resize(num_partitions);
 
-
   std::memcpy(res->partition_history.data(), buffer + offset,
               sizeof(uint8_t) * num_partitions);
   offset += sizeof(uint8_t) * num_partitions;
-
 
   size_t num_partition_history_hop_idx;
   std::memcpy(&num_partition_history_hop_idx, buffer + offset,
@@ -534,6 +538,9 @@ search_result_t::deserialize(const char *buffer) {
     res->stats = QueryStats::deserialize(buffer + offset);
     offset += res->stats->get_serialize_size();
   }
+  std::memcpy(&res->is_final_result, buffer + offset,
+              sizeof(res->is_final_result));
+  offset += sizeof(res->is_final_result);
   return res;
 }
 
@@ -543,6 +550,8 @@ size_t search_result_t::write_serialize(char *buffer) const {
              sizeof(this->query_id), offset);
   write_data(buffer, reinterpret_cast<const char *>(&this->client_peer_id),
              sizeof(this->client_peer_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&this->k_search),
+             sizeof(k_search), offset);
   write_data(buffer, reinterpret_cast<const char *>(&this->num_res),
              sizeof(this->num_res), offset);
   write_data(buffer, reinterpret_cast<const char *>(this->node_id),
@@ -559,8 +568,9 @@ size_t search_result_t::write_serialize(char *buffer) const {
   size_t num_partition_history_idx = this->partition_history_hop_idx.size();
   write_data(buffer, reinterpret_cast<const char *>(&num_partition_history_idx),
              sizeof(num_partition_history_idx), offset);
-  write_data(buffer, reinterpret_cast<const char *>(partition_history_hop_idx.data()),
-             sizeof(uint32_t) * num_partition_history_idx, offset);  
+  write_data(buffer,
+             reinterpret_cast<const char *>(partition_history_hop_idx.data()),
+             sizeof(uint32_t) * num_partition_history_idx, offset);
 
   bool record_stats = (stats != nullptr);
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
@@ -568,16 +578,19 @@ size_t search_result_t::write_serialize(char *buffer) const {
   if (record_stats) {
     offset += stats->write_serialize(buffer + offset);
   }
+  write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
+             sizeof(is_final_result), offset);
   return offset;
 }
 
 size_t search_result_t::get_serialize_size() const {
   size_t num_bytes = 0;
-  num_bytes += sizeof(query_id) + sizeof(client_peer_id) + sizeof(num_res) +
-               sizeof(uint32_t) * num_res + sizeof(float) * num_res +
-               sizeof(size_t) + sizeof(uint8_t) * partition_history.size() +
-               sizeof(size_t) + sizeof(uint32_t) * partition_history_hop_idx.size() + 
-               sizeof(bool);
+  num_bytes += sizeof(query_id) + sizeof(client_peer_id) + sizeof(k_search) +
+               sizeof(num_res) + sizeof(uint32_t) * num_res +
+               sizeof(float) * num_res + sizeof(size_t) +
+               sizeof(uint8_t) * partition_history.size() + sizeof(size_t) +
+               sizeof(uint32_t) * partition_history_hop_idx.size() +
+               sizeof(bool) + sizeof(is_final_result);
   if (stats != nullptr) {
     num_bytes += stats->get_serialize_size();
   }
@@ -631,9 +644,9 @@ void QueryEmbedding<T>::deserialize(const char *buffer, QueryEmbedding *query) {
   std::memcpy(&query_id, buffer + offset, sizeof(query_id));
   offset += sizeof(query_id);
 
-  // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_DESERIALIZE_QUERY",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // query_id, "QUERY");
+  // SingletonLogger::get_logger().info("[{}] [{}]
+  // [{}]:BEGIN_DESERIALIZE_QUERY", SingletonLogger::get_timestamp_ns(),
+  // query_id, "QUERY");
   query->query_id = query_id;
   std::memcpy(&query->client_peer_id, buffer + offset,
               sizeof(query->client_peer_id));
@@ -652,7 +665,7 @@ void QueryEmbedding<T>::deserialize(const char *buffer, QueryEmbedding *query) {
   std::memcpy(&query->num_chunks, buffer + offset, sizeof(query->num_chunks));
   offset += sizeof(query->num_chunks);
   std::memcpy(&query->query_norm, buffer + offset, sizeof(query->query_norm));
-  offset += sizeof(query->query_norm);  
+  offset += sizeof(query->query_norm);
   std::memcpy(&query->record_stats, buffer + offset,
               sizeof(query->record_stats));
   offset += sizeof(query->record_stats);
@@ -669,16 +682,16 @@ void QueryEmbedding<T>::deserialize(const char *buffer, QueryEmbedding *query) {
     offset += sizeof(query->distributed_ann_state_ptr);
   }
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_COPY_QUERY_EMB",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // query->query_id, "QUERY");
+  // SingletonLogger::get_timestamp_ns(),
+  // query->query_id, "QUERY");
   std::memcpy(&query->query, buffer + offset, sizeof(T) * query->dim);
   offset += sizeof(T) * query->dim;
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_COPY_QUERY_EMB",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // query->query_id, "QUERY");
+  // SingletonLogger::get_timestamp_ns(),
+  // query->query_id, "QUERY");
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_QUERY",
-                                     // SingletonLogger::get_timestamp_ns(),
-                                     // query_id, "QUERY");
+  // SingletonLogger::get_timestamp_ns(),
+  // query_id, "QUERY");
 }
 
 template <typename T>
@@ -805,16 +818,16 @@ size_t scoring_query_t<T>::write_serialize(char *buffer) const {
   write_data(buffer, (char *)&L, sizeof(L), offset);
   write_data(buffer, (char *)&record_stats, sizeof(record_stats), offset);
   write_data(buffer, (char *)&distributed_ann_state_ptr,
-             sizeof(distributed_ann_state_ptr), offset); 
-  write_data(buffer, (char *)&client_peer_id,
-             sizeof(client_peer_id), offset); 
+             sizeof(distributed_ann_state_ptr), offset);
+  write_data(buffer, (char *)&client_peer_id, sizeof(client_peer_id), offset);
   return offset;
 }
 
 template <typename T> size_t scoring_query_t<T>::get_serialize_size() const {
   return sizeof(query_id) + sizeof(num_node_ids) +
          sizeof(uint32_t) * num_node_ids + sizeof(threshold) + sizeof(L) +
-         sizeof(record_stats) + sizeof(distributed_ann_state_ptr) + sizeof(client_peer_id);
+         sizeof(record_stats) + sizeof(distributed_ann_state_ptr) +
+         sizeof(client_peer_id);
 }
 
 template <typename T>
@@ -844,7 +857,7 @@ size_t scoring_query_t<T>::write_serialize_scoring_queries(
 
 template <typename T>
 size_t scoring_query_t<T>::get_serialize_size_scoring_queries(
-							      const std::vector<std::pair<scoring_query_t<T> *, bool>> &queries) {
+    const std::vector<std::pair<scoring_query_t<T> *, bool>> &queries) {
   size_t num_bytes = sizeof(size_t) * 2;
   for (const auto &[query, with_embedding] : queries) {
     num_bytes += query->get_serialize_size();
@@ -854,14 +867,15 @@ size_t scoring_query_t<T>::get_serialize_size_scoring_queries(
   }
   return num_bytes;
 }
-  
+
 template <typename T>
 void scoring_query_t<T>::deserialize(const char *buffer,
                                      scoring_query_t<T> *query) {
   size_t offset = 0;
   std::memcpy(&query->query_id, buffer + offset, sizeof(query->query_id));
   offset += sizeof(query->query_id);
-  std::memcpy(&query->num_node_ids, buffer + offset, sizeof(query->num_node_ids));
+  std::memcpy(&query->num_node_ids, buffer + offset,
+              sizeof(query->num_node_ids));
   offset += sizeof(query->num_node_ids);
 
   std::memcpy(query->node_ids, buffer + offset,
@@ -871,7 +885,8 @@ void scoring_query_t<T>::deserialize(const char *buffer,
   offset += sizeof(query->threshold);
   std::memcpy(&query->L, buffer + offset, sizeof(query->L));
   offset += sizeof(query->L);
-  std::memcpy(&query->record_stats, buffer + offset, sizeof(query->record_stats));
+  std::memcpy(&query->record_stats, buffer + offset,
+              sizeof(query->record_stats));
   offset += sizeof(query->record_stats);
   std::memcpy(&query->distributed_ann_state_ptr, buffer + offset,
               sizeof(query->distributed_ann_state_ptr));
@@ -884,7 +899,7 @@ void scoring_query_t<T>::deserialize(const char *buffer,
 template <typename T>
 void scoring_query_t<T>::deserialize_scoring_queries(
     const char *buffer, uint64_t num_scoring_queries, uint64_t num_query_embs,
-						     scoring_query_t **scoring_queries, QueryEmbedding<T> **query_embs) {
+    scoring_query_t **scoring_queries, QueryEmbedding<T> **query_embs) {
   size_t offset = 0;
   for (size_t i = 0; i < num_scoring_queries; i++) {
     scoring_query_t<T>::deserialize(buffer + offset, scoring_queries[i]);
@@ -895,8 +910,6 @@ void scoring_query_t<T>::deserialize_scoring_queries(
     offset += query_embs[i]->get_serialize_size();
   }
 }
-
-
 
 template <typename T>
 void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
@@ -910,134 +923,127 @@ void scoring_query_t<T>::reset(scoring_query_t<T> *query) {
   query->client_peer_id = std::numeric_limits<uint64_t>::max();
 }
 
+template <typename T> size_t result_t<T>::write_serialize(char *buffer) const {
+  size_t offset = 0;
+  write_data(buffer, (char *)&query_id, sizeof(query_id), offset);
+  write_data(buffer, (char *)&num_full_nbrs, sizeof(num_full_nbrs), offset);
+  write_data(buffer, (char *)sorted_full_nbrs,
+             (sizeof(float) + sizeof(uint32_t)) * num_full_nbrs, offset);
+  write_data(buffer, (char *)&num_pq_nbrs, sizeof(num_pq_nbrs), offset);
+  write_data(buffer, (char *)sorted_pq_nbrs,
+             num_pq_nbrs * (sizeof(uint32_t) + sizeof(float)), offset);
 
-  template <typename T> size_t result_t<T>::write_serialize(char *buffer) const {
-    size_t offset = 0;
-    write_data(buffer, (char *)&query_id, sizeof(query_id), offset);
-    write_data(buffer, (char *)&num_full_nbrs, sizeof(num_full_nbrs), offset);
-    write_data(buffer, (char *)sorted_full_nbrs,
-               (sizeof(float) + sizeof(uint32_t)) * num_full_nbrs, offset);
-    write_data(buffer, (char *)&num_pq_nbrs, sizeof(num_pq_nbrs), offset);
-    write_data(buffer, (char *)sorted_pq_nbrs,
-               num_pq_nbrs * (sizeof(uint32_t) + sizeof(float)), offset);
-    
-    bool write_stats = (stats != nullptr);
-    write_data(buffer, (char *)&write_stats, sizeof(write_stats), offset);
-    if (write_stats) {
-      offset += stats->write_serialize(buffer + offset);
-    }
-    write_data(buffer, (char *)&distributed_ann_state_ptr,
-               sizeof(distributed_ann_state_ptr), offset);
-    write_data(buffer, (char *)&client_peer_id, sizeof(client_peer_id), offset);
-    return offset;
+  bool write_stats = (stats != nullptr);
+  write_data(buffer, (char *)&write_stats, sizeof(write_stats), offset);
+  if (write_stats) {
+    offset += stats->write_serialize(buffer + offset);
   }
+  write_data(buffer, (char *)&distributed_ann_state_ptr,
+             sizeof(distributed_ann_state_ptr), offset);
+  write_data(buffer, (char *)&client_peer_id, sizeof(client_peer_id), offset);
+  return offset;
+}
 
-  template <typename T> size_t result_t<T>::get_serialize_size() const {
-    size_t num_bytes = sizeof(query_id) + sizeof(num_full_nbrs) +
-                       (num_full_nbrs * (sizeof(float) + sizeof(uint32_t))) +
-                       sizeof(num_pq_nbrs) +
-                       (num_pq_nbrs * (sizeof(uint32_t) + sizeof(float)));
-    
-    bool has_stats = (stats != nullptr);
-    num_bytes += sizeof(has_stats);
-    if (has_stats) {
-      num_bytes += stats->get_serialize_size();
-    }
-    num_bytes += sizeof(distributed_ann_state_ptr);
-    num_bytes += sizeof(client_peer_id);
-    return num_bytes;
+template <typename T> size_t result_t<T>::get_serialize_size() const {
+  size_t num_bytes = sizeof(query_id) + sizeof(num_full_nbrs) +
+                     (num_full_nbrs * (sizeof(float) + sizeof(uint32_t))) +
+                     sizeof(num_pq_nbrs) +
+                     (num_pq_nbrs * (sizeof(uint32_t) + sizeof(float)));
+
+  bool has_stats = (stats != nullptr);
+  num_bytes += sizeof(has_stats);
+  if (has_stats) {
+    num_bytes += stats->get_serialize_size();
   }
+  num_bytes += sizeof(distributed_ann_state_ptr);
+  num_bytes += sizeof(client_peer_id);
+  return num_bytes;
+}
 
-  template <typename T>
-  void result_t<T>::deserialize(const char *buffer, result_t<T> *result) {
-    static_assert(
-        sizeof(std::pair<uint32_t, float>) == 8,
-        "std::pair<uint32_t, float> must be 8 bytes for serialization");
-    size_t offset = 0;
-    std::memcpy(&result->query_id, buffer + offset, sizeof(result->query_id));
-    offset += sizeof(result->query_id);
+template <typename T>
+void result_t<T>::deserialize(const char *buffer, result_t<T> *result) {
+  static_assert(sizeof(std::pair<uint32_t, float>) == 8,
+                "std::pair<uint32_t, float> must be 8 bytes for serialization");
+  size_t offset = 0;
+  std::memcpy(&result->query_id, buffer + offset, sizeof(result->query_id));
+  offset += sizeof(result->query_id);
 
-    std::memcpy(&result->num_full_nbrs, buffer + offset, sizeof(result->num_full_nbrs));
-    offset += sizeof(num_full_nbrs);
-    std::memcpy(result->sorted_full_nbrs, buffer + offset,
-                result->num_full_nbrs * (sizeof(float) + sizeof(uint32_t)));
-    offset += result->num_full_nbrs * (sizeof(float) + sizeof(uint32_t));
+  std::memcpy(&result->num_full_nbrs, buffer + offset,
+              sizeof(result->num_full_nbrs));
+  offset += sizeof(num_full_nbrs);
+  std::memcpy(result->sorted_full_nbrs, buffer + offset,
+              result->num_full_nbrs * (sizeof(float) + sizeof(uint32_t)));
+  offset += result->num_full_nbrs * (sizeof(float) + sizeof(uint32_t));
 
-    std::memcpy(&result->num_pq_nbrs, buffer + offset, sizeof(num_pq_nbrs));
-    offset += sizeof(num_pq_nbrs);
-    std::memcpy(result->sorted_pq_nbrs, buffer + offset,
-                result->num_pq_nbrs * (sizeof(float) + sizeof(uint32_t)));
-    offset += result->num_pq_nbrs * (sizeof(float) + sizeof(uint32_t));
-    
-    bool has_stats;
-    std::memcpy(&has_stats, buffer + offset, sizeof(has_stats));
-    offset += sizeof(has_stats);
-    if (has_stats) {
-      result->stats = QueryStats::deserialize(buffer + offset);
-      offset += result->stats->get_serialize_size();
-    }
-    std::memcpy(&result->distributed_ann_state_ptr, buffer + offset,
-                sizeof(result->distributed_ann_state_ptr));
-    offset += sizeof(result->distributed_ann_state_ptr);
-    std::memcpy(&result->client_peer_id, buffer + offset,
-                sizeof(result->client_peer_id));
-    offset += sizeof(result->client_peer_id);
+  std::memcpy(&result->num_pq_nbrs, buffer + offset, sizeof(num_pq_nbrs));
+  offset += sizeof(num_pq_nbrs);
+  std::memcpy(result->sorted_pq_nbrs, buffer + offset,
+              result->num_pq_nbrs * (sizeof(float) + sizeof(uint32_t)));
+  offset += result->num_pq_nbrs * (sizeof(float) + sizeof(uint32_t));
+
+  bool has_stats;
+  std::memcpy(&has_stats, buffer + offset, sizeof(has_stats));
+  offset += sizeof(has_stats);
+  if (has_stats) {
+    result->stats = QueryStats::deserialize(buffer + offset);
+    offset += result->stats->get_serialize_size();
   }
+  std::memcpy(&result->distributed_ann_state_ptr, buffer + offset,
+              sizeof(result->distributed_ann_state_ptr));
+  offset += sizeof(result->distributed_ann_state_ptr);
+  std::memcpy(&result->client_peer_id, buffer + offset,
+              sizeof(result->client_peer_id));
+  offset += sizeof(result->client_peer_id);
+}
 
-  template <typename T>
-  void result_t<T>::deserialize_results(const char *buffer,
-                                        uint64_t num_results,
-                                        result_t **results) {
-    size_t offset = 0;
-    for (uint64_t i = 0; i < num_results; i++) {
-      result_t<T>::deserialize(buffer + offset, results[i]);
-      offset += results[i]->get_serialize_size();
-    }
+template <typename T>
+void result_t<T>::deserialize_results(const char *buffer, uint64_t num_results,
+                                      result_t **results) {
+  size_t offset = 0;
+  for (uint64_t i = 0; i < num_results; i++) {
+    result_t<T>::deserialize(buffer + offset, results[i]);
+    offset += results[i]->get_serialize_size();
   }
+}
 
-
-  template <typename T>
-  size_t
-  result_t<T>::write_serialize_results(char* buffer, const std::vector<result_t *> &results) {
-    size_t offset = 0;
-    size_t num_results = results.size();
-    write_data(buffer, (char *)&num_results, sizeof(num_results),
-               offset);
-    for (const auto &res : results) {
-      offset += res->write_serialize(buffer + offset);
-    }
-    return offset;
+template <typename T>
+size_t
+result_t<T>::write_serialize_results(char *buffer,
+                                     const std::vector<result_t *> &results) {
+  size_t offset = 0;
+  size_t num_results = results.size();
+  write_data(buffer, (char *)&num_results, sizeof(num_results), offset);
+  for (const auto &res : results) {
+    offset += res->write_serialize(buffer + offset);
   }
-  
-  template <typename T>
-  size_t result_t<T>::get_serialize_size_results(
-						 const std::vector<result_t *> &results) {
-    size_t num_bytes = sizeof(size_t);
-    for (const auto &res : results) {
-      num_bytes += res->get_serialize_size();
-    }
-    return num_bytes;
+  return offset;
+}
+
+template <typename T>
+size_t result_t<T>::get_serialize_size_results(
+    const std::vector<result_t *> &results) {
+  size_t num_bytes = sizeof(size_t);
+  for (const auto &res : results) {
+    num_bytes += res->get_serialize_size();
   }
+  return num_bytes;
+}
 
+template <typename T> void result_t<T>::reset(result_t<T> *result) {
+  result->query_id = std::numeric_limits<uint64_t>::max();
+  result->num_full_nbrs = 0;
+  result->num_pq_nbrs = 0;
+  result->stats = nullptr;
+  result->distributed_ann_state_ptr = nullptr;
+  result->client_peer_id = std::numeric_limits<uint64_t>::max();
+}
 
-  template <typename T> void result_t<T>::reset(result_t<T> *result) {
-    result->query_id = std::numeric_limits<uint64_t>::max();
-    result->num_full_nbrs = 0;
-    result->num_pq_nbrs = 0;
-    result->stats = nullptr;
-    result->distributed_ann_state_ptr = nullptr;
-    result->client_peer_id = std::numeric_limits<uint64_t>::max();
-  }
-  
+template <typename T, typename TagT>
+void DistributedANNState<T, TagT>::reset(DistributedANNState<T, TagT> *state) {
+  SearchState<T, TagT>::reset(state);
+  // state->result_queue = moodycamel::BlockingConcurrentQueue<result_t<T>>();
+}
 
-  template <typename T, typename TagT>
-  void
-  DistributedANNState<T, TagT>::reset(DistributedANNState<T, TagT> *state) {
-    SearchState<T, TagT>::reset(state);
-    // state->result_queue = moodycamel::BlockingConcurrentQueue<result_t<T>>();
-  }    
-
-  
 }; // namespace distributedann
 
 template struct QueryEmbedding<float>;
@@ -1056,29 +1062,23 @@ template class PreallocatedQueue<SearchState<float>>;
 template class PreallocatedQueue<SearchState<uint8_t>>;
 template class PreallocatedQueue<SearchState<int8_t>>;
 
-
 namespace distributedann {
-  template struct scoring_query_t<float>;
-  template struct scoring_query_t<uint8_t>;
-  template struct scoring_query_t<int8_t>;
+template struct scoring_query_t<float>;
+template struct scoring_query_t<uint8_t>;
+template struct scoring_query_t<int8_t>;
 
-  template struct result_t<float>;
-  template struct result_t<uint8_t>;
-  template struct result_t<int8_t>;
+template struct result_t<float>;
+template struct result_t<uint8_t>;
+template struct result_t<int8_t>;
 
-
-  template class DistributedANNState<float>;
-  template class DistributedANNState<uint8_t>;
-  template class DistributedANNState<int8_t>;
-
-
-
+template class DistributedANNState<float>;
+template class DistributedANNState<uint8_t>;
+template class DistributedANNState<int8_t>;
 
 }; // namespace distributedann
 template class PreallocSingleManager<
-				     distributedann::DistributedANNState<float>>;
+    distributedann::DistributedANNState<float>>;
 template class PreallocSingleManager<
-				     distributedann::DistributedANNState<uint8_t>>;
+    distributedann::DistributedANNState<uint8_t>>;
 template class PreallocSingleManager<
-				     distributedann::DistributedANNState<int8_t>>;
-
+    distributedann::DistributedANNState<int8_t>>;

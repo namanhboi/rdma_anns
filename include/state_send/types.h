@@ -10,6 +10,7 @@
 #include "tsl/robin_set.h"
 #include "utils.h"
 #include <chrono>
+#include <stdexcept>
 #include <variant>
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
@@ -48,7 +49,8 @@ enum class DistributedSearchMode : uint32_t {
   SCATTER_GATHER = 0,
   STATE_SEND = 1,
   SINGLE_SERVER = 2,
-  DISTRIBUTED_ANN = 3
+  DISTRIBUTED_ANN = 3,
+  STATE_SEND_CLIENT_GATHER = 4
 };
 
 
@@ -62,6 +64,8 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
     return "SINGLE_SERVER";
   } else if (mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     return "DISTRIBUTED_ANN";
+  } else if (mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+    return "STATE_SEND_CLIENT_GATHER";
   } else {
     throw std::runtime_error("Weird dist search mode value");
   }
@@ -199,12 +203,16 @@ get_mean_stats(std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
 struct search_result_t {
   uint64_t query_id;
   uint64_t client_peer_id;
+  uint64_t k_search;
   uint64_t num_res;
   uint32_t node_id[maxKSearch];
   float distance[maxKSearch];
   std::vector<uint8_t> partition_history;
   std::vector<uint32_t> partition_history_hop_idx;
   std::shared_ptr<QueryStats> stats = nullptr;
+
+  // used for state_send_client_gather, the number of results to expect = size of partition history?
+  bool is_final_result = false;
 
   static std::shared_ptr<search_result_t> deserialize(const char *buffer);
   size_t write_serialize(char *buffer) const;
@@ -221,6 +229,26 @@ struct search_result_t {
   static std::vector<std::shared_ptr<search_result_t>>
   deserialize_results(const char *buffer);
 };
+
+struct client_gather_results_t {
+  std::vector<std::shared_ptr<search_result_t>> results;
+  int final_result_idx = -1;
+  inline bool all_results_arrived() {
+    if (final_result_idx == -1)
+      return false;
+
+    // we expect this many because in between 2 partition history entry, there
+    // is a hop happening, which also means a result that is sent to the client
+    // Additionally there is the final result which is sent, so the number of
+    // results to expect = partition_history size
+    uint32_t num_results_to_expect =
+      results[final_result_idx]->partition_history.size();
+    
+    return num_results_to_expect == results.size();
+  }
+  
+};
+
 
 /**
    includes both full embeddings and pq representation of query. Client uses
@@ -317,6 +345,12 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // TCP
   uint64_t client_peer_id;
+
+  // // since enqueuing both the state and the result is atomic, we actually don't need this i think
+  // bool sent_state = false;
+  // // used for state_send_client_gather
+  // bool need_to_send_result_when_send_state = false;
+
   /*
     deserialize one search state
    */
@@ -329,6 +363,8 @@ struct alignas(SECTOR_LEN) SearchState {
   static void deserialize_states(const char *buffer, uint64_t num_states,
                                  uint64_t num_queries, SearchState **states,
                                  QueryEmbedding<T> **queries);
+
+  std::shared_ptr<search_result_t> get_search_result(DistributedSearchMode dist_search_mode);
 
   /**
      this doesn't serialize the query embedding but does serialize the stats
@@ -347,11 +383,6 @@ struct alignas(SECTOR_LEN) SearchState {
 
   static size_t get_serialize_size_states(
       const std::vector<std::pair<SearchState *, bool>> &states);
-
-  /**
-     sort the full retset then create searchrseult
-   */
-  std::shared_ptr<search_result_t> get_search_result();
 
   // void write_serialize_result(char *buffer) const;
   // void get_serialize_result_size(char *buffer) const;

@@ -34,7 +34,9 @@ private:
       sub_query_results;
   ///////////
 
-
+  // used to store state send client gather results
+  libcuckoo::cuckoohash_map<uint64_t, client_gather_results_t>
+      client_gather_results;
 
   // id in the communicator json file containing all the ip addresses
   uint64_t my_id;
@@ -139,6 +141,16 @@ private:
     
     std::thread real_thread;
     uint64_t my_thread_id;
+
+    // used for STATE_SEND, DISTRIBUTED_ANN, SINGLE_SERVER
+    void process_singular_result(const std::shared_ptr<search_result_t> &res);
+
+    // used for SCATTER_GATHER
+    void process_scatter_gather_result(const std::shared_ptr<search_result_t> &res);
+
+    // used by STATE_SEND_CLIENT_GATHER
+    void process_state_send_client_gather_result(const std::shared_ptr<search_result_t> &res);
+    
     void main_loop();
     std::atomic<bool> running{false};
 
