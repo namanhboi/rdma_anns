@@ -462,6 +462,7 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result(
   }
   result->num_res = num_res;
   result->stats = stats;
+  result->k_search = this->k_search;
   return result;
 }
 
