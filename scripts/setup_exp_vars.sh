@@ -60,7 +60,7 @@ LVEC=${LVEC:1}
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" && "$DATASET_NAME" != "OpenAIArXiv" ]] && { echo "Error: dataset_name must be 'bigann', deep1b, 'MSSPACEV1B', 'text2image1B', 'OpenAIArxiv'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 # [[ "$DATASET_SIZE" != "10M" && "$DATASET_SIZE" != "100M" && "$DATASET_SIZE" != "1B" ]] && { echo "Error: dataset_size must be 10M or 100M or 1B"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
-[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+[[ "$DIST_SEARCH_MODE" != "STATE_SEND" && "$DIST_SEARCH_MODE" != "SCATTER_GATHER" && "$DIST_SEARCH_MODE" != "SINGLE_SERVER" && "$DIST_SEARCH_MODE" != "DISTRIBUTED_ANN" && "$DIST_SEARCH_MODE" != "STATE_SEND_CLIENT_GATHER" ]]  && { echo "Error: dist_search_mode must be STATE_SEND or SCATTER_GATHER or SINGLE_SERVER"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$MODE" != "local" && "$MODE" != "distributed" ]] && { echo "Error: mode must be local or distributed"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 
 # Numeric validation
@@ -143,7 +143,7 @@ if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
     GRAPH_SUFFIX=""
 else
     if [[ $OVERLAP == "true" ]]; then
-	if [ "$DIST_SEARCH_MODE" == "STATE_SEND"  ]; then
+	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" || "$DIST_SEARCH_MODE" == "STATE_SEND_CLIENT_GATHER" ]; then
 	    PREFIX="global_overlap_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else
@@ -151,7 +151,7 @@ else
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
 	fi	
     else
-	if [[ ("$DIST_SEARCH_MODE" == "STATE_SEND") || ("$DIST_SEARCH_MODE" == "DISTRIBUTED_ANN") ]]; then
+	if [[ ("$DIST_SEARCH_MODE" == "STATE_SEND_CLIENT_GATHER") || ("$DIST_SEARCH_MODE" == "STATE_SEND") || ("$DIST_SEARCH_MODE" == "DISTRIBUTED_ANN") ]]; then
 	    PREFIX="global_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else

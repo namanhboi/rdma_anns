@@ -61,7 +61,9 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
     QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
                                                batch_of_queries);
     if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND ||
-        parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
+        parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER ||
+        parent->dist_search_mode ==
+            DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
       uint32_t server_peer_id =
           parent->current_round_robin_peer_index.fetch_add(1) %
           parent->other_peer_ids.size();
@@ -407,7 +409,6 @@ void StateSendClient<T>::ResultReceiveThread::process_singular_result(
   parent->send_acks(res);
 }
 
-
 template <typename T>
 void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
     const std::shared_ptr<search_result_t> &res) {
@@ -454,11 +455,19 @@ void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
   }
 }
 
+void print_result(const std::shared_ptr<search_result_t> &res) {
+  std::cout << "result for query " << res->query_id;
+  for (size_t i = 0; i < res->num_res; i++) {
+    std::cout << "(" << res->node_id[i] << "," << res->distance[i] << "),";
+  }
+  std::cout << std::endl;
+}
+
 template <typename T>
 void StateSendClient<T>::ResultReceiveThread::
     process_state_send_client_gather_result(
         const std::shared_ptr<search_result_t> &res) {
-  throw std::runtime_error("feature not fully implemented yet");
+  // throw std::runtime_error("feature not fully implemented yet");
   bool all_results_arrived = false;
   parent->client_gather_results.upsert(
       res->query_id,
@@ -468,7 +477,10 @@ void StateSendClient<T>::ResultReceiveThread::
           results.final_result_idx = results.results.size() - 1;
         }
         all_results_arrived = results.all_results_arrived();
-      });
+        return false;
+      },
+				       client_gather_results_t(res, all_results_arrived));
+
   if (all_results_arrived) {
     std::shared_ptr<search_result_t> combined_res =
         combine_results_client_gather(
@@ -495,6 +507,7 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
       process_scatter_gather_result(res);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+      // if (res->is_final_result) LOG(INFO) << " final res received";
       this->process_state_send_client_gather_result(res);
     } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND ||
                parent->dist_search_mode ==

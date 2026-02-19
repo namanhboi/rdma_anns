@@ -448,7 +448,7 @@ public:
      as I thought)
    */
   uint8_t get_partition_assignment(uint32_t node_id) {
-    if (dist_search_mode != DistributedSearchMode::STATE_SEND)
+    if (dist_search_mode != DistributedSearchMode::STATE_SEND &&  dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER)
       return my_partition_id;
     return partition_assignment[node_id];
   }
