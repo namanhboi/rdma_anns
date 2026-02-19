@@ -263,10 +263,8 @@ combine_results_client_gather(const client_gather_results_t &all_results) {
       combined_res->stats->n_hops += res->stats->n_hops;
     }
   }
-  return combined_res;  
+  return combined_res;
 }
-  
-
 
 std::shared_ptr<search_result_t> combine_results_scatter_gather(
     const std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>
@@ -285,6 +283,7 @@ std::shared_ptr<search_result_t> combine_results_scatter_gather(
   std::sort(node_id_dist.begin(), node_id_dist.end(),
             [](auto &left, auto &right) { return left.second < right.second; });
   combined_res->num_res = std::min(combined_res->k_search, node_id_dist.size());
+  // LOG(INF) << "num_res " << combined_res->num_res;
   for (auto i = 0; i < combined_res->num_res; i++) {
     combined_res->node_id[i] = node_id_dist[i].first;
     combined_res->distance[i] = node_id_dist[i].second;
@@ -408,6 +407,7 @@ void StateSendClient<T>::ResultReceiveThread::process_singular_result(
   parent->send_acks(res);
 }
 
+
 template <typename T>
 void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
     const std::shared_ptr<search_result_t> &res) {
@@ -444,7 +444,8 @@ void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
           {res->partition_history[0], res}});
   if (num_res == parent->other_peer_ids.size()) {
     std::shared_ptr<search_result_t> combined_res =
-        combine_results_scatter_gather(parent->sub_query_results.find(res->query_id));
+        combine_results_scatter_gather(
+            parent->sub_query_results.find(res->query_id));
     parent->results.insert_or_assign(combined_res->query_id, combined_res);
 
     parent->query_result_time.insert_or_assign(
@@ -456,7 +457,7 @@ void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
 template <typename T>
 void StateSendClient<T>::ResultReceiveThread::
     process_state_send_client_gather_result(
-					    const std::shared_ptr<search_result_t> &res) {
+        const std::shared_ptr<search_result_t> &res) {
   throw std::runtime_error("feature not fully implemented yet");
   bool all_results_arrived = false;
   parent->client_gather_results.upsert(
@@ -471,7 +472,7 @@ void StateSendClient<T>::ResultReceiveThread::
   if (all_results_arrived) {
     std::shared_ptr<search_result_t> combined_res =
         combine_results_client_gather(
-				      parent->client_gather_results.find(res->query_id));
+            parent->client_gather_results.find(res->query_id));
     parent->results.insert_or_assign(combined_res->query_id, combined_res);
 
     parent->query_result_time.insert_or_assign(
@@ -491,7 +492,7 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
       break;
     }
     if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
-      this->process_scatter_gather_result(res);
+      process_scatter_gather_result(res);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
       this->process_state_send_client_gather_result(res);
@@ -783,8 +784,8 @@ StateSendClient<T>::OrchestrationThread::search_query(
   }
   state->partition_history = partitions_with_emb;
   std::shared_ptr<search_result_t> result =
-    state->get_search_result(parent->dist_search_mode);
-  
+      state->get_search_result(parent->dist_search_mode);
+
   result->stats = stats;
   return result;
 }
