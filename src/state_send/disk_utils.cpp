@@ -721,10 +721,11 @@ void create_pq_data(const std::string &base_path,
     if (std::is_floating_point<T>::value) {
       LOG(INFO) << "Cosine metric chosen. Normalizing vectors and "
                    "changing distance to L2 to boost accuracy.";
-
+      if (!is_normalized_file(normalized_file_path)) {
       normalized_file_path = base_path + "_data.normalized.bin";
       pipeann::normalize_data_file(base_path, normalized_file_path);
       metric = pipeann::Metric::L2;
+      }
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
                  << " Using cosine distance with integer data types may "
@@ -733,11 +734,13 @@ void create_pq_data(const std::string &base_path,
     }
   } else if (metric == pipeann::Metric::INNER_PRODUCT) {
     if (std::is_floating_point<T>::value) {
-      normalized_file_path = base_path + "_data.normalized.bin";
-      float max_norm_of_base = pipeann::prepare_base_for_inner_products<float>(
-									       base_path, normalized_file_path);
-      // std::string norm_file = index_path_prefix + "_max_base_norm.bin";
-      // pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
+      if (!is_normalized_file(normalized_file_path)) {
+	normalized_file_path = base_path + "_data.normalized.bin";
+	float max_norm_of_base = pipeann::prepare_base_for_inner_products<float>(
+										 base_path, normalized_file_path);
+	std::string norm_file = index_path_prefix + "_max_base_norm.bin";
+	pipeann::save_bin(norm_file, &max_norm_of_base, 1, 1);
+      }
     } else {
       LOG(ERROR) << "WARNING: Cannot normalize integral data types."
                  << " Using mips distance with integer data types may "

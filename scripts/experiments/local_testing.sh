@@ -17,8 +17,8 @@ USE_LOGGING=false
 WRITE_QUERY_CSV=false
 SEND_RATE=0
 BASE_EXPERIMENT_NAME=local_qps_recall_${DATASET_NAME}_${DATASET_SIZE}_2_server
-NUM_QUERIES_TO_SEND=1000000
-LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
+NUM_QUERIES_TO_SEND=100000000
+LVEC="10"
 MEM_L=10
 K_VALUE=10
 # Helper function to run experiment with sleep
@@ -60,32 +60,32 @@ NUM_SERVERS_LIST=(2)
 # fi
 
 
-for SEND_RATE in 0; do 
-    for NUM_SERVERS in ${NUM_SERVERS_LIST[@]}; do
-	for BEAM_WIDTH in 8; do
-            EXPERIMENT_NAME="${BASE_EXPERIMENT_NAME}_${NUM_SERVERS}_server_beam_${BEAM_WIDTH}"
-            run_with_sleep "${EXPERIMENT_NAME}" \
-			   "${NUM_SERVERS}" \
-			   "${DATASET_NAME}" \
-			   "${DATASET_SIZE}" \
-			   "STATE_SEND" \
-			   "${MODE}" \
-			   "${NUM_SEARCH_THREADS}" \
-			   "${MAX_BATCH_SIZE}" \
-			   "${OVERLAP}" \
-			   "${BEAM_WIDTH}" \
-			   "${NUM_CLIENT_THREADS}" \
-			   "${USE_COUNTER_THREAD}" \
-			   "${USE_LOGGING}" \
-			   "${SEND_RATE}" \
-			   "${WRITE_QUERY_CSV}" \
-			   $NUM_QUERIES_TO_SEND \
-			   $MEM_L \
-			   $K_VALUE \
-			   $LVEC
-	done
-    done
-done
+# for SEND_RATE in 0; do 
+#     for NUM_SERVERS in ${NUM_SERVERS_LIST[@]}; do
+# 	for BEAM_WIDTH in 8; do
+#             EXPERIMENT_NAME="${BASE_EXPERIMENT_NAME}_${NUM_SERVERS}_server_beam_${BEAM_WIDTH}"
+#             run_with_sleep "${EXPERIMENT_NAME}" \
+# 			   "${NUM_SERVERS}" \
+# 			   "${DATASET_NAME}" \
+# 			   "${DATASET_SIZE}" \
+# 			   "STATE_SEND" \
+# 			   "${MODE}" \
+# 			   "${NUM_SEARCH_THREADS}" \
+# 			   "${MAX_BATCH_SIZE}" \
+# 			   "${OVERLAP}" \
+# 			   "${BEAM_WIDTH}" \
+# 			   "${NUM_CLIENT_THREADS}" \
+# 			   "${USE_COUNTER_THREAD}" \
+# 			   "${USE_LOGGING}" \
+# 			   "${SEND_RATE}" \
+# 			   "${WRITE_QUERY_CSV}" \
+# 			   $NUM_QUERIES_TO_SEND \
+# 			   $MEM_L \
+# 			   $K_VALUE \
+# 			   $LVEC
+# 	done
+#     done
+# done
 
 
 

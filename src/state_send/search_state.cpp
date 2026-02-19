@@ -412,8 +412,9 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_finalize_distance(
 							 SearchState<T, TagT> *state) {
   std::vector<pipeann::Neighbor> &result = state->full_retset;
-  std::sort(result.begin(), result.end());
-  
+  if (dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER && dist_search_mode != DistributedSearchMode::SCATTER_GATHER) {
+    std::sort(result.begin(), result.end());
+  }
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
   }
@@ -443,9 +444,9 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
 }
 
 
-
 // Explicit instantiations for the SSDPartitionIndex specializations used by the
 // program. Put these in this .cpp because the template definitions are here.
 template class SSDPartitionIndex<float, uint32_t>;
 template class SSDPartitionIndex<unsigned char, uint32_t>;
 template class SSDPartitionIndex<signed char, uint32_t>;
+

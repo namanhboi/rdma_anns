@@ -157,10 +157,14 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
   bool state_io_finished(SearchState<T, TagT> *state);
 
   /*
-    sort the distances. In case of inner product, we have to conver the distance to l2 because of
-    the normalization
+    If dist search mode doesn't require any gathering then sort the distances.
+    This is because for gather, the client will sort the distance anyways.
+
+    In case of inner product, we have to conver the distance to l2 because of
+    the normalization. TODO: need to implement the distance conversion
+    correctly, will probably involve client in some way.
    */
-  void state_finalize_distance(SearchState<T, TagT> *state); 
+  void state_finalize_distance(SearchState<T, TagT> *state);
 
 private:
   class CounterThread {
@@ -284,6 +288,10 @@ private:
   public:
     BatchingThread(SSDPartitionIndex *parent);
     void push_result_to_batch(SearchState<T, TagT> *state);
+    /**
+       for state send, just send the state, for client gather, send result to
+       client as well
+     */
     void push_state_to_batch(SearchState<T, TagT> *state);
     void start();
     void join();

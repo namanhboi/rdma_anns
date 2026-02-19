@@ -186,7 +186,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
           } else if (ret_val == UpdateFrontierValue::FRONTIER_EMPTY_NO_OFF_SERVER){
             throw std::runtime_error(
                 "frontier can't be actually empty because we just added either "
-                "return value from mem index or medoid to it");
+                "return value from mem index or medoid/node 0 to it");
           } else {
 	    throw std::runtime_error("werid return value from update frontier");
           }
@@ -248,7 +248,8 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
       // std::cout << "results " <<std::endl;
       // for (size_t i = 0; i < state->k; i++) {
 	// std::cout << state->full_retset[i].id << " " << state->full_retset[i].distance << ",";
-      // }
+	// }
+      
       this->parent->state_finalize_distance(state);
       // for (size_t i = 0; i < state->k_search; i++) {
       //   std::cout << "(" << state->full_retset[i].id << " "
