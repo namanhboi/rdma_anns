@@ -88,7 +88,9 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
   } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
     dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
-  } else {
+  } else if (dist_search_mode_str == "STATE_SEND_CLIENT_GATHER"){
+    dist_search_mode = DistributedSearchMode::STATE_SEND_CLIENT_GATHER;
+  }else {
     throw std::invalid_argument("Dist search mode has weird value " +
                                 dist_search_mode_str);
   }

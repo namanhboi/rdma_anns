@@ -191,7 +191,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
 	    throw std::runtime_error("werid return value from update frontier");
           }
         } else {
-          assert(parent->dist_search_mode == DistributedSearchMode::STATE_SEND);
+          // assert(parent->dist_search_mode == DistributedSearchMode::STATE_SEND);
           number_concurrent_queries++;
           number_foreign_states++;
           parent->num_foreign_states_global_queue--;
@@ -272,6 +272,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
         state->stats->total_us += state->query_timer.elapsed();
       }
       state->query_timer.reset();
+      // LOG(INFO) << "sending state";
       parent->send_state(state);
     }    
   }

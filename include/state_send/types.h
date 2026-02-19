@@ -233,6 +233,12 @@ struct search_result_t {
 struct client_gather_results_t {
   std::vector<std::shared_ptr<search_result_t>> results;
   int final_result_idx = -1;
+  client_gather_results_t(const std::shared_ptr<search_result_t> &res, bool &_all_results_arrived) {
+    results.push_back(res);
+    if (res->is_final_result)
+      final_result_idx = 0;
+    _all_results_arrived = all_results_arrived();
+  }
   inline bool all_results_arrived() {
     if (final_result_idx == -1)
       return false;
@@ -243,10 +249,16 @@ struct client_gather_results_t {
     // results to expect = partition_history size
     uint32_t num_results_to_expect =
       results[final_result_idx]->partition_history.size();
-    
+    // LOG(INFO) << "NUM_RESULTS TO EXPECT " << num_results_to_expect;
+    // LOG(INFO) << "NUM_RESULTS " << results.size();
+    // LOG(INFO) << "final res partition history";
+    // for (size_t i = 0; i < results[final_result_idx]->partition_history.size();
+    //      i++) {
+    //   std::cout << "(" << (uint32_t)results[final_result_idx]->partition_history[i] << ", " << results[final_result_idx]->partition_history_hop_idx[i] << "),";
+    // }
+    // std::cout << std::endl;
     return num_results_to_expect == results.size();
   }
-  
 };
 
 
