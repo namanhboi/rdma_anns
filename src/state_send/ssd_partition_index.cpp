@@ -1146,7 +1146,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
             // clear because we don't need this anymore
           }
           state_batch.emplace_back(
-				   states->at(i), should_send_emb(states->at(i), server_peer_id));
+              states->at(i), should_send_emb(states->at(i), server_peer_id));
         }
 
         MessageType msg_type = MessageType::STATES;
@@ -1164,7 +1164,11 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       }
       states_used.insert(states->begin(), states->end());
     }
-    for (SearchState<T, TagT>* const &state : states_used) {
+    SingletonLogger::get_logger().info("[{}]: Num batched elements {}",
+                                       SingletonLogger::get_timestamp_ns(),
+                                       states_used.size());
+    
+    for (SearchState<T, TagT> *const &state : states_used) {
       parent->preallocated_state_queue.free(state);
     }
     states_used.clear();
@@ -1213,11 +1217,13 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
         thread_header_prefix + "_num_foreign_states";
     std::string num_own_state_pipeline =
         thread_header_prefix + "_num_own_states";
-    cached_csv_output << num_state_pipeline << "," << num_foreign_state_pipeline
+    cached_csv_output << num_state_pipeline << "," <<
+    num_foreign_state_pipeline
                       << "," << num_own_state_pipeline << ",";
   }
   size_t num_other_peer_ids = parent->communicator->get_num_peers() - 1;
-  for (const auto &other_peer_id : parent->communicator->get_other_peer_ids()) {
+  for (const auto &other_peer_id :
+  parent->communicator->get_other_peer_ids()) {
     std::string peer_id_prefix = "peer_" + std::to_string(other_peer_id);
     std::string num_ele_to_send = peer_id_prefix + "_num_ele_to_send";
     cached_csv_output << num_ele_to_send;
@@ -1225,17 +1231,10 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_header_csv() {
     if (num_other_peer_ids != 0)
       cached_csv_output << ",";
   }
-  cached_csv_output << "\n";
 }
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
-  auto now = std::chrono::steady_clock::now();
-  auto duration = now.time_since_epoch();
-  double nanoseconds =
-      std::chrono::duration<double, std::nano>(duration).count();
-
-  cached_csv_output << nanoseconds << ",";
   cached_csv_output << parent->global_state_queue.size_approx() << ","
                     << parent->num_foreign_states_global_queue << ","
                     << parent->num_new_states_global_queue << ",";
@@ -1252,7 +1251,8 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
     uint64_t num_own_states = parent->search_threads[i]->number_own_states;
     uint64_t num_foreign_states =
         parent->search_threads[i]->number_foreign_states;
-    cached_csv_output << num_state_pipeline << "," << num_foreign_states << ","
+    cached_csv_output << num_state_pipeline << "," << num_foreign_states <<
+    ","
                       << num_own_states << ",";
   }
   auto num_msg_peers = parent->batching_thread->get_num_msg_peers();
@@ -1268,6 +1268,7 @@ void SSDPartitionIndex<T, TagT>::CounterThread::write_one_row_to_csv() {
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::CounterThread::main_loop() {
   auto duration_ms = std::chrono::milliseconds(sleep_duration_ms);
+  LOG(INFO) << "sleep duration is" << sleep_duration_ms;
   write_header_csv();
   while (running) {
     write_one_row_to_csv();

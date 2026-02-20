@@ -490,6 +490,7 @@ void StateSendClient<T>::ResultReceiveThread::
     parent->query_result_time.insert_or_assign(
         res->query_id, std::chrono::steady_clock::now());
     parent->num_results_received.fetch_add(1);
+    parent->send_acks(res);
   }
 }
 
