@@ -205,8 +205,8 @@ struct search_result_t {
   uint64_t client_peer_id;
   uint64_t k_search;
   uint64_t num_res;
-  uint32_t node_id[maxKSearch];
-  float distance[maxKSearch];
+  uint32_t node_id[MAX_L_SEARCH * 2];
+  float distance[MAX_L_SEARCH * 2];
   std::vector<uint8_t> partition_history;
   std::vector<uint32_t> partition_history_hop_idx;
   std::shared_ptr<QueryStats> stats = nullptr;
@@ -228,6 +228,10 @@ struct search_result_t {
 
   static std::vector<std::shared_ptr<search_result_t>>
   deserialize_results(const char *buffer);
+
+  static size_t get_max_num_res() {
+    return MAX_L_SEARCH * 2;
+  }
 };
 
 struct client_gather_results_t {
@@ -376,7 +380,7 @@ struct alignas(SECTOR_LEN) SearchState {
                                  uint64_t num_queries, SearchState **states,
                                  QueryEmbedding<T> **queries);
 
-  std::shared_ptr<search_result_t> get_search_result(DistributedSearchMode dist_search_mode);
+  std::shared_ptr<search_result_t> get_search_result(DistributedSearchMode dist_search_mode) const;
 
   /**
      this doesn't serialize the query embedding but does serialize the stats

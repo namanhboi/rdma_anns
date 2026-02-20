@@ -985,8 +985,9 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_result_to_batch(
     SearchState<T, TagT> *state) {
   // LOG(INFO) << "push result called";
-  uint64_t recipient_peer_id = state->client_peer_id;
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
+  uint64_t recipient_peer_id = state->client_peer_id;
+
   if (!peer_client_ids.contains(recipient_peer_id)) {
     peer_client_ids.insert(recipient_peer_id);
   }
@@ -1003,14 +1004,14 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
     SearchState<T, TagT> *state) {
   // LOG(INFO) << "push state to batch called";
-
+  std::unique_lock<std::mutex> lock(msg_queue_mutex);
   uint64_t recipient_peer_id = parent->state_top_cand_random_partition(state);
   if (recipient_peer_id == parent->my_partition_id) {
     throw std::runtime_error(
         "if we are sending a state then its top cand partition id can't be "
         "from this server otherwise why send it");
   }
-  std::unique_lock<std::mutex> lock(msg_queue_mutex);
+
   if (!msg_queue.contains(recipient_peer_id)) {
     msg_queue[recipient_peer_id] =
         std::make_unique<std::vector<SearchState<T, TagT> *>>();
@@ -1019,6 +1020,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
   msg_queue[recipient_peer_id]->emplace_back(state);
   if (parent->dist_search_mode ==
       DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+    // LOG(INFO) << "sending result as well as state";
     if (!peer_client_ids.contains(state->client_peer_id)) {
       peer_client_ids.insert(state->client_peer_id);
     }
@@ -1118,6 +1120,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         num_sent += batch_size;
       }
       states_used.insert(states->begin(), states->end());
+
       // for (auto &state : *states) {
       //   if (!state->need_to_send_result_when_send_state && state->sent_state)
       //   {
@@ -1143,7 +1146,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
             // clear because we don't need this anymore
           }
           state_batch.emplace_back(
-              states->at(i), should_send_emb(states->at(i), server_peer_id));
+				   states->at(i), should_send_emb(states->at(i), server_peer_id));
         }
 
         MessageType msg_type = MessageType::STATES;
@@ -1160,13 +1163,8 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         num_sent += batch_size;
       }
       states_used.insert(states->begin(), states->end());
-      // for (auto &state : *states) {
-      // if (!state->need_to_send_result_when_send_state && state->sent_state) {
-      // parent->preallocated_state_queue.free(state);
-      // }
-      // }
     }
-    for (auto &state : states_used) {
+    for (SearchState<T, TagT>* const &state : states_used) {
       parent->preallocated_state_queue.free(state);
     }
     states_used.clear();

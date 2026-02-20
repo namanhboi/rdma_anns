@@ -431,7 +431,7 @@ void SearchState<T, TagT>::deserialize_states(const char *buffer,
 
 template <typename T, typename TagT>
 std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result(
-    DistributedSearchMode dist_search_mode) {
+    DistributedSearchMode dist_search_mode) const {
   std::shared_ptr<search_result_t> result = std::make_shared<search_result_t>();
   result->client_peer_id = this->client_peer_id;
   result->partition_history = this->partition_history;
@@ -442,23 +442,23 @@ std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result(
   // write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
   // sizeof(this->query_id), offset);
 
-  uint64_t num_res = 0;
-  // static uint32_t res_id[256];
-  // static uint32_t res_dist[256];
+  uint64_t num_res =
+      (dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER)
+          ? full_retset.size()
+          : std::min(full_retset.size(), this->k_search);
+  if (num_res > search_result_t::get_max_num_res()) {
+    throw std::runtime_error(
+        "Num results trying to write is larger than max allowable");
+  }
 
-  for (uint64_t i = 0;
-       i < full_retset.size() &&
-       ((dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER)
-            ? true
-            : num_res < this->k_search);
-       i++) {
+  for (uint64_t i = 0; i < num_res; i++) {
+    // consider removing this
     if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
       continue; // deduplicate.
     }
     // write_data(char *buffer, const char *data, size_t size, size_t &offset)
     result->node_id[num_res] = full_retset[i].id; // use ID to replace tags
     result->distance[num_res] = full_retset[i].distance;
-    num_res++;
   }
   result->num_res = num_res;
   result->stats = stats;
