@@ -130,7 +130,7 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
 
   bool state_search_ends(SearchState<T, TagT> *state);
 
-  void apply_tags_to_result(std::shared_ptr<search_result_t> result);
+  void apply_tags_to_result(uint32_t *node_id, uint64_t num_res);
 
   // static void write_serialize_query(const T *query_emb,
   //                                   const uint64_t k_search,
@@ -165,6 +165,17 @@ ONLY RETURN TRUE IF WE MUST SEND THE STATE.
     correctly, will probably involve client in some way.
    */
   void state_finalize_distance(SearchState<T, TagT> *state);
+
+  bool state_should_send_emb(SearchState<T, TagT> *state, uint64_t server_peer_id);
+
+  size_t state_get_serialize_result_size(SearchState<T, TagT> *state);
+  size_t state_write_result(SearchState<T, TagT> *state, char * buffer);
+
+  size_t states_get_serialize_result_sizes(SearchState<T, TagT> **states, size_t num_states);
+  size_t states_write_results(SearchState<T, TagT> **states, size_t num_states,
+                              char *buffer);
+
+  
 
 private:
   class CounterThread {
@@ -543,6 +554,7 @@ private:
 private:
   PreallocatedQueue<SearchState<T>> preallocated_state_queue;
   PreallocatedQueue<QueryEmbedding<T>> preallocated_query_emb_queue;
+  // PreallocatedQueue<search_result_t> preallocated_result_queue;
 private:
   /**
      notify based on client peer id

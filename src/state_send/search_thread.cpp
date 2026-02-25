@@ -152,8 +152,6 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
                 allocated_states[i]->query_emb->query,
                 allocated_states[i]->mem_l, allocated_states[i]->mem_l,
 						 mem_tags.data(), mem_dists.data());
-            // TODO need to actually sort the shit you receiven from mem index?
-            // std::cout << 
             parent->state_compute_and_add_to_retset(
                 allocated_states[i], mem_tags.data(),
                 std::min((unsigned)allocated_states[i]->mem_l,
