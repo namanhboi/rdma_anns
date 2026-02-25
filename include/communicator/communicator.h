@@ -26,15 +26,36 @@ struct Region {
   uint64_t context;
   uint32_t lkey;
 
+
+  // passed into delete addr, used to detemine whether to allow zmq to delete
+  // data or not
+  bool self_manage_data = false;
+
   /**
    * used for zmq zmq_msg_init_data, which will use this function to free addr,
    so no need to manually free it if use zmq
    */
   static void delete_addr(void *data, void *hint) {
-    delete[] reinterpret_cast<char*>(data);
+    // reinterpretting the hint as a bool representing self_managed_data
+    if (reinterpret_cast<uintptr_t>(hint) != 0) {
+      delete[] reinterpret_cast<char *>(data);
+    }
   }
 };
 
+
+// class RAIIRegion {
+//   Region r;
+
+//   RAIIRegion() {
+//     r.self_manage_data = true;
+//   }
+//   void set_addr(char *addr) { r.addr = addr; }
+//   void set_length(uint32_t length) { r.length = length; }
+
+//   ~RAIIRegion() {
+//   }
+// }  
 
 using recv_handler_t = std::function<void(const char *, size_t)>;
 /**

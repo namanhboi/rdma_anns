@@ -71,7 +71,7 @@ void ZMQP2PCommunicator::send_to_peer(uint64_t peer_id, Region r) {
   zmq_msg_t msg;
   uint32_t length = r.length;
   int rc = zmq_msg_init_data(&msg, r.addr, r.length, Region::delete_addr,
-                             nullptr);
+                             (void*)r.self_manage_data);
   if (rc != 0) {
     std::stringstream err;
     err << __func__ << " error initializing msg to send to peer "
