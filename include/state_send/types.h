@@ -28,6 +28,9 @@
   // return str;
 // }
 
+size_t write_data(char *buffer, const char *data, size_t size,
+                  size_t &offset);
+
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
 // need to enforce this shit
@@ -229,9 +232,8 @@ struct search_result_t {
   static std::vector<std::shared_ptr<search_result_t>>
   deserialize_results(const char *buffer);
 
-  static size_t get_max_num_res() {
-    return MAX_L_SEARCH * 2;
-  }
+  static size_t get_max_num_res() { return MAX_L_SEARCH * 2; }
+  static void reset(search_result_t*);
 };
 
 struct client_gather_results_t {
@@ -263,6 +265,7 @@ struct client_gather_results_t {
     // std::cout << std::endl;
     return num_results_to_expect == results.size();
   }
+
 };
 
 
@@ -334,7 +337,7 @@ struct alignas(SECTOR_LEN) SearchState {
   // search state.
   std::vector<pipeann::Neighbor> full_retset;
   pipeann::Neighbor retset[1024];
-  tsl::robin_set<uint32_t> visited;
+  // tsl::robin_set<uint32_t> visited;
 
   std::vector<unsigned> frontier;
 
@@ -362,6 +365,9 @@ struct alignas(SECTOR_LEN) SearchState {
   // TCP
   uint64_t client_peer_id;
 
+
+  bool should_send_emb = false;
+
   // // since enqueuing both the state and the result is atomic, we actually don't need this i think
   // bool sent_state = false;
   // // used for state_send_client_gather
@@ -380,8 +386,9 @@ struct alignas(SECTOR_LEN) SearchState {
                                  uint64_t num_queries, SearchState **states,
                                  QueryEmbedding<T> **queries);
 
-  std::shared_ptr<search_result_t> get_search_result(DistributedSearchMode dist_search_mode) const;
-
+  std::shared_ptr<search_result_t>
+  get_search_result(DistributedSearchMode dist_search_mode) const;
+  size_t write_search_result(DistributedSearchMode dist_search_mode, char * buffer) const;
   /**
      this doesn't serialize the query embedding but does serialize the stats
    */
@@ -395,10 +402,10 @@ struct alignas(SECTOR_LEN) SearchState {
      [num states] [num_queries] [states] [queries]
    */
   static size_t write_serialize_states(
-      char *buffer, const std::vector<std::pair<SearchState *, bool>> &states);
+				       char *buffer, SearchState ** states, size_t num_states);
 
   static size_t get_serialize_size_states(
-      const std::vector<std::pair<SearchState *, bool>> &states);
+					  SearchState ** states, size_t num_states);
 
   // void write_serialize_result(char *buffer) const;
   // void get_serialize_result_size(char *buffer) const;

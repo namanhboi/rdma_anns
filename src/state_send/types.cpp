@@ -15,7 +15,7 @@
 
 // }
 
-inline size_t write_data(char *buffer, const char *data, size_t size,
+size_t write_data(char *buffer, const char *data, size_t size,
                          size_t &offset) {
   std::memcpy(buffer + offset, data, size);
   offset += size;
@@ -370,43 +370,43 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
 
 template <typename T, typename TagT>
 size_t SearchState<T, TagT>::write_serialize_states(
-    char *buffer, const std::vector<std::pair<SearchState *, bool>> &states) {
+						    char *buffer, SearchState **states, size_t num_states) {
   size_t offset = 0;
-  size_t num_states = states.size();
   write_data(buffer, reinterpret_cast<const char *>(&num_states),
              sizeof(num_states), offset);
 
   size_t num_queries = 0;
-  for (const auto &[state, should_send_emb] : states) {
-    if (should_send_emb) {
+  for (size_t i = 0; i < num_states; i++) {
+    if (states[i]->should_send_emb) {
       num_queries++;
     }
   }
   write_data(buffer, reinterpret_cast<const char *>(&num_queries),
              sizeof(num_queries), offset);
 
-  for (const auto &[state, with_embedding] : states) {
-    offset += state->write_serialize(buffer + offset);
+  for (size_t i = 0; i < num_states; i++) {
+    offset += states[i]->write_serialize(buffer + offset);
   }
-  for (const auto &[state, with_embedding] : states) {
-    if (with_embedding) {
-      offset += state->query_emb->write_serialize(buffer + offset);
+  for (size_t i = 0; i < num_states; i++) {
+    if (states[i]->should_send_emb) {
+      offset += states[i]->query_emb->write_serialize(buffer + offset);
     }
   }
   return offset;
 }
 
+
 template <typename T, typename TagT>
 size_t SearchState<T, TagT>::get_serialize_size_states(
-    const std::vector<std::pair<SearchState *, bool>> &states) {
+						       SearchState ** states, size_t num_states) {
   size_t num_bytes = sizeof(size_t);
   num_bytes += sizeof(size_t);
-  for (const auto &[state, with_embedding] : states) {
-    num_bytes += state->get_serialize_size();
+  for (size_t i =0; i < num_states; i++) {
+    num_bytes += states[i]->get_serialize_size();
   }
-  for (const auto &[state, with_embedding] : states) {
-    if (with_embedding) {
-      num_bytes += state->query_emb->get_serialize_size();
+  for (size_t i =0; i < num_states; i++) {
+    if (states[i]->should_send_emb) {
+      num_bytes += states[i]->query_emb->get_serialize_size();
     }
   }
   return num_bytes;
@@ -428,6 +428,71 @@ void SearchState<T, TagT>::deserialize_states(const char *buffer,
     offset += queries[i]->get_serialize_size();
   }
 }
+
+
+template <typename T, typename TagT>
+size_t SearchState<T, TagT>::write_search_result(
+					       DistributedSearchMode dist_search_mode, char *buffer) const {
+  static uint32_t node_id[MAX_L_SEARCH * 2];
+  static float distance[MAX_L_SEARCH * 2];
+  size_t offset = 0;
+  write_data(buffer, reinterpret_cast<const char *>(&this->query_id),
+             sizeof(this->query_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&this->client_peer_id),
+             sizeof(this->client_peer_id), offset);
+  write_data(buffer, reinterpret_cast<const char *>(&this->k_search),
+             sizeof(k_search), offset);
+
+
+  uint64_t num_res = 0;
+
+  for (uint64_t i = 0; i < full_retset.size() && (dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER? true : num_res < this->k_search);
+       i++) {
+    if (i > 0 && full_retset[i].id == full_retset[i - 1].id) {
+      continue; // deduplicate.
+    }
+    // write_data(char *buffer, const char *data, size_t size, size_t &offset)
+    node_id[num_res] = full_retset[i].id; // use ID to replace tags
+    distance[num_res] = full_retset[i].distance;
+    num_res++;
+  }
+  if (num_res > search_result_t::get_max_num_res()) {
+    throw std::runtime_error("num res larger than max allowable");
+    
+  }  
+  write_data(buffer, reinterpret_cast<const char *>(&num_res),
+             sizeof(num_res), offset);
+  write_data(buffer, reinterpret_cast<const char *>(node_id),
+             sizeof(uint32_t) * num_res, offset);
+  write_data(buffer, reinterpret_cast<const char *>(distance),
+             sizeof(float) * num_res, offset);
+  size_t num_partitions = this->partition_history.size();
+  write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
+             sizeof(num_partitions), offset);
+  write_data(buffer, reinterpret_cast<const char *>(partition_history.data()),
+             sizeof(uint8_t) * num_partitions, offset);
+
+  size_t num_partition_history_idx = this->partition_history_hop_idx.size();
+  write_data(buffer, reinterpret_cast<const char *>(&num_partition_history_idx),
+             sizeof(num_partition_history_idx), offset);
+  write_data(buffer,
+             reinterpret_cast<const char *>(partition_history_hop_idx.data()),
+             sizeof(uint32_t) * num_partition_history_idx, offset);
+  bool record_stats = (stats != nullptr);
+  write_data(buffer, reinterpret_cast<const char *>(&record_stats),
+             sizeof(record_stats), offset);
+  if (record_stats) {
+    offset += stats->write_serialize(buffer + offset);
+  }
+  bool is_final_result = k >= cur_list_size;
+  
+  write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
+             sizeof(is_final_result), offset);
+  return offset;  
+}
+
+
+
 
 template <typename T, typename TagT>
 std::shared_ptr<search_result_t> SearchState<T, TagT>::get_search_result(
@@ -493,6 +558,7 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   state->cpu_timer.reset();
   // state->need_to_send_result_when_send_state = false;
   // state->sent_state = false;
+  state->should_send_emb = false;
 }
 
 std::shared_ptr<search_result_t>
@@ -643,6 +709,19 @@ search_result_t::deserialize_results(const char *buffer) {
   }
   return results;
 }
+
+void search_result_t::reset(search_result_t * res) {
+  res->query_id = std::numeric_limits<uint64_t>::max();
+  res->client_peer_id = std::numeric_limits<uint64_t>::max();
+  res->k_search = std::numeric_limits<uint64_t>::max();
+  res->num_res = 0;
+  res->partition_history.clear();
+  res->partition_history_hop_idx.clear();
+  res->stats = nullptr;
+  res->is_final_result = false;
+}
+
+
 
 template <typename T>
 void QueryEmbedding<T>::deserialize(const char *buffer, QueryEmbedding *query) {

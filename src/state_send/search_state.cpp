@@ -22,7 +22,7 @@ void SSDPartitionIndex<T, TagT>::state_print(SearchState<T, TagT> *state) {
             << " beam width " << state->beam_width << " Full retset size "
             << state->full_retset.size()
             << " retset size: " << state->cur_list_size
-            << " visited size: " << state->visited.size()
+            // << " visited size: " << state->visited.size()
             << " frontier size: " << state->frontier.size()
             << " frontier nhood size: " << state->frontier_nhoods.size()
   << " frontier read reqs size: " << state->frontier_read_reqs.size();
@@ -52,6 +52,7 @@ void SSDPartitionIndex<T, TagT>::state_compute_and_add_to_retset(
   for (uint64_t i = 0; i < std::min(state->l_search, n_ids); ++i) {
     state->retset[state->cur_list_size] = res[i];
     state->cur_list_size++;
+    // state->visited.insert(res[i].id);
   }
 }
 
@@ -146,12 +147,17 @@ SearchExecutionState SSDPartitionIndex<T, TagT>::state_explore_frontier(
       if (cont_flag) {
         continue;
       }
+      // this is more optimal than visited set apparently
+      // if (state->visited.count(id) != 0) {
+        // continue;
+      // }
 
       state->cmps++;
       float dist = state->dist_scratch[m];
       if (state->stats != nullptr) {
         state->stats->n_cmps++;
       }
+      // state->visited.insert(id);      
       if (dist >= state->retset[state->cur_list_size - 1].distance &&
           (state->cur_list_size == state->l_search))
         continue;
@@ -394,7 +400,7 @@ void SSDPartitionIndex<T, TagT>::state_print_detailed(
   LOG(INFO) << "cur_list_size: " << state->cur_list_size;
   LOG(INFO) << "retset: "
             << neighbors_to_string(state->retset, state->cur_list_size);
-  LOG(INFO) << "visited size: " << state->visited.size();
+  // LOG(INFO) << "visited size: " << state->visited.size();
   // LOG(INFO) << "visited: " << state_visited_to_string(state);
   LOG(INFO) << "cmps: " << state->cmps;
   LOG(INFO) << "k: " << state->k;
