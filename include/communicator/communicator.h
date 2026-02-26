@@ -1,4 +1,4 @@
-x #pragma once
+#pragma once
 #define ZMQ_BUILD_DRAFT_API 1
 #include <cstdint>
 #include <functional>
@@ -21,7 +21,7 @@ constexpr uint32_t max_num_servers = 128;
 
 
 struct Region {
-  static constexpr size_t MAX_BYTES_REGION = 40000;
+  static constexpr size_t MAX_BYTES_REGION = 80000;
   static constexpr size_t MAX_PRE_ALLOC_ELEMENTS =10000;
   
   char *addr; // address to whatever is sent must be allocated with new []
@@ -42,18 +42,12 @@ struct Region {
   // by default, we don't manage our memeory
   Region() : prealloc_queue(nullptr) {}
 
-
-  // can pass this in if you want to go with preallocation
-  Region(void *prealloc_queue) : prealloc_queue(prealloc_queue) {
-    Region r[MAX_BYTES_REGION];
-    addr = (char*)r;
-  }
-
   static void reset(Region *r) { r->length = 0; }
 
-
-  static void assign_addr(Region *r, char *prealloacted_addr) {
+  // hint used to pass in the address to prealloc queue
+  static void assign_addr(Region *r, char *prealloacted_addr, void *hint) {
     r->addr = prealloacted_addr;
+    r->prealloc_queue = hint;
   }
 
   /**

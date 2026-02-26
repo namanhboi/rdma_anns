@@ -956,9 +956,9 @@ template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::BatchingThread::BatchingThread(
     SSDPartitionIndex<T, TagT> *parent)
     : parent(parent),
-    preallocated_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset) {
+      preallocated_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset) {
   preallocated_region_queue.allocate_and_assign_additional_block(
-								 Region::MAX_BYTES_REGION, Region::assign_addr);
+      Region::MAX_BYTES_REGION, Region::assign_addr);
 }
 
 template <typename T, typename TagT>
@@ -1057,7 +1057,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
   std::unordered_set<SearchState<T, TagT> *> states_used;
   constexpr int max_num_servers = 16;
   // std::vector<PreallocRegion> prealloced_regions(max_num_servers);
-  
+
   while (running) {
     lock.lock();
     while (msg_queue_empty()) {
@@ -1098,24 +1098,33 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       while (num_sent < total) {
         uint64_t left = total - num_sent;
         uint64_t batch_size = std::min(parent->max_batch_size, left);
+        size_t msg_size =
+            sizeof(MessageType) + parent->states_get_serialize_result_sizes(
+									    states->data() + num_sent, batch_size);
+        Region *prealloc_r;
+        preallocated_region_queue.dequeue_exact(1, &prealloc_r);
+        prealloc_r->length = msg_size;
+        if (unlikely(prealloc_r->length >= Region::MAX_BYTES_REGION)) {
+          std::stringstream error;
+          error << "trying to write result that is bigger than region buffer: "
+                << "batch size  is" << batch_size << ", size of total msg "
+          << msg_size;
+          throw std::runtime_error(
+				   error.str());
+        }
 
-        // Region *prealloc_r;
-        // preallocated_region_queue.dequeue_exact(1, &prealloc_r);
-        // prealloc_r->length = 
-        
-        Region r;
-        size_t msg_size = parent->states_get_serialize_result_sizes(
-            states->data() + num_sent, batch_size);
-        r.length = sizeof(MessageType) + msg_size;
-        r.addr = new char[r.length];
+        // Region r;
+        // size_t msg_size = parent->states_get_serialize_result_sizes(
+        //     states->data() + num_sent, batch_size);
+        // r.length = sizeof(MessageType) + msg_size;
+        // r.addr = new char[r.length];
         size_t offset = 0;
         MessageType msg_type = MessageType::RESULTS;
-        std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+        std::memcpy(prealloc_r->addr + offset, &msg_type, sizeof(msg_type));
         offset += sizeof(msg_type);
-        // search_result_t::write_serialize_results(r.addr + offset, results);
         parent->states_write_results(states->data() + num_sent, batch_size,
-                                     r.addr + offset);
-        parent->communicator->send_to_peer(client_peer_id, &r);
+                                     prealloc_r->addr + offset);
+        parent->communicator->send_to_peer(client_peer_id, prealloc_r);
         num_sent += batch_size;
       }
       states_used.insert(states->begin(), states->end());
@@ -1135,41 +1144,47 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       while (num_sent < total) {
         uint64_t left = total - num_sent;
         uint64_t batch_size = std::min(parent->max_batch_size, left);
-        Region r;
+        Region *prealloc_r;
+        preallocated_region_queue.dequeue_exact(1, &prealloc_r);
         if (parent->dist_search_mode ==
             DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
           for (uint64_t i = num_sent; i < num_sent + batch_size; i++) {
-
             states->at(i)->full_retset.clear();
             // clear because we don't need this anymore
           }
         }
 
-      MessageType msg_type = MessageType::STATES;
-      r.length =
-          sizeof(MessageType) + SearchState<T, TagT>::get_serialize_size_states(
-                                    states->data() + num_sent, batch_size);
-      r.addr = new char[r.length];
-      size_t offset = 0;
-      std::memcpy(r.addr, &msg_type, sizeof(msg_type));
-      offset += sizeof(msg_type);
-      SearchState<T, TagT>::write_serialize_states(
-          r.addr + offset, states->data() + num_sent, batch_size);
-      parent->communicator->send_to_peer(server_peer_id, &r);
-      // LOG(INFO) << "sent another";
-      num_sent += batch_size;
+        MessageType msg_type = MessageType::STATES;
+        prealloc_r->length = sizeof(MessageType) +
+                             SearchState<T, TagT>::get_serialize_size_states(
+									     states->data() + num_sent, batch_size);
+        if (unlikely(prealloc_r->length >= Region::MAX_BYTES_REGION)) {
+	  std::stringstream error;
+          error << "trying to write state result that is bigger than region "
+                   "buffer: "
+                << "batch size  is" << batch_size << ", size of total msg "
+          << prealloc_r->length;
+          throw std::runtime_error(error.str());
+        }
+        size_t offset = 0;
+        std::memcpy(prealloc_r->addr, &msg_type, sizeof(msg_type));
+        offset += sizeof(msg_type);
+        SearchState<T, TagT>::write_serialize_states(
+						     prealloc_r->addr + offset, states->data() + num_sent, batch_size);
+        parent->communicator->send_to_peer(server_peer_id, prealloc_r);
+        num_sent += batch_size;
+      }
+      states_used.insert(states->begin(), states->end());
     }
-    states_used.insert(states->begin(), states->end());
-  }
-  SingletonLogger::get_logger().info("[{}]: Num batched elements {}",
-                                     SingletonLogger::get_timestamp_ns(),
-                                     states_used.size());
+    SingletonLogger::get_logger().info("[{}]: Num batched elements {}",
+                                       SingletonLogger::get_timestamp_ns(),
+                                       states_used.size());
 
-  for (SearchState<T, TagT> *const &state : states_used) {
-    parent->preallocated_state_queue.free(state);
+    for (SearchState<T, TagT> *const &state : states_used) {
+      parent->preallocated_state_queue.free(state);
+    }
+    states_used.clear();
   }
-  states_used.clear();
-}
 }
 
 template <typename T, typename TagT>

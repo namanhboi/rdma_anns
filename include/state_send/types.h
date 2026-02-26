@@ -431,14 +431,14 @@ public:
     }
   }
 
-
+  // used to support Region
   void allocate_and_assign_additional_block(
       size_t block_size_per_element,
-					    std::function<void(T *, char *)> assign_block) {
+					    std::function<void(T *, char *, void*)> assign_block) {
     additional_data_block = new char[block_size_per_element * num_elements];
     for (size_t i = 0; i < num_elements; i++) {
       assign_block(elements + i,
-                   additional_data_block + block_size_per_element);
+                   additional_data_block + block_size_per_element * i, this);
     }
   }
   
@@ -470,29 +470,37 @@ public:
   
   uint64_t get_num_elements() const { return num_elements; }
 
-  ~PreallocatedQueue() { delete[] elements; }
+  ~PreallocatedQueue() {
+    delete[] elements;
+    delete[] additional_data_block;
+  }
+  
   PreallocatedQueue(const PreallocatedQueue &) = delete;
   PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
   PreallocatedQueue(PreallocatedQueue &&other) noexcept
-  : queue(std::move(other.queue)), 
-  elements(other.elements),
-  num_elements(other.num_elements),
-  reset_element(std::move(other.reset_element)) {
+      : queue(std::move(other.queue)), elements(other.elements),
+        num_elements(other.num_elements),
+        reset_element(std::move(other.reset_element)), additional_data_block(other.additional_data_block)
+  {
     other.elements = nullptr;
     other.num_elements = 0;
     other.reset_element = nullptr;
+    other.additional_data_block = nullptr;
   }
   PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
     if (this != &other) {
       delete[] elements;
+      delete[] additional_data_block;
       queue = std::move(other.queue);
       elements = other.elements;
+      additional_data_block = other.additional_data_block;
       num_elements = other.num_elements;
       reset_element = std::move(other.reset_element);
     
       other.elements = nullptr;
       other.num_elements = 0;
       other.reset_element = nullptr;
+      other.additional_data_block = nullptr;
     }
     return *this;
   }
