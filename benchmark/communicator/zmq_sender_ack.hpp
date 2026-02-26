@@ -11,11 +11,11 @@ private:
     char *tmp = new char[size];
     std::memcpy(tmp, data, size);
     uint64_t peer_id = *reinterpret_cast<uint64_t *>(tmp);
-    Region r = {.addr = tmp,
-                .length = static_cast<uint32_t>(size),
-                .context = 0,
-                .lkey = 0};
-    server.send_to_peer(peer_id, r);
+    Region r;  r.addr = tmp;
+    r.length = static_cast<uint32_t>(size);
+    r.context = 0;
+    r.lkey = 0;
+    server.send_to_peer(peer_id, &r);
   }
 public :
   AckNode(uint64_t my_id, const std::string &config_file)
@@ -67,8 +67,10 @@ public:
         uint64_t *region_header = reinterpret_cast<uint64_t *>(tmp);
         region_header[0] = server.get_my_id();
         region_header[1] = std::numeric_limits<uint64_t>::max();
-        Region r = {.addr = tmp, .length = msg_size};
-        server.send_to_peer(peer_id, r);
+        Region r;
+        r.addr = tmp;
+        r.length = msg_size;
+        server.send_to_peer(peer_id, &r);
       }
     }
 
@@ -78,9 +80,11 @@ public:
         uint64_t *region_header = reinterpret_cast<uint64_t *>(tmp);
         region_header[0] = server.get_my_id();
         region_header[1] = msg_id.fetch_add(1);
-        Region r = {.addr = tmp, .length = msg_size};
+        Region r;
+        r.addr = tmp;
+        r.length = msg_size;
         send_time[region_header[1]] = std::chrono::steady_clock::now();
-        server.send_to_peer(peer_id, r);
+        server.send_to_peer(peer_id, &r);
       }
     }
     std::cout << "sent all msgs" << std::endl;

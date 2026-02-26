@@ -67,11 +67,11 @@ void ZMQP2PCommunicator::bind_and_connect_peers() {
 }
 
 
-void ZMQP2PCommunicator::send_to_peer(uint64_t peer_id, Region r) {
+void ZMQP2PCommunicator::send_to_peer(uint64_t peer_id, Region *r) {
   zmq_msg_t msg;
-  uint32_t length = r.length;
-  int rc = zmq_msg_init_data(&msg, r.addr, r.length, Region::delete_addr,
-                             (void*)r.self_manage_data);
+  uint32_t length = r->length;
+  int rc = zmq_msg_init_data(&msg, r->addr, r->length, Region::delete_addr,
+                             (r->prealloc_queue == nullptr) ? nullptr : r);
   if (rc != 0) {
     std::stringstream err;
     err << __func__ << " error initializing msg to send to peer "

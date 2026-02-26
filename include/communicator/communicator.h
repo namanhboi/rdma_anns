@@ -1,4 +1,4 @@
-#pragma once
+x #pragma once
 #define ZMQ_BUILD_DRAFT_API 1
 #include <cstdint>
 #include <functional>
@@ -10,15 +10,20 @@
 #include <iostream>
 #include <atomic>
 #include <thread>
-
+#include "../state_send/utils.h"
+#include "../state_send/types.h"
 // for convenience
-using json = nlohmann::json;
 
+using json = nlohmann::json;
 
 
 constexpr uint32_t max_num_servers = 128;
 
+
 struct Region {
+  static constexpr size_t MAX_BYTES_REGION = 40000;
+  static constexpr size_t MAX_PRE_ALLOC_ELEMENTS =10000;
+  
   char *addr; // address to whatever is sent must be allocated with new []
   uint32_t length;
 
@@ -29,33 +34,52 @@ struct Region {
 
   // passed into delete addr, used to detemine whether to allow zmq to delete
   // data or not
-  bool self_manage_data = false;
+  // bool self_manage_data = false;
+
+  void *prealloc_queue;
+
+
+  // by default, we don't manage our memeory
+  Region() : prealloc_queue(nullptr) {}
+
+
+  // can pass this in if you want to go with preallocation
+  Region(void *prealloc_queue) : prealloc_queue(prealloc_queue) {
+    Region r[MAX_BYTES_REGION];
+    addr = (char*)r;
+  }
+
+  static void reset(Region *r) { r->length = 0; }
+
+
+  static void assign_addr(Region *r, char *prealloacted_addr) {
+    r->addr = prealloacted_addr;
+  }
 
   /**
    * used for zmq zmq_msg_init_data, which will use this function to free addr,
-   so no need to manually free it if use zmq
+   so no need to manually free it if use zmq. Hint here represents the pointer
+   to the Region r you're freeing.
+   If the region is self managed, then should pass in pointer to it. Else pass
+   in nullptr, which will trigger a delete[] call to free addr
    */
   static void delete_addr(void *data, void *hint) {
     // reinterpretting the hint as a bool representing self_managed_data
-    if (reinterpret_cast<uintptr_t>(hint) != 0) {
+    if (hint == nullptr) {
       delete[] reinterpret_cast<char *>(data);
+    } else {
+      Region *r = reinterpret_cast<Region *>(hint);
+      if (unlikely(r->prealloc_queue == nullptr)) {
+        throw std::runtime_error(
+				 "prealloc queue is nullptr even tho ptr to Region is not nullptr");
+      }
+      PreallocatedQueue<Region> *q =
+        reinterpret_cast<PreallocatedQueue<Region> *>(r->prealloc_queue);
+      q->free(r);
     }
   }
 };
 
-
-// class RAIIRegion {
-//   Region r;
-
-//   RAIIRegion() {
-//     r.self_manage_data = true;
-//   }
-//   void set_addr(char *addr) { r.addr = addr; }
-//   void set_length(uint32_t length) { r.length = length; }
-
-//   ~RAIIRegion() {
-//   }
-// }  
 
 using recv_handler_t = std::function<void(const char *, size_t)>;
 /**
@@ -72,7 +96,7 @@ using recv_handler_t = std::function<void(const char *, size_t)>;
 class P2PCommunicator {
 protected:
 public:
-  virtual void send_to_peer(uint64_t peer_id, Region r) =0;
+  virtual void send_to_peer(uint64_t peer_id, Region *r) =0;
   virtual void recv_loop() = 0;
   virtual void register_receive_handler(recv_handler_t handler) = 0;
   // starts running recv loop on a different thread
@@ -114,7 +138,7 @@ protected:
   void parse_config(const std::string &config_path);
   void bind_and_connect_peers();
 public:
-  void send_to_peer(uint64_t peer_id, Region r) override;
+  void send_to_peer(uint64_t peer_id, Region *r) override;
   void recv_loop() override;
   void register_receive_handler(recv_handler_t handler) override;
   void start_recv_thread() override;

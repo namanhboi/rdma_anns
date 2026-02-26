@@ -267,6 +267,7 @@ private:
    */
   class BatchingThread {
   private:
+    PreallocatedQueue<Region> preallocated_region_queue;
     SSDPartitionIndex *parent;
 
     std::thread real_thread;

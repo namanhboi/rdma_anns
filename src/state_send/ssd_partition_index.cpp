@@ -955,7 +955,11 @@ void SSDPartitionIndex<T, TagT>::query_emb_print(
 template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::BatchingThread::BatchingThread(
     SSDPartitionIndex<T, TagT> *parent)
-    : parent(parent) {}
+    : parent(parent),
+    preallocated_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset) {
+  preallocated_region_queue.allocate_and_assign_additional_block(
+								 Region::MAX_BYTES_REGION, Region::assign_addr);
+}
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::start() {
@@ -1051,6 +1055,9 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
   };
 
   std::unordered_set<SearchState<T, TagT> *> states_used;
+  constexpr int max_num_servers = 16;
+  // std::vector<PreallocRegion> prealloced_regions(max_num_servers);
+  
   while (running) {
     lock.lock();
     while (msg_queue_empty()) {
@@ -1091,6 +1098,11 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       while (num_sent < total) {
         uint64_t left = total - num_sent;
         uint64_t batch_size = std::min(parent->max_batch_size, left);
+
+        // Region *prealloc_r;
+        // preallocated_region_queue.dequeue_exact(1, &prealloc_r);
+        // prealloc_r->length = 
+        
         Region r;
         size_t msg_size = parent->states_get_serialize_result_sizes(
             states->data() + num_sent, batch_size);
@@ -1103,7 +1115,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         // search_result_t::write_serialize_results(r.addr + offset, results);
         parent->states_write_results(states->data() + num_sent, batch_size,
                                      r.addr + offset);
-        parent->communicator->send_to_peer(client_peer_id, r);
+        parent->communicator->send_to_peer(client_peer_id, &r);
         num_sent += batch_size;
       }
       states_used.insert(states->begin(), states->end());
@@ -1143,7 +1155,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       offset += sizeof(msg_type);
       SearchState<T, TagT>::write_serialize_states(
           r.addr + offset, states->data() + num_sent, batch_size);
-      parent->communicator->send_to_peer(server_peer_id, r);
+      parent->communicator->send_to_peer(server_peer_id, &r);
       // LOG(INFO) << "sent another";
       num_sent += batch_size;
     }
