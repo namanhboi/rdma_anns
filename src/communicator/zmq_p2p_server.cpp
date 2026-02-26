@@ -26,9 +26,9 @@ int main(int argc, char **argv) {
     for (uint64_t peer_id = 0; peer_id < server.get_num_peers(); peer_id++) {
       if (peer_id != server.get_my_id()) {
         char * arr = new char[msg_size];
-        Region r = {.addr = arr, .length = msg_size, .context = 0, .lkey = 0};
+        Region r; r.addr = arr; r.length = msg_size; r.context = 0;r.lkey = 0;
 	// std::cout << "Sending to peer id " << peer_id << std::endl;
-        server.send_to_peer(peer_id, r);
+        server.send_to_peer(peer_id, &r);
       }
     }
   }

@@ -416,6 +416,7 @@ template <typename T> class PreallocatedQueue {
 private:
   moodycamel::BlockingConcurrentQueue<T *> queue;
   T *elements = nullptr;
+  char* additional_data_block = nullptr;
   uint64_t num_elements;
   std::function<void(T *)> reset_element;
 
@@ -429,6 +430,18 @@ public:
       queue.enqueue(elements + i);
     }
   }
+
+
+  void allocate_and_assign_additional_block(
+      size_t block_size_per_element,
+					    std::function<void(T *, char *)> assign_block) {
+    additional_data_block = new char[block_size_per_element * num_elements];
+    for (size_t i = 0; i < num_elements; i++) {
+      assign_block(elements + i,
+                   additional_data_block + block_size_per_element);
+    }
+  }
+  
 
   /*
     result must be allocated before hand
@@ -453,6 +466,8 @@ public:
     }
     queue.enqueue(element);
   }
+
+  
   uint64_t get_num_elements() const { return num_elements; }
 
   ~PreallocatedQueue() { delete[] elements; }
@@ -482,8 +497,6 @@ public:
     return *this;
   }
 };
-
-
 
 
 /**

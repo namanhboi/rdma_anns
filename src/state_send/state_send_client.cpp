@@ -72,7 +72,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       // query->query_id, std::chrono::steady_clock::now());
       // }
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
-                                         r);
+                                         &r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
 
@@ -84,7 +84,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
         if (i == parent->other_peer_ids.size() - 1) {
           // don't need to make an additional copy of r
           // std::cout << "sending query" <<std::endl;
-          parent->communicator->send_to_peer(parent->other_peer_ids[i], r);
+          parent->communicator->send_to_peer(parent->other_peer_ids[i], &r);
         } else {
           Region r_copy;
           r_copy.length = r.length;
@@ -92,7 +92,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
           r_copy.lkey = r.lkey;
           r_copy.addr = new char[r_copy.length];
           std::memcpy(r_copy.addr, r.addr, r.length);
-          parent->communicator->send_to_peer(parent->other_peer_ids[i], r_copy);
+          parent->communicator->send_to_peer(parent->other_peer_ids[i], &r_copy);
         }
       }
     }
@@ -391,7 +391,7 @@ void StateSendClient<T>::send_acks(std::shared_ptr<search_result_t> result) {
     std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
     offset += sizeof(msg_type);
     a.write_serialize(r.addr + offset);
-    communicator->send_to_peer(server_peer_id, r);
+    communicator->send_to_peer(server_peer_id, &r);
   }
 }
 
@@ -602,7 +602,7 @@ size_t StateSendClient<T>::OrchestrationThread::send_scoring_queries(
 
     distributedann::scoring_query_t<T>::write_serialize_scoring_queries(
         r.addr + offset, {{&scoring_query, should_send_emb}});
-    parent->communicator->send_to_peer(partition_id, r);
+    parent->communicator->send_to_peer(partition_id, &r);
 
     if (should_send_emb) {
       partitions_with_emb.push_back(partition_id);
@@ -662,7 +662,7 @@ StateSendClient<T>::OrchestrationThread::search_query(
       parent->other_peer_ids.size();
   partitions_with_emb.push_back(static_cast<uint8_t>(server_peer_id));
 
-  parent->communicator->send_to_peer(server_peer_id, head_index_query_region);
+  parent->communicator->send_to_peer(server_peer_id, &head_index_query_region);
   // LOG(INFO) << "SENT the head index query";
 
   distributedann::result_t<T> *head_index_result;

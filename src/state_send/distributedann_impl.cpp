@@ -360,7 +360,7 @@ void SSDPartitionIndex<T, TagT>::DistributedANNBatchingThread::main_loop() {
         offset += sizeof(msg_type);
         distributedann::result_t<T>::write_serialize_results(r.addr + offset,
                                                              result_batch);
-        parent->communicator->send_to_peer(client_peer_id, r);
+        parent->communicator->send_to_peer(client_peer_id, &r);
         num_sent += batch_size;
       }
       for (auto &result : *results) {
