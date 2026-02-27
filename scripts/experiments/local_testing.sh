@@ -22,6 +22,7 @@ NUM_QUERIES_TO_SEND=1000000
 LVEC="10 15 20 25 30 35 40 50 60 80 120 200 400"
 MEM_L=10
 K_VALUE=10
+
 # Helper function to run experiment with sleep
 run_with_sleep() {
     $SCRIPT_DIR/../run_experiment.sh "$@"
@@ -56,11 +57,14 @@ echo "WRITE_QUERY_CSV is ${WRITE_QUERY_CSV}"
 # done
 
 # DIST_SEARCH_MODE_LIST=("STATE_SEND" "STATE_SEND_CLIENT_GATHER")
-DIST_SEARCH_MODE_LIST=("STATE_SEND_CLIENT_GATHER")
+# DIST_SEARCH_MODE_LIST=("STATE_SEND_CLIENT_GATHER")
 # DIST_SEARCH_MODE_LIST=("STATE_SEND")
 
-SEND_RATE_LIST=(0)
+DIST_SEARCH_MODE_LIST=("SCATTER_GATHER_TOP_N")
 
+
+SEND_RATE_LIST=(0)
+TOP_N=9999999
 
 for DIST_SEARCH_MODE in "${DIST_SEARCH_MODE_LIST[@]}"; do
     echo "dist search mode is $DIST_SEARCH_MODE"
@@ -68,7 +72,12 @@ for DIST_SEARCH_MODE in "${DIST_SEARCH_MODE_LIST[@]}"; do
 	NUM_SERVERS_LIST=(1)
     else
 	NUM_SERVERS_LIST=(2)
-    fi 
+    fi
+
+    if [[ "$DIST_SEARCH_MODE" == "SCATTER_GATHER_TOP_N" ]]; then
+	TOP_N=1
+    fi
+    
     
     for SEND_RATE in ${SEND_RATE_LIST[@]}; do 
 	for NUM_SERVERS in ${NUM_SERVERS_LIST[@]}; do
@@ -93,6 +102,7 @@ for DIST_SEARCH_MODE in "${DIST_SEARCH_MODE_LIST[@]}"; do
 			       $NUM_QUERIES_TO_SEND \
 			       $MEM_L \
 			       $K_VALUE \
+			       $TOP_N \
 			       $LVEC
 	    done
 	done

@@ -41,7 +41,7 @@ void write_results_csv(
          << ",partition_history_hop_idx"
             "\n";
   for (auto i = 0; i < results.size(); i++) {
-    output << results[i]->query_id << "," << send_timestamp[i] << "," 
+    output << results[i]->query_id << "," << send_timestamp[i] << ","
            << receive_timestamp[i] << ",";
     if (results[i]->stats) {
       output << results[i]->stats->total_us << "," << results[i]->stats->io_us
@@ -68,7 +68,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       uint64_t send_rate_per_second,
                       const std::vector<std::string> &address_list,
                       const std::string &result_output_folder,
-                      const std::string &partition_assignment_file) {
+                      const std::string &partition_assignment_file,
+                      uint32_t top_n, const std::string &medoid_file) {
 
   uint64_t microsecond_sleep_time = 0;
   if (send_rate_per_second != 0) {
@@ -78,22 +79,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   // uint64_t num_queries_to_send =
   //   query_data["num_queries_to_send"].<uint64_t>();
 
-  DistributedSearchMode dist_search_mode;
-
-  if (dist_search_mode_str == "STATE_SEND") {
-    dist_search_mode = DistributedSearchMode::STATE_SEND;
-  } else if (dist_search_mode_str == "SCATTER_GATHER") {
-    dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
-  } else if (dist_search_mode_str == "SINGLE_SERVER") {
-    dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
-  } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
-    dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
-  } else if (dist_search_mode_str == "STATE_SEND_CLIENT_GATHER"){
-    dist_search_mode = DistributedSearchMode::STATE_SEND_CLIENT_GATHER;
-  }else {
-    throw std::invalid_argument("Dist search mode has weird value " +
-                                dist_search_mode_str);
-  }
+  DistributedSearchMode dist_search_mode =
+      get_distributed_search_mode(dist_search_mode_str);
 
   // if (beam_width != 1 && dist_search_mode !=
   // DistributedSearchMode::DISTRIBUTED_ANN) { throw std::invalid_argument(
@@ -110,13 +97,26 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                                   "(includes scatter gather and state send");
     }
   }
+  int num_search_servers = address_list.size() - 1;
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    if (top_n >= num_search_servers) {
+      throw std::invalid_argument(
+          "mode is SCATTER_GATHER_TOP_N but top_n is >= num servers " +
+          std::to_string(top_n) + ", num servers" +
+          std::to_string(num_search_servers));
+    }
+    if (!file_exists(medoid_file)) {
+      throw std::invalid_argument("medoid file doesn't exist");
+    }
+  }
 
   std::vector<std::vector<uint32_t>> query_result_ids(Lvec.size());
   std::vector<std::vector<uint32_t>> query_result_tags(Lvec.size());
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
   StateSendClient<T> client(client_peer_id, address_list, num_client_thread,
-                            dist_search_mode, dim, partition_assignment_file);
+                            dist_search_mode, dim, partition_assignment_file,
+                            top_n, medoid_file);
   // client.start_result_thread();
   // client.start_client_threads();
   client.start();
@@ -356,6 +356,10 @@ int main(int argc, char **argv) {
   std::vector<std::string> address_list;
   std::string result_output_folder;
   std::string partition_assignment_file;
+  uint32_t top_n;
+
+  // required for SCATTER_GATHER_TOP_N
+  std::string medoid_file;
 
   desc.add_options()("help,h", "show help message")(
       "num_client_thread",
@@ -396,7 +400,12 @@ int main(int argc, char **argv) {
       "service")("write_query_csv",
                  po::value<bool>(&write_query_csv)->required(),
                  "if true then writes information about every single query for "
-                 "each L value into a csv file.");
+                 "each L value into a csv file.")(
+      "top_n",
+      po::value<uint32_t>(&top_n)->default_value(
+          std::numeric_limits<uint32_t>::max()),
+      "top_n for scatter_gather_top_n")("medoid_file",
+                                        po::value<std::string>(&medoid_file));
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -414,7 +423,7 @@ int main(int argc, char **argv) {
   }
   if (beam_width > BALANCE_BATCH_MAX_BEAMWIDTH) {
     LOG(ERROR) << "Beam width can't be larger than "
-    << BALANCE_BATCH_MAX_BEAMWIDTH;
+               << BALANCE_BATCH_MAX_BEAMWIDTH;
     return 1;
   }
 
@@ -423,20 +432,23 @@ int main(int argc, char **argv) {
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
         Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, partition_assignment_file);
+        address_list, result_output_folder, partition_assignment_file, top_n,
+        medoid_file);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
         Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, partition_assignment_file);
+        address_list, result_output_folder, partition_assignment_file, top_n,
+        medoid_file);
 
   } else if (data_type == "float") {
     search_disk_index<float>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
         Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, partition_assignment_file);
+        address_list, result_output_folder, partition_assignment_file, top_n,
+        medoid_file);
   } else {
     throw std::invalid_argument(
         "data type in json file is not uint8, int8, float " + data_type);

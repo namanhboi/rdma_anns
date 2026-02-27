@@ -5,7 +5,7 @@
 #include "types.h"
 #include <condition_variable>
 #include <unordered_set>
-
+#include "distance.h"
 
 constexpr uint32_t MAX_ELEMENTS_HANDLER_CLIENT  =256;
 
@@ -52,6 +52,8 @@ private:
   private:
     std::thread real_thread;
     uint64_t my_thread_id; // used for round robin querying the server
+
+
 
     void main_loop();
     StateSendClient *parent;
@@ -164,30 +166,27 @@ private:
   };
   std::unique_ptr<ResultReceiveThread> result_thread;
 private:
-  DistributedSearchMode dist_search_mode; 
-  uint64_t dim;
+  DistributedSearchMode dist_search_mode;
+
+  // top_n for SCATTER_GATHER_TOP_N, other_peer_ids.size() for SCATTER_GATHER
+  uint32_t num_results_to_expect = std::numeric_limits<uint32_t>::max();
 
   // moodycamel::ProducerToken ptok;
   moodycamel::BlockingConcurrentQueue<std::shared_ptr<search_result_t>>
       result_queue;
+
+private:
+  size_t dim;
+  T *partition_medoids;
+  pipeann::Distance<T> *distance_fn; 
+  
 public:
   StateSendClient(const uint64_t id,
                   const std::vector<std::string> &address_list,
                   int num_worker_threads,
                   DistributedSearchMode dist_search_mode, uint64_t dim,
-                  const std::string &partition_assignment_file);
-
-  // StateSendClient(const uint64_t id,
-                  // const std::vector<std::string> &address_list,
-                  // int num_orchestration_thread,
-                  // const std::string &partition_assignment_file,
-                  // DistributedSearchMode dist_search_mode, uint64_t dim);
-
-  /**
-     shuts down every thing correctly,
-
-   */
-
+                  const std::string &partition_assignment_file, uint32_t top_n, const std::string &medoid_file);
+  
   void start();
 
   uint64_t search(const T *query_emb, const uint64_t k_search, const uint64_t mem_l,

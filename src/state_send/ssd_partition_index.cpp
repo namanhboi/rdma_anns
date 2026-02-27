@@ -131,7 +131,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       this->dist_search_mode ==
           DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
     this->enable_locs = true;
-  } else if (this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+} else if (this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER || this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
     this->enable_tags = true;
   } else if (this->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
     this->enable_tags = false;
@@ -564,7 +564,7 @@ void SSDPartitionIndex<T, TagT>::notify_client_tcp(
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::notify_client(
     SearchState<T, TagT> *search_state) {
-  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER || dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
     QueryEmbedding<T> *query = query_emb_map.find(search_state->query_id);
     preallocated_query_emb_queue.free(query);
     query_emb_map.erase(search_state->query_id);

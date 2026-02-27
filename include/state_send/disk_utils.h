@@ -3,7 +3,11 @@
 #include <string>
 #include <cstdint>
 #include "utils.h"
+#include <filesystem>
 #include "omp.h"
+#include <parlay/parallel.h>
+#include <parlay/primitives.h>
+#include <parlay/internal/file_map.h>
 
 
 constexpr double MEM_INDEX_SAMPLING_RATE = 0.01;
@@ -188,3 +192,9 @@ int build_in_memory_index(const std::string &data_path,
                           const std::string &save_path,
                           const unsigned num_threads, bool dynamic_index,
                           bool single_file_index, pipeann::Metric distMetric);
+
+
+template <typename T>
+void calculate_medoid(const T *full_data, size_t dim,
+                      const parlay::sequence<uint32_t> &partition_indices,
+                      T *&medoid_data, uint32_t &medoid_id);

@@ -221,7 +221,9 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --data_type=$DATA_TYPE \
   --result_output_folder=$REMOTE_LOG_DIR \
   --partition_assignment_file=${DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE} \
-  --write_query_csv=${WRITE_QUERY_CSV}"
+  --write_query_csv=${WRITE_QUERY_CSV} \
+  --top_n=$TOP_N \
+  --medoid_file=$MEDOID_FILE"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH

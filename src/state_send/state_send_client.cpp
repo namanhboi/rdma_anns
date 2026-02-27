@@ -1,8 +1,10 @@
 #include "state_send_client.h"
 #include "disk_utils.h"
+#include "distance.h"
 #include "neighbor.h"
 #include "ssd_partition_index.h"
 #include "types.h"
+#include "utils.h"
 #include <chrono>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -46,24 +48,24 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       }
     }
 
-    size_t region_size =
-        sizeof(MessageType::QUERIES) +
-        QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
-    MessageType msg_type = MessageType::QUERIES;
-    Region r;
-    r.length = region_size;
-    r.addr = new char[region_size];
-
-    size_t offset = 0;
-    std::memcpy(r.addr, &msg_type, sizeof(msg_type));
-    offset += sizeof(msg_type);
-
-    QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
-                                               batch_of_queries);
     if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND ||
         parent->dist_search_mode == DistributedSearchMode::SINGLE_SERVER ||
         parent->dist_search_mode ==
             DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+      size_t region_size =
+          sizeof(MessageType::QUERIES) +
+          QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
+      MessageType msg_type = MessageType::QUERIES;
+      Region r;
+      r.length = region_size;
+      r.addr = new char[region_size];
+
+      size_t offset = 0;
+      std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+      offset += sizeof(msg_type);
+
+      QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
+                                                 batch_of_queries);
       uint32_t server_peer_id =
           parent->current_round_robin_peer_index.fetch_add(1) %
           parent->other_peer_ids.size();
@@ -75,6 +77,20 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
                                          &r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
+      size_t region_size =
+          sizeof(MessageType::QUERIES) +
+          QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
+      MessageType msg_type = MessageType::QUERIES;
+      Region r;
+      r.length = region_size;
+      r.addr = new char[region_size];
+
+      size_t offset = 0;
+      std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+      offset += sizeof(msg_type);
+
+      QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
+                                                 batch_of_queries);
 
       // for (const auto &query : batch_of_queries) {
       // parent->query_send_time.insert_or_assign(
@@ -92,7 +108,50 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
           r_copy.lkey = r.lkey;
           r_copy.addr = new char[r_copy.length];
           std::memcpy(r_copy.addr, r.addr, r.length);
-          parent->communicator->send_to_peer(parent->other_peer_ids[i], &r_copy);
+          parent->communicator->send_to_peer(parent->other_peer_ids[i],
+                                             &r_copy);
+        }
+      }
+    } else if (parent->dist_search_mode ==
+               DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+      // need to loop through medoid and caclulate distance to all parittions
+      // then send query to top n nearest ones
+      // need to verfiy
+
+      for (size_t i = 0; i < num_dequeued; i++) {
+        auto &query = batch_of_queries[i];
+        std::vector<std::pair<float, uint8_t>> distances;
+        for (size_t pid = 0; pid < parent->num_partitions; pid++) {
+          distances.emplace_back(
+              parent->distance_fn->compare(parent->partition_medoids +
+                                               pid * parent->dim,
+                                           query->query, parent->dim),
+				 (uint8_t)pid);
+        }
+        std::partial_sort(distances.begin(),
+                          distances.begin() + parent->num_results_to_expect,
+                          distances.end(),
+                          [](const std::pair<float, uint8_t> &a,
+                             const std::pair<float, uint8_t> &b) {
+                            return a.first < b.first;
+                          });
+        for (size_t pid = 0; pid < parent->num_results_to_expect; pid++) {
+          size_t region_size = sizeof(size_t) + sizeof(MessageType::QUERIES) +
+                               query->get_serialize_size();
+          MessageType msg_type = MessageType::QUERIES;
+          Region r;
+          r.length = region_size;
+          r.addr = new char[region_size];
+	  size_t num_queries = 1;
+          size_t offset = 0;
+          std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+          offset += sizeof(msg_type);
+          std::memcpy(r.addr + offset, &num_queries, sizeof(num_queries));
+          offset += sizeof(num_queries);          
+          // QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
+          // batch_of_queries);
+          query->write_serialize(r.addr + offset);
+          parent->communicator->send_to_peer(distances[pid].second, &r);
         }
       }
     }
@@ -144,7 +203,8 @@ template <typename T>
 StateSendClient<T>::StateSendClient(
     const uint64_t id, const std::vector<std::string> &address_list,
     int num_worker_threads, DistributedSearchMode dist_search_mode,
-    uint64_t dim, const std::string &partition_assignment_file)
+    uint64_t dim, const std::string &partition_assignment_file, uint32_t top_n,
+    const std::string &medoid_file)
     : my_id(id), dim(dim), dist_search_mode(dist_search_mode) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
   // std::cout << "Done with constructor for statesendclient" << std::endl;
@@ -171,6 +231,20 @@ StateSendClient<T>::StateSendClient(
                                    partition_assignment, num_partitions);
     LOG(INFO) << "Done loading partition assignment file";
   } else {
+    if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+      num_results_to_expect = top_n;
+      if (!file_exists(medoid_file)) {
+        throw std::invalid_argument("medoid file doesn't exist");
+      }
+      size_t np;
+      pipeann::load_bin<T>(medoid_file, partition_medoids, np, dim);
+      num_partitions = np;
+      distance_fn = pipeann::get_distance_function<T>(pipeann::L2);
+      LOG(INFO) << "Loading medoids done";
+    } else if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+      num_results_to_expect = other_peer_ids.size();
+    }
+
     num_client_threads = num_worker_threads;
     communicator->register_receive_handler(
         [this](const char *buffer, size_t size) {
@@ -443,7 +517,7 @@ void StateSendClient<T>::ResultReceiveThread::process_scatter_gather_result(
       },
       std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>{
           {res->partition_history[0], res}});
-  if (num_res == parent->other_peer_ids.size()) {
+  if (num_res == parent->num_results_to_expect) {
     std::shared_ptr<search_result_t> combined_res =
         combine_results_scatter_gather(
             parent->sub_query_results.find(res->query_id));
@@ -479,7 +553,7 @@ void StateSendClient<T>::ResultReceiveThread::
         all_results_arrived = results.all_results_arrived();
         return false;
       },
-				       client_gather_results_t(res, all_results_arrived));
+      client_gather_results_t(res, all_results_arrived));
 
   if (all_results_arrived) {
     std::shared_ptr<search_result_t> combined_res =
@@ -504,7 +578,9 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
       assert(!running);
       break;
     }
-    if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER ||
+        parent->dist_search_mode ==
+            DistributedSearchMode::SCATTER_GATHER_TOP_N) {
       process_scatter_gather_result(res);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {

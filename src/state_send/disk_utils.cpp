@@ -2,29 +2,27 @@
 #include "disk_utils.h"
 #include "aux_utils.h"
 #include "cached_io.h"
+#include "distance.h"
 #include "graph_partitioning_utils.h"
 #include "index.h"
 #include "log.h"
+#include "parlay/primitives.h"
 #include "partition_and_pq.h"
 #include "query_buf.h"
 #include "utils.h"
 #include <boost/container/container_fwd.hpp>
 #include <cblas.h>
 #include <cstdint>
-#include <experimental/filesystem>
+#include <limits>
 #include <memory>
 #include <random>
 #include <sstream>
 #include <stdexcept>
-#include <filesystem>
 #include "points_io.h"
 #include "overlapping_partitioning.h"
 #include <type_traits>
 #include <unordered_set>
 #include "partitioning.h"
-#include <parlay/parallel.h>
-#include <parlay/primitives.h>
-#include <parlay/internal/file_map.h>
 
 namespace fs = std::filesystem;
 
@@ -1172,6 +1170,86 @@ void write_graph_file_from_parlayann_graph_file(
   graph_writer.close();
 }
 
+
+
+// Helper to determine a statistically sound sample size
+size_t get_sample_size(size_t n_part, size_t base_size = 1000) {
+    if (n_part <= base_size) return n_part;
+    // Logarithmic scaling ensures we grow slightly with massive partitions
+    // but stay within CPU cache limits.
+    return base_size + static_cast<size_t>(100 * std::log2(n_part / base_size));
+}
+
+
+/**
+ * Calculates a medoid for a subset of a massive dataset.
+ * * @param full_data Pointer to the entire dataset (likely mmap'd).
+ * @param dim The dimensionality of the vectors.
+ * @param partition_indices A sequence containing the IDs of points in this partition.
+ * @param medoid_data [Out] Pointer to be populated with a new T[dim] containing the medoid vector.
+ * @param medoid_id [Out] The global ID of the chosen medoid.
+ */
+template <typename T>
+void calculate_medoid(
+    const T* full_data, 
+    size_t dim, 
+    const parlay::sequence<uint32_t>& partition_indices, 
+    T*& medoid_data, 
+    uint32_t& medoid_id) 
+{
+    size_t n_part = partition_indices.size();
+    if (n_part == 0) return;
+
+    auto l2 = pipeann::get_distance_function<T>(pipeann::L2);
+
+    // 1. Fixed sample sizes for statistical significance
+    size_t num_candidates = std::min<size_t>(n_part, 1000); 
+    size_t num_references = std::min<size_t>(n_part, 500);
+
+    // 2. Random Sampling (Fixed Parlay syntax)
+    parlay::random_generator gen(42); 
+    auto cand_ids = parlay::tabulate(num_candidates, [&](size_t i) {
+        auto r = gen[i];
+        return partition_indices[r() % n_part]; // Calling r() as a function
+    });
+
+    auto ref_ids = parlay::tabulate(num_references, [&](size_t i) {
+        auto r = gen[i + num_candidates]; 
+        return partition_indices[r() % n_part];
+    });
+
+    // 3. Pre-fetch vectors to local RAM (Essential for mmap efficiency)
+    std::vector<T> cand_buffer(num_candidates * dim);
+    std::vector<T> ref_buffer(num_references * dim);
+
+    parlay::parallel_for(0, num_candidates, [&](size_t i) {
+        std::memcpy(&cand_buffer[i * dim], full_data + (size_t)cand_ids[i] * dim, dim * sizeof(T));
+    });
+    
+    parlay::parallel_for(0, num_references, [&](size_t i) {
+        std::memcpy(&ref_buffer[i * dim], full_data + (size_t)ref_ids[i] * dim, dim * sizeof(T));
+    });
+
+    // 4. Score Candidates (Compute sum of distances in L2 cache)
+    auto results = parlay::tabulate(num_candidates, [&](size_t c) {
+        float sum = 0;
+        const T* c_ptr = &cand_buffer[c * dim];
+        for (size_t r = 0; r < num_references; ++r) {
+            sum += l2->compare(c_ptr, &ref_buffer[r * dim], dim);
+        }
+        return std::make_pair(sum, cand_ids[c]);
+    });
+
+    // 5. Select winner
+    auto best = parlay::reduce(results, parlay::make_monoid([](auto a, auto b) {
+        return (a.first < b.first) ? a : b;
+    }, std::make_pair(std::numeric_limits<float>::max(), 0u)));
+
+    // 6. Final Extraction
+    medoid_id = best.second;
+    medoid_data = new T[dim];
+    std::memcpy(medoid_data, full_data + (size_t)medoid_id * dim, dim * sizeof(T));
+}
 template void
 create_random_cluster_tag_files<float>(const std::string &base_file,
                                        const std::string &index_path_prefix,
@@ -1359,5 +1437,22 @@ template int build_in_memory_index<int8_t>(
     const unsigned R, const unsigned L, const float alpha,
     const std::string &save_path, const unsigned num_threads,
 					   bool dynamic_index, bool single_file_index, pipeann::Metric distMetric);
+
+
+
+template void
+calculate_medoid(const int8_t *full_data, size_t dim,
+                 const parlay::sequence<uint32_t> &partition_indices,
+                 int8_t *&medoid_data, uint32_t &medoid_id);
+
+template void
+calculate_medoid(const uint8_t *full_data, size_t dim,
+                 const parlay::sequence<uint32_t> &partition_indices,
+                 uint8_t *&medoid_data, uint32_t &medoid_id);
+
+template void
+calculate_medoid(const float *full_data, size_t dim,
+                 const parlay::sequence<uint32_t> &partition_indices,
+                 float *&medoid_data, uint32_t &medoid_id);
 
 

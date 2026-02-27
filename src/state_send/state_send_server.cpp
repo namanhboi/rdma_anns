@@ -205,20 +205,9 @@ int main(int argc, char **argv) {
   if (data_type != "uint8" && data_type != "int8" && data_type != "float") {
     throw std::invalid_argument("data type doesn't make sense");
   }
-  if (dist_search_mode_str == "STATE_SEND") {
-    dist_search_mode = DistributedSearchMode::STATE_SEND;
-  } else if (dist_search_mode_str == "SCATTER_GATHER") {
-    dist_search_mode = DistributedSearchMode::SCATTER_GATHER;
-  } else if (dist_search_mode_str == "SINGLE_SERVER") {
-    dist_search_mode = DistributedSearchMode::SINGLE_SERVER;
-  } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
-    dist_search_mode = DistributedSearchMode::DISTRIBUTED_ANN;
-  } else if (dist_search_mode_str == "STATE_SEND_CLIENT_GATHER") {
-    dist_search_mode = DistributedSearchMode::STATE_SEND_CLIENT_GATHER;
-  } else {
-    throw std::invalid_argument("Dist search mode has weird value " +
-                                dist_search_mode_str);
-  }
+
+  dist_search_mode = get_distributed_search_mode(dist_search_mode_str);
+
   if (dist_search_mode != DistributedSearchMode::SINGLE_SERVER) {
     index_path_prefix += std::to_string(server_peer_id);
   }

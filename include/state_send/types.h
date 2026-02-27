@@ -53,7 +53,8 @@ enum class DistributedSearchMode : uint32_t {
   STATE_SEND = 1,
   SINGLE_SERVER = 2,
   DISTRIBUTED_ANN = 3,
-  STATE_SEND_CLIENT_GATHER = 4
+  STATE_SEND_CLIENT_GATHER = 4,
+  SCATTER_GATHER_TOP_N = 5
 };
 
 
@@ -69,9 +70,30 @@ inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
     return "DISTRIBUTED_ANN";
   } else if (mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
     return "STATE_SEND_CLIENT_GATHER";
+  } else if (mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    return "SCATTER_GATHER_TOP_N";
   } else {
     throw std::runtime_error("Weird dist search mode value");
   }
+}
+inline DistributedSearchMode
+get_distributed_search_mode(std::string dist_search_mode_str) {
+  if (dist_search_mode_str == "STATE_SEND") {
+    return  DistributedSearchMode::STATE_SEND;
+  } else if (dist_search_mode_str == "SCATTER_GATHER") {
+    return  DistributedSearchMode::SCATTER_GATHER;
+  } else if (dist_search_mode_str == "SINGLE_SERVER") {
+    return  DistributedSearchMode::SINGLE_SERVER;
+  } else if (dist_search_mode_str == "DISTRIBUTED_ANN") {
+    return  DistributedSearchMode::DISTRIBUTED_ANN;
+  } else if (dist_search_mode_str == "STATE_SEND_CLIENT_GATHER"){
+    return  DistributedSearchMode::STATE_SEND_CLIENT_GATHER;
+  } else if (dist_search_mode_str == "SCATTER_GATHER_TOP_N") {
+    return DistributedSearchMode::SCATTER_GATHER_TOP_N;
+  }else {
+    throw std::invalid_argument("Dist search mode has weird value " +
+                                dist_search_mode_str);
+  }  
 }
 
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
@@ -151,7 +173,6 @@ enum class UpdateFrontierValue {
   FRONTIER_HAS_ON_SERVER,
   // frontier is not empty and
   // there is at least some on server nodes to explore
-
 
   FRONTIER_EMPTY_ONLY_OFF_SERVER,
   // frontier is empty because all nodes visited by state update frontier are

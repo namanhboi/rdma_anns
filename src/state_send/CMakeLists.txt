@@ -213,3 +213,18 @@ target_compile_options(create_normalized_base_file_mips PRIVATE
   $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
+
+
+add_executable(create_partition_assignment_file_from_ids create_partition_assignment_file_from_ids.cpp)
+target_link_libraries(create_partition_assignment_file_from_ids ssd_state_send)
+target_compile_options(create_partition_assignment_file_from_ids PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)
+
+add_executable(create_medoid_file create_medoid_file.cpp)
+target_link_libraries(create_medoid_file ssd_state_send)
+target_compile_options(create_medoid_file PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)
