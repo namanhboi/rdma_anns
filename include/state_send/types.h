@@ -37,6 +37,8 @@ static constexpr int maxKSearch = 256;
 static constexpr uint32_t MAX_L_SEARCH = 512;
 
 
+constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 100000;
+
 // max for statesend and scatter gather that uses inter query balacing impl (that I
 // made) called balance batch
 // later when/if i implement the comparison to pipeann methods then the beam

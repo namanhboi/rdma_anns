@@ -185,7 +185,10 @@ public:
                   const std::vector<std::string> &address_list,
                   int num_worker_threads,
                   DistributedSearchMode dist_search_mode, uint64_t dim,
-                  const std::string &partition_assignment_file, uint32_t top_n, const std::string &medoid_file);
+                  const std::string &partition_assignment_file, uint32_t top_n,
+                  const std::string &medoid_file);
+  PreallocatedQueue<search_result_t> prealloc_result_queue;
+  PreallocatedQueue<Region> prealloc_region_queue;
   
   void start();
 

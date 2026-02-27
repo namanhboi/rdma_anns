@@ -35,7 +35,7 @@
 
 #define MAX_WORKER_THREADS 64
 
-constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 100000;
+
 constexpr uint64_t MAX_ELEMENTS_HANDLER = 500;
 
 namespace {
