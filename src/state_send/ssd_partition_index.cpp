@@ -1341,14 +1341,14 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
       buffer,
       reinterpret_cast<const char *>(state->partition_history_hop_idx.data()),
       sizeof(uint32_t) * num_partition_history_idx, offset);
-  bool record_stats = (state->stats != nullptr);
+  bool is_final_result = state_search_ends(state);
+
+  bool record_stats = (state->stats != nullptr) && is_final_result;
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
   if (record_stats) {
     offset += state->stats->write_serialize(buffer + offset);
   }
-  bool is_final_result = state_search_ends(state);
-
   write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
              sizeof(is_final_result), offset);
   return offset;

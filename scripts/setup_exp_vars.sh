@@ -243,7 +243,8 @@ COUNTER_SLEEP_MS=100
 # LVEC="400"
 K_VALUE=10
 RECORD_STATS=true
-
+# because of std::shared_ptr, slightly lower perf, need to fix but not high priority
+# keep in mind to turn off when measuring throughput/latency
 
 EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_BEAMWIDTH_${BEAM_WIDTH}
 # --- Export variables ---

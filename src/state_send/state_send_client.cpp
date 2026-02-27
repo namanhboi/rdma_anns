@@ -322,22 +322,8 @@ combine_results_client_gather(const client_gather_results_t &all_results) {
   }
   // need to combine stats as well, for now lets just do the mean of each
   // category
-  combined_res->stats = std::make_shared<QueryStats>();
-  size_t count = 0;
-
-  for (const auto &res : all_results.results) {
-    if (res->stats != nullptr) {
-      count++;
-      combined_res->stats->total_us += res->stats->total_us;
-      combined_res->stats->n_4k += res->stats->n_4k;
-      combined_res->stats->n_ios += res->stats->n_ios;
-      combined_res->stats->io_us += res->stats->io_us;
-      combined_res->stats->head_us += res->stats->head_us;
-      combined_res->stats->cpu_us += res->stats->cpu_us;
-      combined_res->stats->n_cmps += res->stats->n_cmps;
-      combined_res->stats->n_hops += res->stats->n_hops;
-    }
-  }
+  combined_res->stats =
+    all_results.results[all_results.final_result_idx]->stats;
   return combined_res;
 }
 
@@ -401,8 +387,6 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
     auto results = search_result_t::deserialize_results(buffer + offset);
     this->result_queue.enqueue_bulk(results.begin(), results.size());
   }
-  // uint64_t query_id;
-  // std::memcpy(&msg_type, buffer, sizeof(msg_type));
 }
 
 template <typename T> void StateSendClient<T>::shutdown() {
