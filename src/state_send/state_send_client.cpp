@@ -30,6 +30,12 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
   batch_of_queries.reserve(max_batch_size + 1);
   auto timeout = std::chrono::microseconds(100);
   // std::cout << "main loop started for client thread " << std::endl;
+
+  // for scatter gather top n
+  std::vector<std::vector<std::shared_ptr<QueryEmbedding<T>>>>
+  query_batches(parent->other_peer_ids.size());
+
+  MessageType msg_type = MessageType::QUERIES;
   while (running) {
     batch_of_queries.resize(max_batch_size + 1);
     size_t num_dequeued =
@@ -55,16 +61,16 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       size_t region_size =
           sizeof(MessageType::QUERIES) +
           QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
-      MessageType msg_type = MessageType::QUERIES;
-      Region r;
-      r.length = region_size;
-      r.addr = new char[region_size];
 
+      Region *r;
+      parent->prealloc_region_queue.dequeue_exact(1, &r);
+
+      r->length = region_size;
       size_t offset = 0;
-      std::memcpy(r.addr, &msg_type, sizeof(msg_type));
+      std::memcpy(r->addr, &msg_type, sizeof(msg_type));
       offset += sizeof(msg_type);
 
-      QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
+      QueryEmbedding<T>::write_serialize_queries(r->addr + offset,
                                                  batch_of_queries);
       uint32_t server_peer_id =
           parent->current_round_robin_peer_index.fetch_add(1) %
@@ -74,43 +80,28 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       // query->query_id, std::chrono::steady_clock::now());
       // }
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
-                                         &r);
+                                         r);
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER) {
       size_t region_size =
           sizeof(MessageType::QUERIES) +
           QueryEmbedding<T>::get_serialize_size_queries(batch_of_queries);
-      MessageType msg_type = MessageType::QUERIES;
-      Region r;
-      r.length = region_size;
-      r.addr = new char[region_size];
 
-      size_t offset = 0;
-      std::memcpy(r.addr, &msg_type, sizeof(msg_type));
-      offset += sizeof(msg_type);
+      std::vector<Region *> r_copy(parent->num_results_to_expect);
+      parent->prealloc_region_queue.dequeue_exact(parent->num_results_to_expect,
+                                                  r_copy.data());
 
-      QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
-                                                 batch_of_queries);
+      for (uint64_t i = 0; i < parent->num_results_to_expect; i++) {
+        size_t offset = 0;
+        r_copy[i]->length = region_size;
+        write_data(r_copy[i]->addr + offset,
+                   reinterpret_cast<const char *>(&msg_type), sizeof(msg_type),
+                   offset);
 
-      // for (const auto &query : batch_of_queries) {
-      // parent->query_send_time.insert_or_assign(
-      // query->query_id, std::chrono::steady_clock::now());
-      // }
-      for (uint64_t i = 0; i < parent->other_peer_ids.size(); i++) {
-        if (i == parent->other_peer_ids.size() - 1) {
-          // don't need to make an additional copy of r
-          // std::cout << "sending query" <<std::endl;
-          parent->communicator->send_to_peer(parent->other_peer_ids[i], &r);
-        } else {
-          Region r_copy;
-          r_copy.length = r.length;
-          r_copy.context = r.context;
-          r_copy.lkey = r.lkey;
-          r_copy.addr = new char[r_copy.length];
-          std::memcpy(r_copy.addr, r.addr, r.length);
-          parent->communicator->send_to_peer(parent->other_peer_ids[i],
-                                             &r_copy);
-        }
+        QueryEmbedding<T>::write_serialize_queries(r_copy[i]->addr + offset,
+                                                   batch_of_queries);
+        parent->communicator->send_to_peer(parent->other_peer_ids[i],
+                                           r_copy[i]);
       }
     } else if (parent->dist_search_mode ==
                DistributedSearchMode::SCATTER_GATHER_TOP_N) {
@@ -118,15 +109,17 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       // then send query to top n nearest ones
       // need to verfiy
 
+      // loop through each query to see where we should send the queries
+
       for (size_t i = 0; i < num_dequeued; i++) {
-        auto &query = batch_of_queries[i];
+        auto query = batch_of_queries[i];
         std::vector<std::pair<float, uint8_t>> distances;
-        for (size_t pid = 0; pid < parent->num_partitions; pid++) {
+        for (size_t pid = 0; pid < parent->other_peer_ids.size(); pid++) {
           distances.emplace_back(
               parent->distance_fn->compare(parent->partition_medoids +
                                                pid * parent->dim,
                                            query->query, parent->dim),
-				 (uint8_t)pid);
+              (uint8_t)pid);
         }
         std::partial_sort(distances.begin(),
                           distances.begin() + parent->num_results_to_expect,
@@ -139,19 +132,20 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
           size_t region_size = sizeof(size_t) + sizeof(MessageType::QUERIES) +
                                query->get_serialize_size();
           MessageType msg_type = MessageType::QUERIES;
-          Region r;
-          r.length = region_size;
-          r.addr = new char[region_size];
+
+          Region *r;
+          parent->prealloc_region_queue.dequeue_exact(1, &r);
+          r->length = region_size;
 	  size_t num_queries = 1;
           size_t offset = 0;
-          std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+          std::memcpy(r->addr + offset, &msg_type, sizeof(msg_type));
           offset += sizeof(msg_type);
-          std::memcpy(r.addr + offset, &num_queries, sizeof(num_queries));
+          std::memcpy(r->addr + offset, &num_queries, sizeof(num_queries));
           offset += sizeof(num_queries);          
           // QueryEmbedding<T>::write_serialize_queries(r.addr + offset,
           // batch_of_queries);
-          query->write_serialize(r.addr + offset);
-          parent->communicator->send_to_peer(distances[pid].second, &r);
+          query->write_serialize(r->addr + offset);
+          parent->communicator->send_to_peer(distances[pid].second, r);
         }
       }
     }
@@ -205,7 +199,9 @@ StateSendClient<T>::StateSendClient(
     int num_worker_threads, DistributedSearchMode dist_search_mode,
     uint64_t dim, const std::string &partition_assignment_file, uint32_t top_n,
     const std::string &medoid_file)
-    : my_id(id), dim(dim), dist_search_mode(dist_search_mode) {
+    : my_id(id), dim(dim), dist_search_mode(dist_search_mode),
+      prealloc_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset),
+      prealloc_result_queue(MAX_PRE_ALLOC_ELEMENTS, search_result_t::reset) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
   // std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
@@ -254,6 +250,9 @@ StateSendClient<T>::StateSendClient(
       client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
     }
   }
+
+  prealloc_region_queue.allocate_and_assign_additional_block(
+      Region::MAX_BYTES_REGION, Region::assign_addr);
 
   result_thread = std::make_unique<ResultReceiveThread>(this);
 }
@@ -455,17 +454,17 @@ void StateSendClient<T>::send_acks(std::shared_ptr<search_result_t> result) {
   std::unordered_set<uint8_t> server_peer_ids(
       result->partition_history.cbegin(), result->partition_history.cend());
   for (const auto &server_peer_id : server_peer_ids) {
-    Region r;
+    Region *r;
+    prealloc_region_queue.dequeue_exact(1, &r);
     MessageType msg_type = MessageType::RESULT_ACK;
     ack a;
     a.query_id = result->query_id;
-    r.length = sizeof(msg_type) + a.get_serialize_size();
-    r.addr = new char[r.length];
+    r->length = sizeof(msg_type) + a.get_serialize_size();
     size_t offset = 0;
-    std::memcpy(r.addr + offset, &msg_type, sizeof(msg_type));
+    std::memcpy(r->addr + offset, &msg_type, sizeof(msg_type));
     offset += sizeof(msg_type);
-    a.write_serialize(r.addr + offset);
-    communicator->send_to_peer(server_peer_id, &r);
+    a.write_serialize(r->addr + offset);
+    communicator->send_to_peer(server_peer_id, r);
   }
 }
 
@@ -473,10 +472,6 @@ template <typename T>
 void StateSendClient<T>::ResultReceiveThread::process_singular_result(
     const std::shared_ptr<search_result_t> &res) {
   parent->results.insert_or_assign(res->query_id, res);
-  // for (auto i = 0; i < res->num_res; i++) {
-  // LOG(INFO) << res->node_id[i];
-  // }
-  // LOG(INFO) << res->num_res;
   parent->query_result_time.insert_or_assign(res->query_id,
                                              std::chrono::steady_clock::now());
   parent->num_results_received.fetch_add(1);
