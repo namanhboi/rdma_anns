@@ -310,8 +310,10 @@ void combine_results_client_gather(const client_gather_results_t &all_results,
       node_id_dist.emplace_back(result->node_id[i], result->distance[i]);
     }
   }
-  std::sort(node_id_dist.begin(), node_id_dist.end(),
-            [](auto &left, auto &right) { return left.second < right.second; });
+  std::partial_sort(
+      node_id_dist.begin(), node_id_dist.begin() + combined_res->k_search,
+      node_id_dist.end(),
+		    [](auto &left, auto &right) { return left.second < right.second; });
   combined_res->num_res = std::min(combined_res->k_search, node_id_dist.size());
   for (auto i = 0; i < combined_res->num_res; i++) {
     combined_res->node_id[i] = node_id_dist[i].first;
@@ -335,8 +337,10 @@ void combine_results_scatter_gather(
       // LOG(INFO) << res ->node_id[i];
     }
   }
-  std::sort(node_id_dist.begin(), node_id_dist.end(),
-            [](auto &left, auto &right) { return left.second < right.second; });
+  std::partial_sort(
+      node_id_dist.begin(), node_id_dist.begin() + combined_res->k_search,
+      node_id_dist.end(),
+		    [](auto &left, auto &right) { return left.second < right.second; });
   combined_res->num_res = std::min(combined_res->k_search, node_id_dist.size());
   // LOG(INF) << "num_res " << combined_res->num_res;
   for (auto i = 0; i < combined_res->num_res; i++) {

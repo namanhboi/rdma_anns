@@ -419,7 +419,7 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
 							 SearchState<T, TagT> *state) {
   std::vector<pipeann::Neighbor> &result = state->full_retset;
   if (dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
-    std::sort(result.begin(), result.end());
+    std::partial_sort(result.begin(), result.begin() + state->k_search, result.end());
   }
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
