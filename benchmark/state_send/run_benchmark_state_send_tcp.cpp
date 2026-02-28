@@ -10,13 +10,13 @@
 #include <stdexcept>
 
 void write_results_csv(
-    const std::vector<std::shared_ptr<search_result_t>> &results,
+    const std::vector<search_result_t*> &results,
     const std::vector<double> &send_timestamp,
     const std::vector<double> &receive_timestamp,
     const std::string &output_file) {
   std::ofstream output(output_file);
   output << std::setprecision(15);
-  auto partition_history_to_str = [](std::shared_ptr<search_result_t> result) {
+  auto partition_history_to_str = [](search_result_t *result) {
     std::stringstream str;
     str << "[";
     for (const auto &id : result->partition_history) {
@@ -175,8 +175,9 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
       }
     }
     client.wait_results(num_queries_to_send);
+    // LOG(INFO) << "Done waiting for results";
 
-    std::vector<std::shared_ptr<search_result_t>> results;
+    std::vector<search_result_t*> results;
     std::vector<double> e2e_latencies;
     std::vector<double> send_timestamp;
     std::vector<double> receive_timestamp;
@@ -301,6 +302,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         std::cout << std::setw(12) << recall << std::endl;
       }
     }
+    client.clear_results(results);
   };
 
   // LOG(INFO) << "Use two ANNS for warming up...";
@@ -329,6 +331,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
 
   for (uint32_t test_id = 0; test_id < Lvec.size(); test_id++) {
     run_tests(test_id, true);
+    // LOG(INFO) <<;
   }
   client.shutdown();
 

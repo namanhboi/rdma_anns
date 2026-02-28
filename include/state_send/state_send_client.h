@@ -20,7 +20,7 @@ private:
   std::atomic<uint64_t> num_results_received={0};
 
 
-  libcuckoo::cuckoohash_map<uint64_t, std::shared_ptr<search_result_t>> results;
+  libcuckoo::cuckoohash_map<uint64_t, search_result_t*> results;
 
 
   /////// used for scatter gather only
@@ -30,7 +30,7 @@ private:
       sub_query_result_time;
   libcuckoo::cuckoohash_map<
       uint64_t,
-      std::vector<std::pair<uint8_t, std::shared_ptr<search_result_t>>>>
+      std::vector<std::pair<uint8_t, search_result_t*>>>
       sub_query_results;
   ///////////
 
@@ -106,8 +106,8 @@ private:
                          float threshold,
                          std::vector<uint8_t> &partitions_with_emb);
     
-    std::shared_ptr<search_result_t>
-    search_query(std::shared_ptr<QueryEmbedding<T>> query);
+    void
+    search_query(std::shared_ptr<QueryEmbedding<T>> query, search_result_t* result);
     void main_loop();
   public:
     OrchestrationThread(StateSendClient *parent);
@@ -145,13 +145,13 @@ private:
     uint64_t my_thread_id;
 
     // used for STATE_SEND, DISTRIBUTED_ANN, SINGLE_SERVER
-    void process_singular_result(const std::shared_ptr<search_result_t> &res);
+    void process_singular_result(search_result_t* res);
 
     // used for SCATTER_GATHER
-    void process_scatter_gather_result(const std::shared_ptr<search_result_t> &res);
+    void process_scatter_gather_result(search_result_t* res);
 
     // used by STATE_SEND_CLIENT_GATHER
-    void process_state_send_client_gather_result(const std::shared_ptr<search_result_t> &res);
+    void process_state_send_client_gather_result(search_result_t* res);
     
     void main_loop();
     std::atomic<bool> running{false};
@@ -172,8 +172,7 @@ private:
   uint32_t num_results_to_expect = std::numeric_limits<uint32_t>::max();
 
   // moodycamel::ProducerToken ptok;
-  moodycamel::BlockingConcurrentQueue<std::shared_ptr<search_result_t>>
-      result_queue;
+  moodycamel::BlockingConcurrentQueue<search_result_t *> result_queue;
 
 private:
   size_t dim;
@@ -196,7 +195,7 @@ public:
 		  const uint64_t l_search, const uint64_t beam_width, bool record_stats);
 
   void wait_results(const uint64_t num_results);
-  std::shared_ptr<search_result_t> get_result(const uint64_t query_id);
+  search_result_t* get_result(const uint64_t query_id);
 
   std::chrono::steady_clock::time_point
   get_query_send_time(const uint64_t query_id);
@@ -210,12 +209,12 @@ public:
    */
   void receive_result_handler(const char *buffer, size_t size);
 
-
-
   /**
      send acks based on partition history of result
   */
-  void send_acks(std::shared_ptr<search_result_t> result);
+  void send_acks(const search_result_t *result);
+
+  void clear_results(const std::vector<search_result_t *> &results_used);
 
   void shutdown();
 

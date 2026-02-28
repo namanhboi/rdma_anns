@@ -21,11 +21,11 @@
 // void print_neighbor_vec(const std::vector<pipeann::Neighbor> &nbrs);
 
 // template <typename T> std::string list_to_string(T *start, uint32_t num) {
-  // std::string str = "";
-  // for (uint32_t i = 0; i < num; i++) {
-    // str += std::to_string(start[i]) + " " ;
-  // }
-  // return str;
+// std::string str = "";
+// for (uint32_t i = 0; i < num; i++) {
+// str += std::to_string(start[i]) + " " ;
+// }
+// return str;
 // }
 
 size_t write_data(char *buffer, const char *data, size_t size,
@@ -197,9 +197,9 @@ struct QueryStats {
   static std::shared_ptr<QueryStats> deserialize(const char *buffer);
 };
 inline double get_percentile_stats(
-    std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
-    float percentile,
-    const std::function<double(const std::shared_ptr<QueryStats> &)>
+				   std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
+				   float percentile,
+				   const std::function<double(const std::shared_ptr<QueryStats> &)>
         &member_fn) {
   std::vector<double> vals(len);
   for (uint64_t i = 0; i < len; i++) {
@@ -207,8 +207,8 @@ inline double get_percentile_stats(
   }
 
   std::sort(
-      vals.begin(), vals.end(),
-      [](const double &left, const double &right) { return left < right; });
+	    vals.begin(), vals.end(),
+	    [](const double &left, const double &right) { return left < right; });
 
   auto retval = vals[(uint64_t)(percentile * ((float)len))];
   vals.clear();
@@ -227,6 +227,7 @@ get_mean_stats(std::vector<std::shared_ptr<QueryStats>> stats, uint64_t len,
 }
 
 struct search_result_t {
+  static constexpr size_t MAX_PRE_ALLOC_ELEMENTS = ::MAX_PRE_ALLOC_ELEMENTS * 2;
   uint64_t query_id;
   uint64_t client_peer_id;
   uint64_t k_search;
@@ -240,29 +241,28 @@ struct search_result_t {
   // used for state_send_client_gather, the number of results to expect = size of partition history?
   bool is_final_result = false;
 
-  static std::shared_ptr<search_result_t> deserialize(const char *buffer);
+  static void deserialize(const char *buffer, search_result_t*);
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
 
-  static size_t write_serialize_results(
-      char *buffer,
+  static size_t write_serialize_results(char *buffer,
+                                        const search_result_t **results,
+                                        size_t num_results);
 
-      const std::vector<std::shared_ptr<search_result_t>> &results);
+  static size_t get_serialize_results_size(const search_result_t **results,
+                                           size_t num_results);
 
-  static size_t get_serialize_results_size(
-      const std::vector<std::shared_ptr<search_result_t>> &results);
-
-  static std::vector<std::shared_ptr<search_result_t>>
-  deserialize_results(const char *buffer);
+  static void deserialize_results(const char *buffer, search_result_t **results,
+                                  size_t num_results);
 
   static size_t get_max_num_res() { return MAX_L_SEARCH * 2; }
   static void reset(search_result_t*);
 };
 
 struct client_gather_results_t {
-  std::vector<std::shared_ptr<search_result_t>> results;
+  std::vector<search_result_t*> results;
   int final_result_idx = -1;
-  client_gather_results_t(const std::shared_ptr<search_result_t> &res, bool &_all_results_arrived) {
+  client_gather_results_t(search_result_t *res, bool &_all_results_arrived) {
     results.push_back(res);
     if (res->is_final_result)
       final_result_idx = 0;
@@ -331,8 +331,8 @@ template <typename T> struct QueryEmbedding {
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
   static size_t write_serialize_queries(
-      char *buffer,
-      const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
+					char *buffer,
+					const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
 
   static size_t get_serialize_size_queries(
 					   const std::vector<std::shared_ptr<QueryEmbedding>> &queries);
@@ -409,8 +409,8 @@ struct alignas(SECTOR_LEN) SearchState {
                                  uint64_t num_queries, SearchState **states,
                                  QueryEmbedding<T> **queries);
 
-  std::shared_ptr<search_result_t>
-  get_search_result(DistributedSearchMode dist_search_mode) const;
+  void
+  get_search_result(DistributedSearchMode dist_search_mode, search_result_t *result) const;
   size_t write_search_result(DistributedSearchMode dist_search_mode, char * buffer) const;
   /**
      this doesn't serialize the query embedding but does serialize the stats
@@ -447,7 +447,7 @@ public:
   PreallocatedQueue() : num_elements(0), reset_element(nullptr) {};
   PreallocatedQueue(uint64_t num_elements,
                     std::function<void(T *)> reset_element)
-      : num_elements(num_elements), reset_element(reset_element) {
+  : num_elements(num_elements), reset_element(reset_element) {
     elements = new T[num_elements];
     for (uint64_t i = 0; i < num_elements; i++) {
       queue.enqueue(elements + i);
@@ -456,7 +456,7 @@ public:
 
   // used to support Region
   void allocate_and_assign_additional_block(
-      size_t block_size_per_element,
+					    size_t block_size_per_element,
 					    std::function<void(T *, char *, void*)> assign_block) {
     additional_data_block = new char[block_size_per_element * num_elements];
     for (size_t i = 0; i < num_elements; i++) {
@@ -468,7 +468,7 @@ public:
 
   /*
     result must be allocated before hand
-  */
+   */
   void dequeue_exact(uint64_t num_elements, T **elements) {
     size_t num_dequeued = queue.wait_dequeue_bulk(elements, num_elements);
     while (num_dequeued < num_elements) {
@@ -482,7 +482,7 @@ public:
   /**
      element must be in an "empty" state where its ready to be enqueued. for
      search state, it must be cleared.
-  */
+   */
   void free(T *element) {
     if (reset_element != nullptr) {
       reset_element(element);
@@ -490,7 +490,6 @@ public:
     queue.enqueue(element);
   }
 
-  
   uint64_t get_num_elements() const { return num_elements; }
 
   ~PreallocatedQueue() {
@@ -501,9 +500,9 @@ public:
   PreallocatedQueue(const PreallocatedQueue &) = delete;
   PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
   PreallocatedQueue(PreallocatedQueue &&other) noexcept
-      : queue(std::move(other.queue)), elements(other.elements),
-        num_elements(other.num_elements),
-        reset_element(std::move(other.reset_element)), additional_data_block(other.additional_data_block)
+  : queue(std::move(other.queue)), elements(other.elements),
+  num_elements(other.num_elements),
+  reset_element(std::move(other.reset_element)), additional_data_block(other.additional_data_block)
   {
     other.elements = nullptr;
     other.num_elements = 0;
@@ -527,13 +526,14 @@ public:
     }
     return *this;
   }
+  size_t get_approx_num_free() const { return queue.size_approx(); }
 };
 
 
 /**
    RAII wrapper for a single item taken from a preallocated queue of pointers to
    that type
-*/
+ */
 template <typename T> class PreallocSingleManager {
 private:
   PreallocatedQueue<T> &_queue;
@@ -561,75 +561,75 @@ namespace distributedann {
   constexpr uint32_t MAX_BEAM_WIDTH_DISTRIBUTED_ANN = 64;
   constexpr uint32_t MAX_L_DISTRIBUTED_ANN = 1024; // 64 nodes * 64 neighbors each
   
-template <typename T> struct scoring_query_t {
-  uint64_t query_id; // scoring for which query
-  uint32_t num_node_ids;
-  uint32_t node_ids[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
-  float threshold;
-  uint32_t L;
-  bool record_stats = false;
-  QueryEmbedding<T> *query_emb = nullptr;
-  void *distributed_ann_state_ptr = nullptr; // NEED TO DO THIS HABIBI
-  uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
+  template <typename T> struct scoring_query_t {
+    uint64_t query_id; // scoring for which query
+    uint32_t num_node_ids;
+    uint32_t node_ids[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
+    float threshold;
+    uint32_t L;
+    bool record_stats = false;
+    QueryEmbedding<T> *query_emb = nullptr;
+    void *distributed_ann_state_ptr = nullptr; // NEED TO DO THIS HABIBI
+    uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
 
-  // don't deserialize the query_emb
-  static void deserialize(const char *buffer, scoring_query_t *);
+    // don't deserialize the query_emb
+    static void deserialize(const char *buffer, scoring_query_t *);
 
   
-  static void deserialize_scoring_queries(const char *buffer,
-                                          uint64_t num_scoring_queries,
-                                          uint64_t num_query_embs,
-                                          scoring_query_t **scoring_queries,
-                                          QueryEmbedding<T> **queries);
+    static void deserialize_scoring_queries(const char *buffer,
+                                            uint64_t num_scoring_queries,
+                                            uint64_t num_query_embs,
+                                            scoring_query_t **scoring_queries,
+                                            QueryEmbedding<T> **queries);
   
 
-  // doesnt serialize the query embedding
-  size_t write_serialize(char *buffer) const;
-  size_t get_serialize_size() const;
+    // doesnt serialize the query embedding
+    size_t write_serialize(char *buffer) const;
+    size_t get_serialize_size() const;
 
-  static size_t write_serialize_scoring_queries(
-      char *buffer,
-      const std::vector<std::pair<scoring_query_t *, bool>> &queries);
+    static size_t write_serialize_scoring_queries(
+						  char *buffer,
+						  const std::vector<std::pair<scoring_query_t *, bool>> &queries);
 
-  static size_t get_serialize_size_scoring_queries(
-						   const std::vector<std::pair<scoring_query_t *, bool>> &queries);
+    static size_t get_serialize_size_scoring_queries(
+						     const std::vector<std::pair<scoring_query_t *, bool>> &queries);
 
-  static void reset(scoring_query_t *);
-};
-
-
-
-/**
-   used to store result for both the head index and also the scoring service
- */
-template <typename T> struct result_t {
-  uint64_t query_id;
-  size_t num_full_nbrs = 0;
-  std::pair<uint32_t, float> sorted_full_nbrs[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
-  size_t num_pq_nbrs = 0;
-  std::pair<uint32_t, float> sorted_pq_nbrs[MAX_L_DISTRIBUTED_ANN];
-  std::shared_ptr<QueryStats> stats = nullptr;
-  void *distributed_ann_state_ptr = nullptr;
-  uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
+    static void reset(scoring_query_t *);
+  };
 
 
-  static void deserialize(const char *buffer, result_t *);
-  static void deserialize_results(const char *buffer, uint64_t num_results,
-                                  result_t **results);
 
-  size_t write_serialize(char *buffer) const;
-  size_t get_serialize_size() const;
+  /**
+     used to store result for both the head index and also the scoring service
+   */
+  template <typename T> struct result_t {
+    uint64_t query_id;
+    size_t num_full_nbrs = 0;
+    std::pair<uint32_t, float> sorted_full_nbrs[MAX_BEAM_WIDTH_DISTRIBUTED_ANN];
+    size_t num_pq_nbrs = 0;
+    std::pair<uint32_t, float> sorted_pq_nbrs[MAX_L_DISTRIBUTED_ANN];
+    std::shared_ptr<QueryStats> stats = nullptr;
+    void *distributed_ann_state_ptr = nullptr;
+    uint64_t client_peer_id = std::numeric_limits<uint64_t>::max();
 
-  static size_t
+
+    static void deserialize(const char *buffer, result_t *);
+    static void deserialize_results(const char *buffer, uint64_t num_results,
+                                    result_t **results);
+
+    size_t write_serialize(char *buffer) const;
+    size_t get_serialize_size() const;
+
+    static size_t
   get_serialize_size_results(const std::vector<result_t *> &results);
 
-  static size_t write_serialize_results(char * buffer, const std::vector<result_t *> &results);
-  // static size_t get_serialize_size_results();
-  static void reset(result_t<T> *);
-};
+    static size_t write_serialize_results(char * buffer, const std::vector<result_t *> &results);
+    // static size_t get_serialize_size_results();
+    static void reset(result_t<T> *);
+  };
 
 
-template <typename T, typename TagT = uint32_t>
+  template <typename T, typename TagT = uint32_t>
 struct DistributedANNState : SearchState<T, TagT> {
   moodycamel::BlockingConcurrentQueue<result_t<T> *> result_queue;
 
