@@ -139,6 +139,124 @@ inline std::string message_type_to_string(MessageType msg_type) {
     return "UNKNOWN";
   }
 }
+
+template <typename T> class PreallocatedQueue {
+private:
+  moodycamel::BlockingConcurrentQueue<T *> queue;
+  T *elements = nullptr;
+  char *additional_data_block = nullptr;
+  uint64_t num_elements;
+  std::function<void(T *)> reset_element;
+
+public:
+  PreallocatedQueue() : num_elements(0), reset_element(nullptr) {};
+  PreallocatedQueue(uint64_t num_elements,
+                    std::function<void(T *)> reset_element)
+      : num_elements(num_elements), reset_element(reset_element) {
+    elements = new T[num_elements];
+    for (uint64_t i = 0; i < num_elements; i++) {
+      queue.enqueue(elements + i);
+    }
+  }
+
+  // used to support Region
+  void allocate_and_assign_additional_block(
+      size_t block_size_per_element,
+      std::function<void(T *, char *, void *)> assign_block) {
+    additional_data_block = new char[block_size_per_element * num_elements];
+    for (size_t i = 0; i < num_elements; i++) {
+      assign_block(elements + i,
+                   additional_data_block + block_size_per_element * i, this);
+    }
+  }
+
+  /*
+    result must be allocated before hand
+   */
+  void dequeue_exact(uint64_t num_elements, T **elements) {
+    size_t num_dequeued = queue.wait_dequeue_bulk(elements, num_elements);
+    while (num_dequeued < num_elements) {
+      T **it = elements + num_dequeued;
+      size_t left = num_elements - num_dequeued;
+      size_t new_deq = queue.wait_dequeue_bulk(it, left);
+      num_dequeued += new_deq;
+    }
+  }
+
+  /**
+     element must be in an "empty" state where its ready to be enqueued. for
+     search state, it must be cleared.
+   */
+  void free(T *element) {
+    if (reset_element != nullptr) {
+      reset_element(element);
+    }
+    queue.enqueue(element);
+  }
+
+  uint64_t get_num_elements() const { return num_elements; }
+
+  ~PreallocatedQueue() {
+    delete[] elements;
+    delete[] additional_data_block;
+  }
+
+  PreallocatedQueue(const PreallocatedQueue &) = delete;
+  PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
+  PreallocatedQueue(PreallocatedQueue &&other) noexcept
+      : queue(std::move(other.queue)), elements(other.elements),
+        num_elements(other.num_elements),
+        reset_element(std::move(other.reset_element)),
+        additional_data_block(other.additional_data_block) {
+    other.elements = nullptr;
+    other.num_elements = 0;
+    other.reset_element = nullptr;
+    other.additional_data_block = nullptr;
+  }
+  PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
+    if (this != &other) {
+      delete[] elements;
+      delete[] additional_data_block;
+      queue = std::move(other.queue);
+      elements = other.elements;
+      additional_data_block = other.additional_data_block;
+      num_elements = other.num_elements;
+      reset_element = std::move(other.reset_element);
+
+      other.elements = nullptr;
+      other.num_elements = 0;
+      other.reset_element = nullptr;
+      other.additional_data_block = nullptr;
+    }
+    return *this;
+  }
+  size_t get_approx_num_free() const { return queue.size_approx(); }
+};
+
+/**
+   RAII wrapper for a single item taken from a preallocated queue of pointers to
+   that type
+ */
+template <typename T> class PreallocSingleManager {
+private:
+  PreallocatedQueue<T> &_queue;
+  T *item;
+  PreallocSingleManager(const PreallocSingleManager<T> &);
+  PreallocSingleManager &operator=(const PreallocSingleManager<T> &);
+
+public:
+  PreallocSingleManager(PreallocatedQueue<T> &queue) : _queue(queue) {
+    T *arr[1];
+    _queue.dequeue_exact(1, arr);
+    item = arr[0];
+  }
+
+  T *get_item() { return item; }
+
+  ~PreallocSingleManager() { _queue.free(this->item); }
+};
+
+
 /**
    sent to a server to free data associated with query embedding during state
    send
@@ -257,78 +375,68 @@ struct search_result_t {
   static void reset(search_result_t *);
 };
 
-struct client_gather_results_t {
-  std::vector<search_result_t *> results;
-  int final_result_idx = -1;
-  client_gather_results_t(search_result_t *res, bool &_all_results_arrived) {
-    results.push_back(res);
-    if (res->is_final_result)
-      final_result_idx = 0;
-    _all_results_arrived = all_results_arrived();
-  }
-  inline bool all_results_arrived() {
-    if (final_result_idx == -1)
-      return false;
-
-    // we expect this many because in between 2 partition history entry, there
-    // is a hop happening, which also means a result that is sent to the client
-    // Additionally there is the final result which is sent, so the number of
-    // results to expect = partition_history size
-    uint32_t num_results_to_expect =
-        results[final_result_idx]->partition_history.size();
-    // LOG(INFO) << "NUM_RESULTS TO EXPECT " << num_results_to_expect;
-    // LOG(INFO) << "NUM_RESULTS " << results.size();
-    // LOG(INFO) << "final res partition history";
-    // for (size_t i = 0; i <
-    // results[final_result_idx]->partition_history.size();
-    //      i++) {
-    //   std::cout << "(" <<
-    //   (uint32_t)results[final_result_idx]->partition_history[i] << ", " <<
-    //   results[final_result_idx]->partition_history_hop_idx[i] << "),";
-    // }
-    // std::cout << std::endl;
-    return num_results_to_expect == results.size();
-  }
-};
-
-struct gather_result_t {
-  // the results here must always be sorted
+struct client_gather_result_t {
   search_result_t *combined_result;
   uint32_t num_results_received = 0;
   uint32_t num_results_expect = std::numeric_limits<uint32_t>::max();
   //
-  gather_result_t(search_result_t *combined_result, search_result_t *result)
-  : combined_result(combined_result) {
+  client_gather_result_t(PreallocatedQueue<search_result_t> &prealloc_q,
+                         search_result_t *result, bool &_all_results_arrived) {
+    prealloc_q.dequeue_exact(1, &combined_result);
     combine_result(result);
+    _all_results_arrived = all_results_arrived();
   }
+  client_gather_result_t(search_result_t *combined_res, search_result_t *result,
+                         bool &_all_results_arrived)
+  : combined_result(combined_res) {
+    combine_result(result);
+    _all_results_arrived = all_results_arrived();
+  }  
 
   void combine_result(search_result_t *result) {
     if (result->is_final_result) {
       num_results_expect = result->partition_history.size();
       combined_result->stats = result->stats;
     }
-    num_results_received++;
-    if (num_results_received == 1) {
+    if (num_results_received == 0) {
       combined_result->query_id = result->query_id;
       combined_result->k_search = result->k_search;
+      combined_result->num_res = 0;
     }
+    num_results_received++;
 
-    for (size_t i = combined_result->num_res;
-         i < combined_result->num_res + result->num_res; i++) {
-      combined_result->node_id[i] =
-        result->node_id[i - combined_result->num_res];
-      combined_result->distance[i] =
-        result->distance[i - combined_result->num_res];
+    if (unlikely(combined_result->query_id != result->query_id)) {
+      LOG(INFO) << combined_result->query_id << " " << result->query_id;
+      throw std::runtime_error("query id different");
     }
-    combined_result->num_res += result->num_res;
-    std::partial_sort(combined_result->node_id,
-                      combined_result->node_id + combined_result->k_search,
-                      combined_result->node_id + combined_result->num_res);
-    combined_result->num_res = combined_result->k_search;
-        
+    std::vector<std::pair<uint32_t, float>> node_id_dist;
+				
+
+    for (size_t i = 0; i < combined_result->num_res + result->num_res; i++) {
+      if (i < combined_result->num_res) {
+        node_id_dist.emplace_back(combined_result->node_id[i],
+                                  combined_result->distance[i]);
+      } else {
+        node_id_dist.emplace_back(
+            result->node_id[i - combined_result->num_res],
+				  result->distance[i - combined_result->num_res]);
+      }
+    }
+    combined_result->num_res =
+      std::min(combined_result->k_search, node_id_dist.size());
+    std::partial_sort(
+        node_id_dist.begin(), node_id_dist.begin() + combined_result->num_res,
+        node_id_dist.end(),
+		      [](auto &left, auto &right) { return left.second < right.second; });
+    
+    for (size_t i = 0; i < combined_result->num_res; i++) {
+      combined_result->node_id[i] = node_id_dist[i].first;
+      combined_result->distance[i] = node_id_dist[i].second;
+    }
+    
   }
   inline bool all_results_arrived() {
-    return num_results_expect != std::numeric_limits<uint32_t>::max();
+    return num_results_expect == num_results_received;
   }
 };
 
@@ -474,121 +582,6 @@ struct alignas(SECTOR_LEN) SearchState {
   static void reset(SearchState *state);
 };
 
-template <typename T> class PreallocatedQueue {
-private:
-  moodycamel::BlockingConcurrentQueue<T *> queue;
-  T *elements = nullptr;
-  char *additional_data_block = nullptr;
-  uint64_t num_elements;
-  std::function<void(T *)> reset_element;
-
-public:
-  PreallocatedQueue() : num_elements(0), reset_element(nullptr) {};
-  PreallocatedQueue(uint64_t num_elements,
-                    std::function<void(T *)> reset_element)
-      : num_elements(num_elements), reset_element(reset_element) {
-    elements = new T[num_elements];
-    for (uint64_t i = 0; i < num_elements; i++) {
-      queue.enqueue(elements + i);
-    }
-  }
-
-  // used to support Region
-  void allocate_and_assign_additional_block(
-      size_t block_size_per_element,
-      std::function<void(T *, char *, void *)> assign_block) {
-    additional_data_block = new char[block_size_per_element * num_elements];
-    for (size_t i = 0; i < num_elements; i++) {
-      assign_block(elements + i,
-                   additional_data_block + block_size_per_element * i, this);
-    }
-  }
-
-  /*
-    result must be allocated before hand
-   */
-  void dequeue_exact(uint64_t num_elements, T **elements) {
-    size_t num_dequeued = queue.wait_dequeue_bulk(elements, num_elements);
-    while (num_dequeued < num_elements) {
-      T **it = elements + num_dequeued;
-      size_t left = num_elements - num_dequeued;
-      size_t new_deq = queue.wait_dequeue_bulk(it, left);
-      num_dequeued += new_deq;
-    }
-  }
-
-  /**
-     element must be in an "empty" state where its ready to be enqueued. for
-     search state, it must be cleared.
-   */
-  void free(T *element) {
-    if (reset_element != nullptr) {
-      reset_element(element);
-    }
-    queue.enqueue(element);
-  }
-
-  uint64_t get_num_elements() const { return num_elements; }
-
-  ~PreallocatedQueue() {
-    delete[] elements;
-    delete[] additional_data_block;
-  }
-
-  PreallocatedQueue(const PreallocatedQueue &) = delete;
-  PreallocatedQueue &operator=(const PreallocatedQueue &) = delete;
-  PreallocatedQueue(PreallocatedQueue &&other) noexcept
-      : queue(std::move(other.queue)), elements(other.elements),
-        num_elements(other.num_elements),
-        reset_element(std::move(other.reset_element)),
-        additional_data_block(other.additional_data_block) {
-    other.elements = nullptr;
-    other.num_elements = 0;
-    other.reset_element = nullptr;
-    other.additional_data_block = nullptr;
-  }
-  PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
-    if (this != &other) {
-      delete[] elements;
-      delete[] additional_data_block;
-      queue = std::move(other.queue);
-      elements = other.elements;
-      additional_data_block = other.additional_data_block;
-      num_elements = other.num_elements;
-      reset_element = std::move(other.reset_element);
-
-      other.elements = nullptr;
-      other.num_elements = 0;
-      other.reset_element = nullptr;
-      other.additional_data_block = nullptr;
-    }
-    return *this;
-  }
-  size_t get_approx_num_free() const { return queue.size_approx(); }
-};
-
-/**
-   RAII wrapper for a single item taken from a preallocated queue of pointers to
-   that type
- */
-template <typename T> class PreallocSingleManager {
-private:
-  PreallocatedQueue<T> &_queue;
-  T *item;
-  PreallocSingleManager(const PreallocSingleManager<T> &);
-  PreallocSingleManager &operator=(const PreallocSingleManager<T> &);
-
-public:
-  PreallocSingleManager(PreallocatedQueue<T> &queue) : _queue(queue) {
-    T *arr[1];
-    _queue.dequeue_exact(1, arr);
-    item = arr[0];
-  }
-
-  T *get_item() { return item; }
-
-  ~PreallocSingleManager() { _queue.free(this->item); }
-};
 
 namespace distributedann {
 constexpr uint32_t MAX_BEAM_WIDTH_DISTRIBUTED_ANN = 64;

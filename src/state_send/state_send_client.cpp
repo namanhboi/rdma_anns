@@ -201,7 +201,7 @@ StateSendClient<T>::StateSendClient(
     const std::string &medoid_file)
     : my_id(id), dim(dim), dist_search_mode(dist_search_mode),
       prealloc_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset),
-      prealloc_result_queue(search_result_t::MAX_PRE_ALLOC_ELEMENTS * 2,
+      prealloc_result_queue(search_result_t::MAX_PRE_ALLOC_ELEMENTS * 3,
                             search_result_t::reset) {
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
   // std::cout << "Done with constructor for statesendclient" << std::endl;
@@ -276,10 +276,10 @@ template <typename T> void StateSendClient<T>::start() {
 template <typename T>
 void StateSendClient<T>::wait_results(const uint64_t num_results) {
   while (num_results_received != num_results) {
-    LOG(INFO) << "waiting for results, num results received "
-              << num_results_received << ","
-              << "num prealloc results "
-    << prealloc_result_queue.get_approx_num_free();
+    // LOG(INFO) << "waiting for results, num results received "
+              // << num_results_received << ","
+              // << "num prealloc results "
+    // << prealloc_result_queue.get_approx_num_free();
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 }
@@ -299,33 +299,6 @@ template <typename T>
 std::chrono::steady_clock::time_point
 StateSendClient<T>::get_query_result_time(const uint64_t query_id) {
   return query_result_time.find(query_id);
-}
-
-void combine_results_client_gather(const client_gather_results_t &all_results,
-                                   search_result_t *combined_res) {
-  // throw std::runtime_error("Needs to impl");
-  combined_res->query_id = all_results.results[0]->query_id;
-  combined_res->k_search = all_results.results[0]->k_search;
-
-  std::vector<std::pair<uint32_t, float>> node_id_dist;
-  for (const auto &result : all_results.results) {
-    for (auto i = 0; i < result->num_res; i++) {
-      node_id_dist.emplace_back(result->node_id[i], result->distance[i]);
-    }
-  }
-  std::partial_sort(
-      node_id_dist.begin(), node_id_dist.begin() + combined_res->k_search,
-      node_id_dist.end(),
-		    [](auto &left, auto &right) { return left.second < right.second; });
-  combined_res->num_res = std::min(combined_res->k_search, node_id_dist.size());
-  for (auto i = 0; i < combined_res->num_res; i++) {
-    combined_res->node_id[i] = node_id_dist[i].first;
-    combined_res->distance[i] = node_id_dist[i].second;
-  }
-  // need to combine stats as well, for now lets just do the mean of each
-  // category
-  combined_res->stats =
-      all_results.results[all_results.final_result_idx]->stats;
 }
 
 void combine_results_scatter_gather(
@@ -410,6 +383,7 @@ void StateSendClient<T>::clear_results(
   for (size_t i = 0; i < results_used.size(); i++) {
     query_ids.push_back(results_used[i]->query_id);
   }
+  // LOG(INFO) << "num results used" << query_ids.size();
 
   query_send_time.clear();
   query_result_time.clear();
@@ -432,23 +406,18 @@ void StateSendClient<T>::clear_results(
     sub_query_results.clear();
   }
   if (dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
-    for (auto query_id : query_ids) {
-      client_gather_results.erase_fn(
-          query_id, [this](client_gather_results_t &results) {
-            for (size_t i = 0; i < results.results.size(); i++) {
-              this->prealloc_result_queue.free(results.results[i]);
-            }
-            return true;
-      });
-    }
     client_gather_results.clear();
+    // the final combined result is inserted into results so we just need to free that at the end
   }
 
   for (auto query_id : query_ids) {
-    results.erase_fn(query_id, [this](search_result_t *&res) {
+    bool deleted = results.erase_fn(query_id, [this](search_result_t *&res) {
       this->prealloc_result_queue.free(res);
       return true;
     });
+    if (!deleted) {
+      throw std::runtime_error("result was not deleted");
+    }
   }
   results.clear();
   // LOG(INFO) << "num prealloc results "  << prealloc_result_queue.get_approx_num_free();
@@ -587,26 +556,25 @@ template <typename T>
 void StateSendClient<T>::ResultReceiveThread::
     process_state_send_client_gather_result(search_result_t *res) {
   // throw std::runtime_error("feature not fully implemented yet");
-  bool all_results_arrived = false;
+  bool all_results_arrived = false, no_entry = true;
+  
+  search_result_t *tmp_result;
+  parent->prealloc_result_queue.dequeue_exact(1, &tmp_result);
   parent->client_gather_results.upsert(
       res->query_id,
-      [&res, &all_results_arrived](client_gather_results_t &results) {
-        results.results.push_back(res);
-        if (res->is_final_result) {
-          results.final_result_idx = results.results.size() - 1;
-        }
+      [res, &all_results_arrived, &no_entry](client_gather_result_t &results) {
+        results.combine_result(res);
         all_results_arrived = results.all_results_arrived();
+        no_entry = false;
         return false;
       },
-      client_gather_results_t(res, all_results_arrived));
-
+				       client_gather_result_t(tmp_result, res, all_results_arrived));
+  if (!no_entry) {
+    parent->prealloc_result_queue.free(tmp_result);
+  }
   if (all_results_arrived) {
-    search_result_t *combined_res;
-    parent->prealloc_result_queue.dequeue_exact(1, &combined_res);
-    combine_results_client_gather(
-        parent->client_gather_results.find(res->query_id), combined_res);
-    parent->results.insert_or_assign(combined_res->query_id, combined_res);
-
+    parent->results.insert_or_assign(
+				     res->query_id, parent->client_gather_results.find(res->query_id).combined_result);
     parent->query_result_time.insert_or_assign(
         res->query_id, std::chrono::steady_clock::now());
     parent->num_results_received.fetch_add(1);
@@ -619,6 +587,12 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
   while (running) {
     search_result_t *res;
     parent->result_queue.wait_dequeue(res);
+
+    // for scatter gather and client gather, when is res freed?
+    // scatter gather stores intermediate results into sub_query* so its freed
+    // in clear_results
+    // client_gather doesn't so it frees then after calling process state_send_client_gather_result
+
     // LOG(INFO) << "hello";
     if (res == nullptr) {
       assert(!running);
@@ -633,6 +607,7 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
                DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
       // if (res->is_final_result) LOG(INFO) << " final res received";
       this->process_state_send_client_gather_result(res);
+      parent->prealloc_result_queue.free(res);
     } else if (parent->dist_search_mode == DistributedSearchMode::STATE_SEND ||
                parent->dist_search_mode ==
                    DistributedSearchMode::SINGLE_SERVER ||

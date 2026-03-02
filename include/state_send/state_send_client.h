@@ -35,7 +35,7 @@ private:
   ///////////
 
   // used to store state send client gather results
-  libcuckoo::cuckoohash_map<uint64_t, client_gather_results_t>
+  libcuckoo::cuckoohash_map<uint64_t, client_gather_result_t>
       client_gather_results;
 
   // id in the communicator json file containing all the ip addresses
