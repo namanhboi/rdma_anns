@@ -229,3 +229,12 @@ target_compile_options(create_medoid_file PRIVATE
   $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
+
+add_executable(convert_old_pq_format convert_old_pq_format.cpp)
+target_link_libraries(convert_old_pq_format ssd_state_send)
+target_compile_options(convert_old_pq_format PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)
+
+

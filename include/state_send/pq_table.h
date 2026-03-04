@@ -5,6 +5,7 @@
 #include <cmath>
 
 #define NUM_PQ_CENTROIDS 256
+#define NUM_PQ_OFFSETS_WITH_DUMMY 5
 #define NUM_PQ_OFFSETS 4
 
 namespace pipeann {
@@ -78,6 +79,53 @@ namespace pipeann {
     uint64_t get_dim() {
       return ndims;
     }
+    void load_pq_pivots_with_dummy(std::basic_istream<char> &reader, size_t num_chunks, size_t offset) {
+      uint64_t nr, nc;
+      std::unique_ptr<uint64_t[]> file_offset_data;
+      uint64_t *file_offset_data_raw;
+      pipeann::load_bin_impl<uint64_t>(reader, file_offset_data_raw, nr, nc, offset);
+      file_offset_data.reset(file_offset_data_raw);
+
+      if (nr != NUM_PQ_OFFSETS_WITH_DUMMY) {
+        LOG(ERROR) << "Pivot offset incorrect, # offsets = " << nr << ", but expecting " << NUM_PQ_OFFSETS_WITH_DUMMY;
+        crash();
+      }
+
+      pipeann::load_bin_impl<float>(reader, tables, nr, nc, file_offset_data[0] + offset);
+
+      if ((nr != NUM_PQ_CENTROIDS)) {
+        LOG(ERROR) << "Num centers incorrect, centers = " << nr << " but expecting " << NUM_PQ_CENTROIDS;
+        crash();
+      }
+
+      this->ndims = nc;
+      pipeann::load_bin_impl<float>(reader, centroid, nr, nc, file_offset_data[1] + offset);
+
+      if ((nr != this->ndims) || (nc != 1)) {
+        LOG(ERROR) << "Centroid file dim incorrect: row " << nr << ", col " << nc << " expecting " << this->ndims;
+        crash();
+      }
+
+      // Load and discard rearrangement for backward compatibility (no longer used)
+      std::vector<uint32_t> dummy_rearrangement(this->ndims);
+      pipeann::load_bin_impl<uint32_t>(reader, dummy_rearrangement, nr, nc, file_offset_data[2] + offset);
+      if ((nr != this->ndims) || (nc != 1)) {
+        LOG(ERROR) << "Rearrangement incorrect: row " << nr << ", col " << nc << " expecting " << this->ndims;
+        crash();
+      }
+
+      pipeann::load_bin_impl<uint32_t>(reader, chunk_offsets, nr, nc, file_offset_data[3] + offset);
+
+      if (nr != (uint64_t) num_chunks + 1 || nc != 1) {
+        LOG(ERROR) << "Chunk offsets: nr=" << nr << ", nc=" << nc << ", expecting nr=" << num_chunks + 1 << ", nc=1.";
+        crash();
+      }
+
+      this->n_chunks = num_chunks;
+      LOG(INFO) << "Loaded PQ Pivots: #centroids: " << NUM_PQ_CENTROIDS << ", #dims: " << this->ndims
+                << ", #chunks: " << this->n_chunks;
+    }
+
 
     void load_pq_pivots_new(std::basic_istream<char> &reader, size_t num_chunks, size_t offset) {
       uint64_t nr, nc;
@@ -146,6 +194,8 @@ namespace pipeann {
       all_to_all_dists = new float[256 * 256 * n_chunks];
       std::memset(all_to_all_dists, 0, 256 * 256 * n_chunks * sizeof(float));
 
+      // we should consider all_to_all dist sometime, which requires handling
+      // for mips and l2, but we currently don't use it
       if (metric == pipeann::Metric::INNER_PRODUCT) {
         for (uint32_t i = 0; i < 256; i++) {
           for (uint32_t j = 0; j < 256; j++) {

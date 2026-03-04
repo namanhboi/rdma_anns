@@ -150,6 +150,8 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
         }
         if (!allocated_states[i]->query_emb->populated_pq_dists) {
           // LOG(INFO) << "NOT INITIALIZED YET";
+
+          // always do it with l2, same as diskann, since we already
           parent->pq_table.populate_chunk_distances_l2(
               allocated_states[i]->query_emb->query,
               allocated_states[i]->query_emb->pq_dists);
