@@ -10,13 +10,12 @@ void load_and_save(std::string pq_compressed_path, std::string pq_pivots_path) {
   
   pipeann::FixedChunkPQTable<T> pq_table(pipeann::Metric::L2);
   uint64_t nr, nc, offset = 0;
-  {
-    std::ifstream reader(pq_pivots_path, std::ios::binary | std::ios::ate);
-    reader.seekg(0);
-    pq_table.load_pq_pivots_with_dummy(reader, nchunks, 0);
-  }
+  std::ifstream reader(pq_pivots_path, std::ios::binary | std::ios::ate);
+  reader.seekg(0);
+  pq_table.load_pq_pivots_with_dummy(reader, nchunks, 0);
+  LOG(INFO) << "saving pq pivots";
+  reader.close();
   pq_table.save_pq_pivots(pq_pivots_path.c_str());
-
 }
 
 int main(int argc, char **argv) {
