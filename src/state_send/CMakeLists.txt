@@ -135,9 +135,9 @@ target_compile_options(create_overlap_partition_loc_files PRIVATE
 
 
 
-add_executable(convert_old_partition_assignment convert_old_partition_assignment.cpp)
-target_link_libraries(convert_old_partition_assignment ssd_state_send)
-target_compile_options(convert_old_partition_assignment PRIVATE
+add_executable(convert_overlap_partition_assignment convert_overlap_partition_assignment.cpp)
+target_link_libraries(convert_overlap_partition_assignment ssd_state_send)
+target_compile_options(convert_overlap_partition_assignment PRIVATE
   $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
@@ -236,5 +236,4 @@ target_compile_options(convert_old_pq_format PRIVATE
   $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
-
 

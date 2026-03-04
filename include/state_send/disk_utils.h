@@ -165,7 +165,7 @@ void create_overlap_partition_assignment_file(
 					      const std::string &output_index_path_prefix, int num_partitions);
 
 
-void load_partition_assignment_file(
+void load_overlap_partition_assignment_file(
     const std::string &partition_assignment_file,
     std::vector<std::vector<uint8_t>> &partition_assignment,
 					    uint8_t &num_partitions);
