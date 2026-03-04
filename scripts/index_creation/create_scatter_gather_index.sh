@@ -32,6 +32,7 @@ PARTITION_BASE_FILE=${11}
 PARTITION_GRAPH_FILE=${12}
 MAX_NORM_FILE=${13:-""}
 
+
 if [[ ! -f $PARTITION_BASE_FILE ]]; then
     echo "$PARTITION_BASE_FILE doesn't exist"
     exit 1

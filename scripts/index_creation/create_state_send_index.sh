@@ -7,6 +7,10 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source ${SCRIPT_DIR}/common_vars.sh
 
 
+if [[ $# -ne 9 && $# -ne 8 ]]; then
+    echo "Usage: <data_type> <metric (l2/mips)> <state_send_index_prefix> <partition_id_file> <partition_base_file> <partition_graph_file> <partition_assignment_file> <global_index_prefix> <max_norm_file(optional for mips only)>"
+fi
+
 
 DATA_TYPE=$1
 METRIC=$2
@@ -17,6 +21,7 @@ PARTITION_GRAPH_FILE=$6
 PARTITION_ASSIGNMENT_FILE=$7
 GLOBAL_INDEX_PREFIX=$8
 MAX_NORM_FILE=${9:-""}
+
 
 if [[ ! -f $PARTITION_BASE_FILE ]]; then
     echo "partition base file doesnt exist: $PARTITION_BASE_FILE"
@@ -89,22 +94,42 @@ fi
 
 
 PARTITION_STATE_SEND_MEM_INDEX_PATH="${STATE_SEND_INDEX_PREFIX}_mem.index"
-ln -sf "${MEM_INDEX_PATH}" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}"
-ln -sf "${MEM_INDEX_PATH}.tags" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.tags"
-ln -sf "${MEM_INDEX_PATH}.data" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.data"        
+
+if [[ ! -f "${PARTITION_STATE_SEND_MEM_INDEX_PATH}" ]]; then 
+    ln -sf "${MEM_INDEX_PATH}" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}"
+fi
+
+if [[ ! -f "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.tags" ]]; then 
+    ln -sf "${MEM_INDEX_PATH}.tags" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.tags"
+fi
+
+if [[ ! -f "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.data" ]]; then 
+    ln -sf "${MEM_INDEX_PATH}.data" "${PARTITION_STATE_SEND_MEM_INDEX_PATH}.data"
+fi
+
 echo "Symlinked existing memory index"
 
 
 
 PARTITION_STATE_SEND_PQ_COMPRESSED_PATH="${STATE_SEND_INDEX_PREFIX}_pq_compressed.bin"
 PARTITION_STATE_SEND_PQ_PIVOT_PATH="${STATE_SEND_INDEX_PREFIX}_pq_pivots.bin"
-ln -sf "${PQ_COMPRESSED_PATH}" "${PARTITION_STATE_SEND_PQ_COMPRESSED_PATH}"
-ln -sf "${PQ_PIVOT_PATH}" "${PARTITION_STATE_SEND_PQ_PIVOT_PATH}"
+
+if [[ ! -f $PARTITION_STATE_SEND_PQ_COMPRESSED_PATH ]]; then
+    ln -sf "${PQ_COMPRESSED_PATH}" "${PARTITION_STATE_SEND_PQ_COMPRESSED_PATH}"
+fi
+
+if [[ ! -f $PARTITION_STATE_SEND_PQ_PIVOT_PATH ]]; then 
+    ln -sf "${PQ_PIVOT_PATH}" "${PARTITION_STATE_SEND_PQ_PIVOT_PATH}"
+fi
+
 echo "Symlinked existing PQ files"
 
 
 STATE_SEND_PARTITION_ASSIGNMENT_PATH="${STATE_SEND_INDEX_PREFIX}_partition_assignment.bin"
-ln -sf ${PARTITION_ASSIGNMENT_FILE} ${STATE_SEND_PARTITION_ASSIGNMENT_PATH}
+if [[ ! -f $STATE_SEND_PARTITION_ASSIGNMENT_PATH ]]; then 
+    ln -sf ${PARTITION_ASSIGNMENT_FILE} ${STATE_SEND_PARTITION_ASSIGNMENT_PATH}
+fi
+
 
 STATE_SEND_MAX_NORM_FILE="${STATE_SEND_INDEX_PREFIX}_disk.index_max_base_norm.bin"
 if [[ -f $MAX_NORM_FILE && (! -f $STATE_SEND_MAX_NORM_FILE) ]]; then
