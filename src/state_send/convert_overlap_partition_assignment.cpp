@@ -14,7 +14,7 @@ void convert(const std::string &overlap_partition_assignment_file) {
                                          num_partitions);
   std::vector<uint8_t> partition_assignment;
   for (auto &v : overlap_partition_assignment) {
-    partition_assignment.insert(v.end(), v.begin(), v.end());
+    partition_assignment.insert(partition_assignment.end(), v.begin(), v.end());
   }
   size_t npts = partition_assignment.size();
   pipeann::save_bin<uint8_t>(overlap_partition_assignment_file,
