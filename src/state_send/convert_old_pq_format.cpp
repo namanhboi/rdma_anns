@@ -6,7 +6,6 @@ template <typename T>
 void load_and_save(std::string pq_compressed_path, std::string pq_pivots_path) {
   size_t npts, nchunks;
   pipeann::get_bin_metadata(pq_compressed_path, npts, nchunks);
-
   
   pipeann::FixedChunkPQTable<T> pq_table(pipeann::Metric::L2);
   uint64_t nr, nc, offset = 0;
@@ -19,9 +18,6 @@ void load_and_save(std::string pq_compressed_path, std::string pq_pivots_path) {
 }
 
 int main(int argc, char **argv) {
-  std::string data_type;
-  std::string pq_compressed_path;
-  std::string pq_pivots_path;
   if (argc != 4) {
     std::cout << "Use the pq compressed file for metadata for number of chunks "
                  "then convert the old pq pivot format to new one, overwriting "
@@ -31,6 +27,9 @@ int main(int argc, char **argv) {
                  "<pq_pivots_path>";
     return 1;
   }
+  std::string data_type(argv[1]);
+  std::string pq_compressed_path(argv[2]);
+  std::string pq_pivots_path(argv[3]);
   if (data_type == "uint8") {
     load_and_save<uint8_t>(pq_compressed_path, pq_pivots_path);
   } else if (data_type == "int8") {
