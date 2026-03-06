@@ -9,6 +9,36 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_C_COMPILER_LAUNCHER ccache)
 # set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
+check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+
+# Then, for the runtime.
+set(CPU_SUPPORTS_AVX512 FALSE)
+set(CPU_SUPPORTS_AVX2 FALSE)
+
+if(COMPILE_RESULT AND RUN_RESULT EQUAL 3) # AVX512 + AVX2
+	set(CPU_SUPPORTS_AVX512 TRUE)
+	message(STATUS "CPU supports AVX512")
+elseif(COMPILE_RESULT AND RUN_RESULT EQUAL 1) # AVX2
+	set(CPU_SUPPORTS_AVX2 TRUE)
+	message(STATUS "CPU supports AVX2")
+else()
+	message(STATUS "CPU does not support AVX512 or detection failed")
+endif()
+
+if(COMPILER_SUPPORTS_AVX512F AND CPU_SUPPORTS_AVX512)
+    message(STATUS "Compiler and CPU supports -mavx512f. Enabling AVX512F.")
+	add_definitions(-DUSE_AVX512)
+elseif(COMPILER_SUPPORTS_AVX2 AND CPU_SUPPORTS_AVX2)
+	message(STATUS "Compiler and CPU supports -mavx2. Enabling AVX2.")
+	add_definitions(-DUSE_AVX2)
+else()
+    message(STATUS "Compiler or CPU do not support -mavx512f and -mavx2.")
+endif()
+
+
+
 include_directories(
   ${PROJECT_SOURCE_DIR}/include/concurrentqueue
 )
@@ -41,6 +71,8 @@ option(IN_MEM "Search udl 2 with in memory kv store based global search" OFF)
 option(DISK_FS_DISKANN_WRAPPER "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_FS_DISTRIBUTED "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_KV "Search udl 2 with ssd based search where data is loaded from kv store" OFF)
+
+
 
 if(TEST_UDL1)
     add_compile_definitions(TEST_UDL1)
