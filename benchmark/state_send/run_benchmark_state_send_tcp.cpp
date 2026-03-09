@@ -86,7 +86,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   // }
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::invalid_argument("DistributedANN yet to be supported");
+    // throw std::invalid_argument("DistributedANN yet to be supported");
     if (beam_width > distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN) {
       throw std::invalid_argument("beam width too large for distributedann");
     }

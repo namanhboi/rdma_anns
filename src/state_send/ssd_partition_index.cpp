@@ -35,7 +35,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     preallocated_result_queue = PreallocatedQueue<search_result_t>(
-								   search_result_t::MAX_PRE_ALLOC_ELEMENTS, search_result_t::reset);
+        search_result_t::MAX_PRE_ALLOC_ELEMENTS, search_result_t::reset);
     if (num_orchestration_threads == 0 && num_scoring_threads > 0) {
       is_orchestration_server = false;
     } else if (num_orchestration_threads > 0 && num_scoring_threads == 0) {
@@ -47,7 +47,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       throw std::invalid_argument("num_orchestration_threads and scoring "
                                   "threads can't both be 0");
     }
-        
+
     // throw std::invalid_argument("DistributedANN not yet supported");
   } else {
     preallocated_state_queue = PreallocatedQueue<SearchState<T, TagT>>(
@@ -82,7 +82,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (use_batching && max_batch_size == 0)
     throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
-   if (num_queries_balance > max_queries_balance) {
+  if (num_queries_balance > max_queries_balance) {
     throw std::invalid_argument("number of queries to balance too big " +
                                 std::to_string(num_queries_balance));
   }
@@ -95,20 +95,6 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   }
 
   data_is_normalized = false;
-  // this->enable_tags = tags;
-  // this->enable_locs = enable_locs;
-  // if (m == pipeann::Metric::COSINE) {
-  //   if (std::is_floating_point<T>::value) {
-  //     LOG(INFO) << "Cosine metric chosen for (normalized) float data."
-  //                  "Changing distance to L2 to boost accuracy.";
-  //     m = pipeann::Metric::L2;
-  //     data_is_normalized = true; 
-  //   } else {
-  //     LOG(ERROR) << "WARNING: Cannot normalize integral data types."
-  //                << " This may result in erroneous results or poor recall."
-  //                << " Consider using L2 distance with integral data types.";
-  //   }
-  // }
 
   this->dist_cmp.reset(pipeann::get_distance_function<T>(m));
   // this->pq_reader = new LinuxAlignedFileReader();
@@ -125,19 +111,43 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (this->dist_search_mode == DistributedSearchMode::STATE_SEND ||
       this->dist_search_mode ==
           DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+    this->enable_disk_index = true;
     this->enable_locs = true;
+    this->enable_tags = false;
+    this->enable_pq = true;
+    this->enable_partition_assignment = true;
   } else if (this->dist_search_mode == DistributedSearchMode::SCATTER_GATHER ||
              this->dist_search_mode ==
                  DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    this->enable_disk_index = true;
     this->enable_tags = true;
+    this->enable_locs = false;
+    this->enable_pq = true;
+    this->enable_partition_assignment = false;
   } else if (this->dist_search_mode == DistributedSearchMode::SINGLE_SERVER) {
+    this->enable_disk_index = true;
     this->enable_tags = false;
     this->enable_locs = false;
+    this->enable_pq = true;
+    this->enable_partition_assignment = false;
   } else if (this->dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     if (!is_orchestration_server) {
+      this->enable_disk_index = true;
       this->enable_tags = false;
       this->enable_locs = true;
+      this->enable_pq = true;
+      this->enable_partition_assignment = false;
+    } else {
+      this->enable_disk_index = false;
+      this->enable_tags = false;
+      this->enable_locs = false;
+      this->enable_pq = false;
+      this->enable_partition_assignment = true;
     }
+  }
+
+  if (this->metric == pipeann::Metric::INNER_PRODUCT) {
+    this->enable_max_norm = true;
   }
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
@@ -146,14 +156,13 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     for (uint64_t thread_id = 0; thread_id < num_orchestration_threads;
          thread_id++) {
       orchestration_threads.emplace_back(
-					 std::make_unique<OrchestrationThread>(this, thread_id));
+          std::make_unique<OrchestrationThread>(this, thread_id));
     }
 
     LOG(INFO) << "starting scoring threads " << num_scoring_threads;
-    for (uint64_t thread_id = 0; thread_id < num_scoring_threads;
-         thread_id++) {
+    for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
       scoring_threads.emplace_back(
-				   std::make_unique<ScoringThread>(this, thread_id));
+          std::make_unique<ScoringThread>(this, thread_id));
     }
   } else {
     LOG(INFO) << "starting threads " << num_search_threads;
@@ -163,11 +172,12 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     }
   }
   if (use_batching) {
-      batching_thread = std::make_unique<BatchingThread>(this);
+    batching_thread = std::make_unique<BatchingThread>(this);
   } else {
-    throw std::invalid_argument("Has to have batching enabled, will look at later how if necessary");
+    throw std::invalid_argument(
+        "Has to have batching enabled, will look at later how if necessary");
   }
-  
+
   if (use_counter_thread) {
     counter_thread =
         std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
@@ -182,6 +192,260 @@ SSDPartitionIndex<T, TagT>::~SSDPartitionIndex() {
   if (medoids != nullptr) {
     delete[] medoids;
   }
+}
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::load_disk_index(
+    const std::string &disk_index_file, bool new_index_format) {
+  std::ifstream index_metadata(disk_index_file, std::ios::binary);
+
+  size_t tags_offset = 0;
+  size_t pq_pivots_offset = 0;
+  size_t pq_vectors_offset = 0;
+  uint64_t disk_nnodes;
+  uint64_t disk_ndims;
+  size_t medoid_id_on_file;
+  uint64_t file_frozen_id;
+
+  if (new_index_format) {
+    uint32_t nr, nc;
+
+    READ_U32(index_metadata, nr);
+    READ_U32(index_metadata, nc);
+
+    READ_U64(index_metadata, disk_nnodes);
+    READ_U64(index_metadata, disk_ndims);
+
+    READ_U64(index_metadata, medoid_id_on_file);
+    READ_U64(index_metadata, max_node_len);
+    READ_U64(index_metadata, nnodes_per_sector);
+    data_dim = disk_ndims;
+    max_degree = ((max_node_len - data_dim * sizeof(T)) / sizeof(unsigned)) - 1;
+    if (max_degree != this->range) {
+      LOG(ERROR) << "Range mismatch: " << max_degree << " vs " << this->range
+                 << ", setting range to " << max_degree;
+      this->range = max_degree;
+    }
+
+    LOG(INFO) << "Meta-data: # nodes per sector: " << nnodes_per_sector
+              << ", max node len (bytes): " << max_node_len
+              << ", max node degree: " << max_degree << ", npts: " << nr
+              << ", dim: " << nc << " disk_nnodes: " << disk_nnodes
+              << " disk_ndims: " << disk_ndims;
+
+    if (nnodes_per_sector > this->kMaxElemInAPage) {
+      LOG(ERROR)
+          << "nnodes_per_sector: " << nnodes_per_sector << " is greater than "
+          << this->kMaxElemInAPage
+          << ". Please recompile with a higher value of kMaxElemInAPage.";
+      // throw std::runtime_error();
+      crash();
+    }
+
+    READ_U64(index_metadata, this->num_frozen_points);
+    READ_U64(index_metadata, file_frozen_id);
+    if (this->num_frozen_points == 1) {
+      this->frozen_location = file_frozen_id;
+      // if (this->num_frozen_points == 1) {
+      LOG(INFO) << " Detected frozen point in index at location "
+                << this->frozen_location
+                << ". Will not output it at search time.";
+    }
+    READ_U64(index_metadata, tags_offset);
+    READ_U64(index_metadata, pq_pivots_offset);
+    READ_U64(index_metadata, pq_vectors_offset);
+
+    LOG(INFO) << "Tags offset: " << tags_offset
+              << " PQ Pivots offset: " << pq_pivots_offset
+              << " PQ Vectors offset: " << pq_vectors_offset;
+  } else { // old index file format
+    size_t actual_index_size = get_file_size(disk_index_file);
+    size_t expected_file_size;
+    READ_U64(index_metadata, expected_file_size);
+    if (actual_index_size != expected_file_size) {
+      LOG(INFO) << "File size mismatch for " << disk_index_file
+                << " (size: " << actual_index_size << ")"
+                << " with meta-data size: " << expected_file_size;
+      crash();
+    }
+
+    READ_U64(index_metadata, disk_nnodes);
+    READ_U64(index_metadata, medoid_id_on_file);
+    READ_U64(index_metadata, max_node_len);
+    READ_U64(index_metadata, nnodes_per_sector);
+    max_degree = ((max_node_len - data_dim * sizeof(T)) / sizeof(unsigned)) - 1;
+
+    LOG(INFO) << "Disk-Index File Meta-data: # nodes per sector: "
+              << nnodes_per_sector;
+    LOG(INFO) << ", max node len (bytes): " << max_node_len;
+    LOG(INFO) << ", max node degree: " << max_degree;
+  }
+  std::cout << "max_degree is " << max_degree << std::endl;
+  this->num_points = this->init_num_pts = disk_nnodes;
+  size_per_io =
+      SECTOR_LEN *
+      (nnodes_per_sector > 0 ? 1 : DIV_ROUND_UP(max_node_len, SECTOR_LEN));
+  LOG(INFO) << "Size per IO: " << size_per_io;
+
+  index_metadata.close();
+
+  pq_pivots_offset = 0;
+  pq_vectors_offset = 0;
+
+  LOG(INFO) << "After single file index check, Tags offset: " << tags_offset
+            << " PQ Pivots offset: " << pq_pivots_offset
+            << " PQ Vectors offset: " << pq_vectors_offset;
+  std::string index_fname(disk_index_file);
+  reader->open(index_fname, false, false);
+  num_medoids = 1;
+  medoids = new uint32_t[1];
+  medoids[0] = (uint32_t)(medoid_id_on_file);  
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::load_locs(const std::string &loc_file) {
+  if (!file_exists(loc_file)) {
+    throw std::invalid_argument(
+        "dist search mode is  " + dist_search_mode_to_string(dist_search_mode) +
+        ", but the id2loc file doesn't exist: " + loc_file);
+  }
+  LOG(INFO) << "Load loc from existing file: " << loc_file;
+  std::vector<TagT> loc_v;
+  size_t loc_num, loc_dim;
+  pipeann::load_bin<TagT>(loc_file, loc_v, loc_num, loc_dim, 0);
+  if (loc_dim != 1) {
+    throw std::runtime_error("dim from loc file " + loc_file +
+                             " had value not 1: " + std::to_string(loc_dim));
+  }
+  // there is a ordering constraint, need to load loc file after disk index if
+  // possible?
+  if (loc_num != num_points) {
+    throw std::runtime_error(
+        "num points from loc file " + loc_file + " had value" +
+        std::to_string(loc_num) +
+        " not equal to numpoints from index: " + std::to_string(num_points));
+  }
+  for (uint32_t i = 0; i < loc_num; i++) {
+    id2loc_.insert_or_assign(loc_v[i], i);
+  }
+  LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::load_pq(
+    const std::string &pq_compressed_vectors, const std::string &pq_table_bin) {
+
+  size_t pq_pivots_offset = 0;
+  size_t pq_vectors_offset = 0;
+
+  size_t npts_u64, nchunks_u64;
+  pipeann::load_bin<uint8_t>(pq_compressed_vectors, data, npts_u64, nchunks_u64,
+                             pq_vectors_offset);
+
+  this->n_chunks = nchunks_u64;
+  this->global_graph_num_points = npts_u64;
+  this->cur_id = this->num_points;
+
+  LOG(INFO) << "Load compressed vectors from file: " << pq_compressed_vectors
+            << " offset: " << pq_vectors_offset << " num points: " << npts_u64
+            << " n_chunks: " << nchunks_u64;
+
+  pq_table.load_pq_centroid_bin(pq_table_bin.c_str(), nchunks_u64,
+                                pq_pivots_offset);
+  if (dist_search_mode == DistributedSearchMode::SINGLE_SERVER &&
+      this->num_points != npts_u64) {
+    LOG(INFO) << "Mismatch in #points for compressed data file and disk "
+                 "index file: "
+    << this->num_points << " vs " << npts_u64;
+    throw std::invalid_argument(
+        "Mismatch in #points for compressed data file and disk "
+        "index file: " +
+        std::to_string(this->num_points) + " " + std::to_string(npts_u64));
+  }
+
+  this->data_dim = pq_table.get_dim();
+  this->aligned_dim = ROUND_UP(this->data_dim, 8);
+
+  LOG(INFO) << "Loaded PQ centroids and in-memory compressed vectors. #points: "
+            << num_points << " #dim: " << data_dim
+            << " #aligned_dim: " << aligned_dim << " #chunks: " << n_chunks;
+
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::load_partition_assignment(
+    const std::string &partition_assignment_file) {
+  if (!file_exists(partition_assignment_file)) {
+    throw std::invalid_argument(
+        "dist search omde is   " +
+        dist_search_mode_to_string(dist_search_mode) +
+        ", but the partition_assignment assignment bin file doesn't exist: " +
+        partition_assignment_file);
+  }
+
+  size_t ca_num_pts, ca_dim;
+  std::vector<uint8_t> tmp;
+  pipeann::load_bin<uint8_t>(partition_assignment_file, partition_assignment,
+                             ca_num_pts, ca_dim);
+  LOG(INFO) << "partition assignment file loaded successfully.";
+}
+
+template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::load_max_norm(
+    const std::string &max_norm_file) {
+  if (metric != pipeann::Metric::INNER_PRODUCT) {
+    throw std::runtime_error("Don't need to load max norm file if not ip");
+
+    if (file_exists(max_norm_file)) {
+      uint64_t dumr, dumc;
+      float *norm_val;
+      pipeann::load_bin(max_norm_file, norm_val, dumr, dumc);
+      this->_max_base_norm = norm_val[0];
+      LOG(INFO) << "Setting rescaling factor of base vector to "
+                << this->_max_base_norm;
+      delete[] norm_val;
+    } else {
+      throw std::runtime_error(
+          "distance metric is mips but max norm base  file doesn't exist");
+    }
+  }
+}
+
+
+template <typename T, typename TagT>
+int SSDPartitionIndex<T, TagT>::load_new(const char *index_prefix,
+                                         bool new_index_format) {
+  std::string iprefix = std::string(index_prefix);
+  std::string disk_index_file = iprefix + "_disk.index";
+  std::string pq_compressed_vectors = iprefix + "_pq_compressed.bin";
+  std::string pq_table_bin = iprefix + "_pq_pivots.bin";
+  std::string loc_file = iprefix + "_ids_uint32.bin";
+  std::string partition_assignment_file = iprefix + "_partition_assignment.bin";
+  std::string max_norm_file = disk_index_file + "_max_base_norm.bin";
+  if (enable_disk_index) {
+    load_disk_index(disk_index_file, new_index_format);
+  }
+  if (enable_pq) {
+
+    load_pq(pq_compressed_vectors, pq_table_bin);
+  }
+
+  if (enable_tags) {
+    std::string tag_file = disk_index_file + ".tags";
+    LOG(INFO) << "Loading tags from " << tag_file;
+    this->load_tags(tag_file);
+  }
+  if (enable_locs) {
+    load_locs(loc_file);
+  }
+  if (enable_partition_assignment) {
+    load_partition_assignment(partition_assignment_file);
+  }
+  if (enable_max_norm) {
+    load_max_norm(max_norm_file);
+  }
+  LOG(INFO) << "SSDIndex loaded successfully.";
+  load_flag = true;
+  return 0;
 }
 
 template <typename T, typename TagT>
@@ -389,8 +653,7 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
           ", but the cluster assignment bin file doesn't exist: " +
           cluster_file);
     }
-    // for testing right now to see what the overhead is of nodes with multiple
-    // clusters as home cluster
+
     size_t ca_num_pts, ca_dim;
     std::vector<uint8_t> tmp;
     pipeann::load_bin<uint8_t>(cluster_file, partition_assignment, ca_num_pts,
@@ -472,7 +735,8 @@ void SSDPartitionIndex<T, TagT>::apply_tags_to_result(uint32_t *node_id,
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads;
+         thread_id++) {
       orchestration_threads[thread_id]->start();
     }
     for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
@@ -496,18 +760,20 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::shutdown() {
   LOG(INFO) << "SHUTDOWN CALLED";
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads;
+         thread_id++) {
       orchestration_threads[thread_id]->signal_stop();
     }
-    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads;
+         thread_id++) {
       orchestration_threads[thread_id]->join();
-    }    
+    }
     for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
       scoring_threads[thread_id]->signal_stop();
     }
     for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
       scoring_threads[thread_id]->join();
-    }    
+    }
 
   } else {
     for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
@@ -584,7 +850,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   size_t offset = 0;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   offset += sizeof(msg_type);
-  std::vector<search_result_t *> results(64);  
+  std::vector<search_result_t *> results(64);
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_HANDLER",
                                      get_timestamp_ns(), msg_id,
                                      message_type_to_string(msg_type));
@@ -622,8 +888,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       // [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
       // message_type_to_string(msg_type));
 
-      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_CREATE_STATE",
-      // get_timestamp_ns(), msg_id,
+      // SingletonLogger::get_logger().info("[{}] [{}]
+      // [{}]:BEGIN_CREATE_STATE", get_timestamp_ns(), msg_id,
       // message_type_to_string(msg_type));
       preallocated_state_queue.dequeue_exact(1, state_scratch.data());
       SearchState<T, TagT> *new_search_state = state_scratch[0];
@@ -655,8 +921,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       // [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
       // message_type_to_string(msg_type));
       global_state_queue.enqueue(client_state_prod_token, new_search_state);
-      // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE",
-      // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
+      // SingletonLogger::get_logger().info("[{}] [{}]
+      // [{}]:END_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+      // message_type_to_string(msg_type));
     }
   } else if (msg_type == MessageType::STATES) {
     // LOG(INFO) << size;
@@ -695,8 +962,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       query_emb_map.insert_or_assign(query_scratch[i]->query_id,
                                      query_scratch[i]);
     }
-    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_INSERT",
-    // get_timestamp_ns(), msg_id,
+    // SingletonLogger::get_logger().info("[{}] [{}]
+    // [{}]:END_QUERY_MAP_INSERT", get_timestamp_ns(), msg_id,
     // message_type_to_string(msg_type));
     for (uint64_t i = 0; i < num_states; i++) {
       state_scratch[i]->partition_history.push_back(my_partition_id);
@@ -707,8 +974,9 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       }
     }
     num_foreign_states_global_queue.fetch_add(num_states);
-    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_ENQUEUE_STATE",
-    // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}]
+    // [{}]:BEGIN_ENQUEUE_STATE", get_timestamp_ns(), msg_id,
+    // message_type_to_string(msg_type));
     global_state_queue.enqueue_bulk(server_state_prod_token,
                                     state_scratch.data(), num_states);
     // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_ENQUEUE_STATE",
@@ -732,17 +1000,19 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     preallocated_query_emb_queue.free(query);
 
     query_emb_map.erase(query_id);
-    // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE",
-    // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
+    // SingletonLogger::get_logger().info("[{}] [{}]
+    // [{}]:END_QUERY_MAP_ERASE", get_timestamp_ns(), msg_id,
+    // message_type_to_string(msg_type));
   } else if (msg_type == MessageType::RESULTS) {
     // need to implement result handling
     if (unlikely(dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN)) {
       throw std::runtime_error("can't receive results if not  DISTRIBUTED_ANN");
     }
     if (unlikely(num_orchestration_threads == 0)) {
-      throw std::runtime_error("can't receive results if not orchestration server");
+      throw std::runtime_error(
+          "can't receive results if not orchestration server");
     }
-    
+
     size_t num_search_results;
     std::memcpy(&num_search_results, buffer + offset,
                 sizeof(num_search_results));
@@ -761,7 +1031,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
             " larger than num orchestration threads " +
             std::to_string(num_orchestration_threads));
       }
-      orchestration_threads[result->orchestration_thread_id]->enqueue_computation_result(result);
+      orchestration_threads[result->orchestration_thread_id]
+          ->enqueue_computation_result(result);
     }
   } else {
     throw std::runtime_error("Weird message type value");
@@ -772,8 +1043,8 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
 }
 
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::send_state(
-					    SearchState<T, TagT> *search_state, uint64_t recipient_peer_id) {
+void SSDPartitionIndex<T, TagT>::send_state(SearchState<T, TagT> *search_state,
+                                            uint64_t recipient_peer_id) {
   if (use_batching) {
     batching_thread->push_state_to_batch(search_state, recipient_peer_id);
     return;
@@ -785,7 +1056,8 @@ void SSDPartitionIndex<T, TagT>::send_state(
   // bool send_with_embedding;
 
   // if (std::find(search_state->partition_history.begin(),
-  //               search_state->partition_history.end(), receiver_partition_id)
+  //               search_state->partition_history.end(),
+  //               receiver_partition_id)
   //               !=
   //     search_state->partition_history.end()) {
   //   send_with_embedding = false;
@@ -864,7 +1136,8 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::signal_stop() {
   state_queue.emplace(std::numeric_limits<uint64_t>::max(),
                       std::move(empty_vec));
   // real_thread =
-  // std::thread(&SSDPartitionIndex<T, TagT>::BatchingThread::main_loop, this);
+  // std::thread(&SSDPartitionIndex<T, TagT>::BatchingThread::main_loop,
+  // this);
   msg_queue_cv.notify_all();
 }
 
@@ -891,7 +1164,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::push_client_result_to_batch(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::BatchingThread::push_state_to_batch(
-								     SearchState<T, TagT> *state, uint64_t recipient_peer_id) {
+    SearchState<T, TagT> *state, uint64_t recipient_peer_id) {
   // LOG(INFO) << "push state to batch called";
   std::unique_lock<std::mutex> lock(msg_queue_mutex);
   if (recipient_peer_id == parent->my_partition_id) {
@@ -1011,7 +1284,8 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
       states_used.insert(states->begin(), states->end());
 
       // for (auto &state : *states) {
-      //   if (!state->need_to_send_result_when_send_state && state->sent_state)
+      //   if (!state->need_to_send_result_when_send_state &&
+      //   state->sent_state)
       //   {
       //     parent->preallocated_state_queue.free(state);
       //   }
@@ -1193,11 +1467,11 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
     if (i > 0 && state->full_retset[i].id == state->full_retset[i - 1].id) {
       continue; // deduplicate.
     }
-  
+
     if (unlikely(num_res > search_result_t::get_max_num_res())) {
       throw std::runtime_error("num res larger than max allowable");
     }
-    
+
     // write_data(char *buffer, const char *data, size_t size, size_t &offset)
     node_id[num_res] = state->full_retset[i].id; // use ID to replace tags
     distance[num_res] = state->full_retset[i].distance;
@@ -1234,29 +1508,31 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
     offset += state->stats->write_serialize(buffer + offset);
   }
 
-  write_data(buffer,
-             reinterpret_cast<const char *>(&state->is_distributed_ann_scoring_state),
-             sizeof(state->is_distributed_ann_scoring_state), offset);
+  write_data(
+      buffer,
+      reinterpret_cast<const char *>(&state->is_distributed_ann_scoring_state),
+      sizeof(state->is_distributed_ann_scoring_state), offset);
   if (state->is_distributed_ann_scoring_state) {
     size_t size_full_retset = state->full_retset.size();
     write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
                sizeof(size_full_retset), offset);
     for (size_t i = 0; i < size_full_retset; i++) {
-      write_data(buffer, reinterpret_cast<const char *>(&state->full_retset[i].id),
-                 sizeof(state->full_retset[i].id), offset);
       write_data(buffer,
-                 reinterpret_cast<const char *>(&state->full_retset[i].distance),
-                 sizeof(state->full_retset[i].distance), offset);
+                 reinterpret_cast<const char *>(&state->full_retset[i].id),
+                 sizeof(state->full_retset[i].id), offset);
+      write_data(
+          buffer,
+          reinterpret_cast<const char *>(&state->full_retset[i].distance),
+          sizeof(state->full_retset[i].distance), offset);
     }
-    write_data(buffer, reinterpret_cast<const char *>(&state->orchestration_thread_id),
+    write_data(buffer,
+               reinterpret_cast<const char *>(&state->orchestration_thread_id),
                sizeof(state->orchestration_thread_id), offset);
     write_data(buffer,
                reinterpret_cast<const char *>(&state->scoring_io_request),
                sizeof(state->scoring_io_request), offset);
   }
 
-
-  
   write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
              sizeof(is_final_result), offset);
   return offset;
@@ -1280,7 +1556,7 @@ size_t SSDPartitionIndex<T, TagT>::state_get_serialize_result_size(
     num_res++;
   }
   bool is_final_result = state_search_ends(state);
-  bool record_stats = (state->stats != nullptr) && is_final_result;    
+  bool record_stats = (state->stats != nullptr) && is_final_result;
   num_bytes +=
       sizeof(state->query_id) + sizeof(state->client_peer_id) +
       sizeof(state->k_search) + sizeof(num_res) + sizeof(uint32_t) * num_res +
@@ -1289,7 +1565,7 @@ size_t SSDPartitionIndex<T, TagT>::state_get_serialize_result_size(
       sizeof(uint32_t) * state->partition_history_hop_idx.size() +
       sizeof(record_stats) + sizeof(state->is_distributed_ann_scoring_state) +
       sizeof(is_final_result);
-    
+
   if (state->is_distributed_ann_scoring_state) {
     // num_bytes += sizeof(distributedann_full_nbr.id) +
     // sizeof(distributedann_full_nbr.distance);
@@ -1337,20 +1613,18 @@ bool SSDPartitionIndex<T, TagT>::state_should_send_emb(
          state->partition_history.cend();
 }
 
-
 template <typename T, typename TagT>
 uint64_t SSDPartitionIndex<T, TagT>::get_random_scoring_server_id() {
   static thread_local std::random_device dev;
   static thread_local std::mt19937 rng(dev());
   static thread_local std::uniform_int_distribution<std::mt19937::result_type>
 
-  // -2 because the last node is the client, second to last is orchestration
-  // thread
+      // -2 because the last node is the client, second to last is
+      // orchestration thread
 
-  dist(0, other_peer_ids.size() - 2);
+      dist(0, other_peer_ids.size() - 2);
   return other_peer_ids[dist(rng)];
 }
-
 
 template class SSDPartitionIndex<float, uint32_t>;
 template class SSDPartitionIndex<uint8_t, uint32_t>;

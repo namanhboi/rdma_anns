@@ -49,7 +49,7 @@ public:
         num_scoring_threads, reader, communicator, dist_search_mode, nullptr,
         batch_size, use_batching, max_batch_size, use_counter_thread,
         counter_csv, counter_sleep_ms, use_logging, log_file);
-    int res = ssd_partition_index->load(index_prefix.c_str(), true);
+    int res = ssd_partition_index->load_new(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
     }
@@ -217,9 +217,9 @@ int main(int argc, char **argv) {
 
   dist_search_mode = get_distributed_search_mode(dist_search_mode_str);
 
-  if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::runtime_error("Distributedann yet to be implemented");
-  }
+  // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+    // throw std::runtime_error("Distributedann yet to be implemented");
+  // }
 
   if (dist_search_mode != DistributedSearchMode::SINGLE_SERVER) {
     index_path_prefix += std::to_string(server_peer_id);

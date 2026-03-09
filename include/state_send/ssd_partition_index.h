@@ -566,6 +566,7 @@ public:
     }
 #endif
   }
+  int load_new(const char *index_prefix, bool new_index_format = true);
 
   // load compressed data, and obtains the handle to the disk-resident index
   // also loads in the paritition index mapping file if num_partitions > 1
@@ -598,6 +599,23 @@ public:
   }
 
   uint64_t get_data_dim() { return this->data_dim; }
+
+private:
+  // loading functions
+  void load_disk_index(const std::string &disk_index_file, bool new_index_format);
+  /*load the partition_ids_uint32.bin file */
+  void load_locs(const std::string& loc_file);
+
+  /*load pq data and setup the table*/
+  void load_pq(const std::string &pq_compressed_vectors, const std::string &pq_table_bin);
+
+  /*used for mips to load max norm file*/
+  void load_max_norm(const std::string &max_norm_file);
+
+  /*used by statesend + client gather and distributedann orchestration server*/
+  void load_partition_assignment(const std::string &partition_assignment_file);
+  
+
 
 private:
   uint8_t my_partition_id;
@@ -661,8 +679,15 @@ private:
   // assumed max thread, only the first nthreads are initialized.
 
   bool load_flag = false;   // already loaded.
-  bool enable_tags = false; // support for tags and dynamic indexing
-  bool enable_locs = false; // support for loc files
+  
+  // each of the variables below correspond to a load function
+  bool enable_disk_index = false;
+  bool enable_tags = false; 
+  bool enable_locs = false; 
+  bool enable_pq = false;
+  bool enable_max_norm = false;
+  bool enable_partition_assignment=false;
+  
 
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;

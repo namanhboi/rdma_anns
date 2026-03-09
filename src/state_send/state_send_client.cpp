@@ -148,7 +148,8 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
           parent->communicator->send_to_peer(distances[pid].second, r);
         }
       }
-    } else if (parent->dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+    } else if (parent->dist_search_mode ==
+               DistributedSearchMode::DISTRIBUTED_ANN) {
       // send to last other_peer_id which is the orchestration server
       size_t region_size =
           sizeof(MessageType::QUERIES) +
@@ -165,7 +166,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       QueryEmbedding<T>::write_serialize_queries(r->addr + offset,
                                                  batch_of_queries);
       uint32_t server_peer_id =
-        parent->other_peer_ids[parent->other_peer_ids.size() - 1];
+          parent->other_peer_ids[parent->other_peer_ids.size() - 1];
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                          r);
     }
@@ -217,8 +218,7 @@ template <typename T>
 StateSendClient<T>::StateSendClient(
     const uint64_t id, const std::vector<std::string> &address_list,
     int num_worker_threads, DistributedSearchMode dist_search_mode,
-    uint64_t dim, uint32_t top_n,
-    const std::string &medoid_file)
+    uint64_t dim, uint32_t top_n, const std::string &medoid_file)
     : my_id(id), dim(dim), dist_search_mode(dist_search_mode),
       prealloc_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset),
       prealloc_result_queue(search_result_t::MAX_PRE_ALLOC_ELEMENTS * 3,
@@ -226,32 +226,32 @@ StateSendClient<T>::StateSendClient(
   communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
   // std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
-  if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::runtime_error("yet to be implemented");
-  } else {
-    if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
-      num_results_to_expect = top_n;
-      if (!file_exists(medoid_file)) {
-        throw std::invalid_argument("medoid file doesn't exist");
-      }
-      size_t np;
-      pipeann::load_bin<T>(medoid_file, partition_medoids, np, dim);
-      num_partitions = np;
-      distance_fn = pipeann::get_distance_function<T>(pipeann::L2);
-      LOG(INFO) << "Loading medoids done";
-    } else if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
-      num_results_to_expect = other_peer_ids.size();
+  // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+  // throw std::runtime_error("yet to be implemented");
+  // } else {
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    num_results_to_expect = top_n;
+    if (!file_exists(medoid_file)) {
+      throw std::invalid_argument("medoid file doesn't exist");
     }
-
-    num_client_threads = num_worker_threads;
-    communicator->register_receive_handler(
-        [this](const char *buffer, size_t size) {
-          this->receive_result_handler(buffer, size);
-        });
-    for (uint64_t i = 0; i < num_client_threads; i++) {
-      client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
-    }
+    size_t np;
+    pipeann::load_bin<T>(medoid_file, partition_medoids, np, dim);
+    num_partitions = np;
+    distance_fn = pipeann::get_distance_function<T>(pipeann::L2);
+    LOG(INFO) << "Loading medoids done";
+  } else if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER) {
+    num_results_to_expect = other_peer_ids.size();
   }
+
+  num_client_threads = num_worker_threads;
+  communicator->register_receive_handler(
+      [this](const char *buffer, size_t size) {
+        this->receive_result_handler(buffer, size);
+      });
+  for (uint64_t i = 0; i < num_client_threads; i++) {
+    client_threads.emplace_back(std::make_unique<ClientThread>(i, this));
+  }
+  // }
 
   prealloc_region_queue.allocate_and_assign_additional_block(
       Region::MAX_BYTES_REGION, Region::assign_addr);
@@ -271,8 +271,8 @@ template <typename T>
 void StateSendClient<T>::wait_results(const uint64_t num_results) {
   while (num_results_received != num_results) {
     // LOG(INFO) << "waiting for results, num results received "
-              // << num_results_received << ","
-              // << "num prealloc results "
+    // << num_results_received << ","
+    // << "num prealloc results "
     // << prealloc_result_queue.get_approx_num_free();
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
@@ -310,7 +310,7 @@ void combine_results_scatter_gather(
   std::partial_sort(
       node_id_dist.begin(), node_id_dist.begin() + combined_res->k_search,
       node_id_dist.end(),
-		    [](auto &left, auto &right) { return left.second < right.second; });
+      [](auto &left, auto &right) { return left.second < right.second; });
   combined_res->num_res = std::min(combined_res->k_search, node_id_dist.size());
   // LOG(INF) << "num_res " << combined_res->num_res;
   for (auto i = 0; i < combined_res->num_res; i++) {
@@ -401,7 +401,8 @@ void StateSendClient<T>::clear_results(
   }
   if (dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
     client_gather_results.clear();
-    // the final combined result is inserted into results so we just need to free that at the end
+    // the final combined result is inserted into results so we just need to
+    // free that at the end
   }
 
   for (auto query_id : query_ids) {
@@ -414,22 +415,23 @@ void StateSendClient<T>::clear_results(
     }
   }
   results.clear();
-  // LOG(INFO) << "num prealloc results "  << prealloc_result_queue.get_approx_num_free();
-  // region queue already handles the freeing of regions. We implemented it that
-  // way because of zmq memory handling req
+  // LOG(INFO) << "num prealloc results "  <<
+  // prealloc_result_queue.get_approx_num_free(); region queue already handles
+  // the freeing of regions. We implemented it that way because of zmq memory
+  // handling req
 }
 
 template <typename T> void StateSendClient<T>::shutdown() {
-  if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::runtime_error("yet to be implemented");
-  } else {
-    for (auto &client_thread : client_threads) {
-      client_thread->signal_stop();
-    }
-    for (auto &client_thread : client_threads) {
-      client_thread->join();
-    }
+  // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+  // throw std::runtime_error("yet to be implemented");
+  // } else {
+  for (auto &client_thread : client_threads) {
+    client_thread->signal_stop();
   }
+  for (auto &client_thread : client_threads) {
+    client_thread->join();
+  }
+  // }
   result_thread->signal_stop();
   result_thread->join();
   communicator->stop_recv_thread();
@@ -546,7 +548,7 @@ void StateSendClient<T>::ResultReceiveThread::
     process_state_send_client_gather_result(search_result_t *res) {
   // throw std::runtime_error("feature not fully implemented yet");
   bool all_results_arrived = false, no_entry = true;
-  
+
   search_result_t *tmp_result;
   parent->prealloc_result_queue.dequeue_exact(1, &tmp_result);
   parent->client_gather_results.upsert(
@@ -557,13 +559,14 @@ void StateSendClient<T>::ResultReceiveThread::
         no_entry = false;
         return false;
       },
-				       client_gather_result_t(tmp_result, res, all_results_arrived));
+      client_gather_result_t(tmp_result, res, all_results_arrived));
   if (!no_entry) {
     parent->prealloc_result_queue.free(tmp_result);
   }
   if (all_results_arrived) {
     parent->results.insert_or_assign(
-				     res->query_id, parent->client_gather_results.find(res->query_id).combined_result);
+        res->query_id,
+        parent->client_gather_results.find(res->query_id).combined_result);
     parent->query_result_time.insert_or_assign(
         res->query_id, std::chrono::steady_clock::now());
     parent->num_results_received.fetch_add(1);
@@ -580,12 +583,13 @@ void StateSendClient<T>::ResultReceiveThread::main_loop() {
     // for scatter gather and client gather, when is res freed?
     // scatter gather stores intermediate results into sub_query* so its freed
     // in clear_results
-    // client_gather doesn't so it frees then after calling process state_send_client_gather_result
+    // client_gather doesn't so it frees then after calling process
+    // state_send_client_gather_result
 
     // LOG(INFO) << "hello";
     if (res == nullptr) {
       assert(!running);
-      LOG(INFO) <<"exit";
+      LOG(INFO) << "exit";
       break;
     }
     if (parent->dist_search_mode == DistributedSearchMode::SCATTER_GATHER ||
