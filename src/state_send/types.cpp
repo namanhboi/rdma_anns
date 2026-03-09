@@ -16,8 +16,10 @@
 // }
 
 size_t write_data(char *buffer, const char *data, size_t size,
-                         size_t &offset) {
-  std::memcpy(buffer + offset, data, size);
+                  size_t &offset) {
+  if (size > 0) { // Protects against UB from nullptr when size is 0
+    std::memcpy(buffer + offset, data, size);
+  }
   offset += size;
   return size;
 }
@@ -185,6 +187,23 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
   write_data(buffer, reinterpret_cast<const char *>(&client_peer_id),
              sizeof(client_peer_id), offset);
 
+  write_data(buffer,
+             reinterpret_cast<const char *>(&is_distributed_ann_scoring_state),
+             sizeof(is_distributed_ann_scoring_state), offset);
+  if (is_distributed_ann_scoring_state) {
+    size_t size_frontier = full_retset.size();
+    write_data(buffer, reinterpret_cast<const char *>(&size_frontier),
+               sizeof(size_frontier), offset);
+    write_data(buffer, reinterpret_cast<const char *>(frontier.data()),
+               sizeof(unsigned) * size_frontier, offset);
+    write_data(buffer,
+               reinterpret_cast<const char *>(&distributed_distance_cutoff),
+               sizeof(distributed_distance_cutoff), offset);
+    write_data(buffer, reinterpret_cast<const char *>(&orchestration_thread_id),
+               sizeof(orchestration_thread_id), offset);
+    write_data(buffer, reinterpret_cast<const char *>(&scoring_io_request),
+               sizeof(scoring_io_request), offset);
+  }
   return offset;
 }
 
@@ -229,6 +248,16 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
   }
   num_bytes += sizeof(client_type);
   num_bytes += sizeof(client_peer_id);
+
+  num_bytes += sizeof(is_distributed_ann_scoring_state);
+  if (is_distributed_ann_scoring_state) {
+    num_bytes += sizeof(size_t);
+    num_bytes += sizeof(unsigned) * full_retset.size();
+    num_bytes += sizeof(distributed_distance_cutoff);
+    num_bytes += sizeof(orchestration_thread_id);
+    num_bytes += sizeof(scoring_io_request);
+  }
+  
   return num_bytes;
 }
 
@@ -366,6 +395,30 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_DESERIALIZE_STATE",
   // SingletonLogger::get_timestamp_ns(),
   // log_msg_id, "STATE");
+
+
+  std::memcpy(&state->is_distributed_ann_scoring_state, buffer + offset,
+              sizeof(state->is_distributed_ann_scoring_state));
+  offset += sizeof(state->is_distributed_ann_scoring_state);
+  if (state->is_distributed_ann_scoring_state) {
+    size_t size_frontier;
+    std::memcpy(&size_frontier, buffer + offset, sizeof(size_frontier));
+    offset += sizeof(size_frontier);
+    state->frontier = std::vector<unsigned>(size_frontier);
+    std::memcpy(state->frontier.data(), buffer + offset,
+                sizeof(unsigned) * size_frontier);
+    offset += sizeof(unsigned) * size_frontier;
+    std::memcpy(&state->distributed_distance_cutoff, buffer + offset,
+                sizeof(state->distributed_distance_cutoff));
+    offset += sizeof(state->distributed_distance_cutoff);
+    std::memcpy(&state->orchestration_thread_id, buffer + offset,
+                sizeof(state->orchestration_thread_id));
+    offset += sizeof(state->orchestration_thread_id);
+    std::memcpy(&state->scoring_io_request, buffer + offset,
+                sizeof(state->scoring_io_request));
+    offset += sizeof(state->scoring_io_request);
+  }
+  
 }
 
 template <typename T, typename TagT>
@@ -557,6 +610,9 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   // state->need_to_send_result_when_send_state = false;
   // state->sent_state = false;
   state->should_send_emb = false;
+  state->is_distributed_ann_scoring_state = false;
+  state->distributed_distance_cutoff = std::numeric_limits<float>::max();
+  state->frontier_distributedann_result.clear();
 }
 
 void
@@ -569,7 +625,7 @@ search_result_t::deserialize(const char *buffer, search_result_t* res) {
               sizeof(res->client_peer_id));
   offset += sizeof(res->client_peer_id);
 
-  std::memcpy(&res->k_search, buffer + offset, sizeof(k_search));
+  std::memcpy(&res->k_search, buffer + offset, sizeof(res->k_search));
   offset += sizeof(res->k_search);
 
   std::memcpy(&res->num_res, buffer + offset, sizeof(res->num_res));
@@ -608,6 +664,35 @@ search_result_t::deserialize(const char *buffer, search_result_t* res) {
     res->stats = QueryStats::deserialize(buffer + offset);
     offset += res->stats->get_serialize_size();
   }
+
+
+  std::memcpy(&res->is_distributedann_scoring_result, buffer + offset,
+              sizeof(res->is_distributedann_scoring_result));
+  offset += sizeof(res->is_distributedann_scoring_result);
+  if (res->is_distributedann_scoring_result) {
+    size_t size_full_retset;
+    std::memcpy(&size_full_retset, buffer + offset, sizeof(size_full_retset));
+    offset += sizeof(size_full_retset);
+    for (size_t i = 0; i < size_full_retset; i++) {
+      unsigned id;
+      float distance;
+      std::memcpy(&id, buffer + offset, sizeof(id));
+      offset += sizeof(id);
+      std::memcpy(&distance, buffer + offset, sizeof(distance));
+      offset += sizeof(distance);
+      res->full_retset.emplace_back(pipeann::Neighbor(id, distance, true));
+    }
+    std::memcpy(&res->orchestration_thread_id, buffer + offset,
+                sizeof(res->orchestration_thread_id));
+    offset += sizeof(res->orchestration_thread_id);
+    std::memcpy(&res->hint, buffer + offset,
+                sizeof(res->hint));
+    offset += sizeof(res->hint);
+  }
+  
+
+
+  
   std::memcpy(&res->is_final_result, buffer + offset,
               sizeof(res->is_final_result));
   offset += sizeof(res->is_final_result);
@@ -623,11 +708,19 @@ size_t search_result_t::write_serialize(char *buffer) const {
              sizeof(k_search), offset);
   write_data(buffer, reinterpret_cast<const char *>(&this->num_res),
              sizeof(this->num_res), offset);
+  if (num_res > search_result_t::get_max_num_res()) {
+    // Handle the error! Throw an exception, log it, or cap the value.
+    // For example, capping it to prevent a crash:
+    // res->num_res = search_result_t::get_max_num_res(); 
+    
+    // Or better, throw so you don't process corrupted data:
+    throw std::runtime_error("num_res exceeds maximum allowed buffer size");
+}  
   write_data(buffer, reinterpret_cast<const char *>(this->node_id),
              sizeof(uint32_t) * num_res, offset);
   write_data(buffer, reinterpret_cast<const char *>(this->distance),
              sizeof(float) * num_res, offset);
-
+  
   size_t num_partitions = this->partition_history.size();
   write_data(buffer, reinterpret_cast<const char *>(&num_partitions),
              sizeof(num_partitions), offset);
@@ -647,6 +740,28 @@ size_t search_result_t::write_serialize(char *buffer) const {
   if (record_stats) {
     offset += stats->write_serialize(buffer + offset);
   }
+
+  write_data(buffer,
+             reinterpret_cast<const char *>(&is_distributedann_scoring_result),
+             sizeof(is_distributedann_scoring_result), offset);
+  if (is_distributedann_scoring_result) {
+    size_t size_full_retset = full_retset.size();
+    write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
+               sizeof(size_full_retset), offset);
+    for (size_t i = 0; i < size_full_retset; i++) {
+      write_data(buffer, reinterpret_cast<const char *>(&full_retset[i].id),
+                 sizeof(full_retset[i].id), offset);
+      write_data(buffer,
+                 reinterpret_cast<const char *>(&full_retset[i].distance),
+                 sizeof(full_retset[i].distance), offset);
+    }
+    write_data(buffer, reinterpret_cast<const char *>(&orchestration_thread_id),
+               sizeof(orchestration_thread_id), offset);
+    write_data(buffer, reinterpret_cast<const char *>(&hint), sizeof(hint),
+               offset);
+  }
+
+  
   write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
              sizeof(is_final_result), offset);
   return offset;
@@ -659,10 +774,24 @@ size_t search_result_t::get_serialize_size() const {
                sizeof(float) * num_res + sizeof(size_t) +
                sizeof(uint8_t) * partition_history.size() + sizeof(size_t) +
                sizeof(uint32_t) * partition_history_hop_idx.size() +
-               sizeof(bool) + sizeof(is_final_result);
+               sizeof(bool) + sizeof(is_distributedann_scoring_result) +
+               sizeof(is_final_result);
+  // first bool is record stats, second is is distributedann
+    
+  if (is_distributedann_scoring_result) {
+    // num_bytes += sizeof(distributedann_full_nbr.id) +
+    // sizeof(distributedann_full_nbr.distance);
+    num_bytes += sizeof(size_t);
+    num_bytes += full_retset.size() * (sizeof(float) + sizeof(unsigned));
+    num_bytes += sizeof(orchestration_thread_id);
+    num_bytes += sizeof(hint);
+  }
+
   if (stats != nullptr) {
     num_bytes += stats->get_serialize_size();
   }
+
+
   return num_bytes;
 }
 
@@ -707,6 +836,12 @@ void search_result_t::reset(search_result_t * res) {
   res->partition_history_hop_idx.clear();
   res->stats = nullptr;
   res->is_final_result = false;
+
+  res->is_distributedann_scoring_result = false;
+  res->full_retset.clear();
+  res->orchestration_thread_id =
+    std::numeric_limits<size_t>::max();
+  res->hint = nullptr;
 }
 
 

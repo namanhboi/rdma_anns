@@ -213,7 +213,7 @@ private:
   bool record_stats;
 
   class SearchThread {
-  protected:
+  private:
     SSDPartitionIndex *parent;
     std::thread real_thread;
     // id used so that parent can send queries round robin
@@ -227,14 +227,14 @@ private:
 
     std::atomic<uint64_t> number_own_states = 0;
     std::atomic<uint64_t> number_foreign_states = 0;
-    virtual void process_state(SearchExecutionState s,
+    void process_state(SearchExecutionState s,
                                SearchState<T, TagT> *state);
 
     /**
        main loop that runs the search. This version only balances batch_size
        queries at a time.
      */
-    virtual void main_loop_batch();
+    void main_loop_batch();
     friend class CounterThread;
 
   public:
@@ -246,40 +246,6 @@ private:
     void start();
     void signal_stop();
     void join();
-  };
-
-
-  class OrchestrationThread : SearchThread {
-    // main loop poll on this queue to get search result which contains pointer
-    // to io request which contains pointer to the state.
-    // Use this state pointer to add the results back into the state
-    moodycamel::ConcurrentQueue<search_result_t *> computation_result_queue;
-
-  private:
-    uint64_t get_random_scoring_server_id();
-
-    void add_states_to_batch(SearchState<T, TagT> **states, size_t num_states);
-
-
-    // each iteration of this loop tries to advance one of the state in the
-    // balancing batch.
-    // Every computation (mem index, centroid, frontier RPC requests) require an
-    // rpc to a scoring server which will return a search_result_t.
-    // Once we receive the search_result_t, we have the pointer to the IORequest
-    // which we set the finished member to true.
-    // We then check if all io is finished for the state.
-    // If not, continue, if yes then advance the state by incorporating the
-    // search_result_t into the retset and full retset of the state. The
-    // function that does this can be called distributedann_explore_frontier.
-    // This function returns the execution state of the SearchState, then we can
-    // handle each value via bool process_state(SearchState) *s). Returns true
-    // if state is finished, false is not
-    // Added search_result field to IORequest to link search_result_t to that
-    // IORequest
-    void main_loop_batch() override;
-
-  public:
-    void enqueue_computation_result(search_result_t*);
   };
 
   // class ScoringThread : SearchThread {
@@ -300,9 +266,130 @@ private:
   uint32_t num_orchestration_threads;
   uint32_t num_scoring_threads;
 
-
   std::atomic<int> current_search_thread_id = 0;
 
+private:
+  /*
+    Distributedann stuff
+   */
+  bool is_orchestration_server; 
+
+  /*
+    returns 3 values, FINISHED, FRONTIER_OFF_SERVER (issue rpc to scoring
+    server), FRONTIER_EMPTY, in which case we loop until its FINISHED. Can't
+    return FRONTIER_ON_SERVER ecause orchestration server can't store any index
+    data.
+
+   */
+  SearchExecutionState
+  state_explore_frontier_orchestration(SearchState<T, TagT> *state);
+
+  /*
+    return true if frontier is not empty (meaning we can send stuff to scoring
+    server), else return false
+   */
+  bool state_update_frontier_orchestration(SearchState<T, TagT> *state);
+
+
+  /*
+    send the states to scoring servers based on node_id
+   */
+  void state_send_scoring_queries_distributedann(SearchState<T, TagT> *state);
+
+  uint64_t get_random_scoring_server_id();
+
+  class OrchestrationThread {
+  private:
+    SSDPartitionIndex *parent;
+    std::thread real_thread;
+    // id used so that parent can send queries round robin
+    uint64_t thread_id;
+    std::atomic<bool> running{false};
+    void *ctx = nullptr;
+    moodycamel::ConsumerToken state_consumer_token;
+    moodycamel::ConsumerToken result_consumer_token;
+    std::atomic<uint64_t> number_concurrent_queries = 0;
+
+    std::atomic<uint64_t> number_own_states = 0;
+    std::atomic<uint64_t> number_foreign_states = 0;    
+    // main loop poll on this queue to get search result which contains pointer
+    // to io request which contains pointer to the state.
+    // Use this state pointer to add the results back into the state
+    moodycamel::ConcurrentQueue<search_result_t *> computation_result_queue;
+
+
+    void add_states_to_batch(SearchState<T, TagT> **states, size_t num_states);
+
+    void process_state(SearchExecutionState s,
+                       SearchState<T, TagT> *state);
+
+    // each iteration of this loop tries to advance one of the state in the
+    // balancing batch.
+    // Every computation (mem index, centroid, frontier RPC requests) require an
+    // rpc to a scoring server which will return a search_result_t.
+    // Once we receive the search_result_t, we have the pointer to the IORequest
+    // which we set the finished member to true.
+    // We then check if all io is finished for the state.
+    // If not, continue, if yes then advance the state by incorporating the
+    // search_result_t into the retset and full retset of the state. The
+    // function that does this can be called distributedann_explore_frontier.
+    // This function returns the execution state of the SearchState, then we can
+    // handle each value via bool process_state(SearchState) *s). Returns true
+    // if state is finished, false is not
+    // Added search_result field to IORequest to link search_result_t to that
+    // IORequest
+    void main_loop_batch();
+
+  public:
+    OrchestrationThread(SSDPartitionIndex<T, TagT> *parent, uint64_t thread_id);
+    void enqueue_computation_result(search_result_t *);
+    void start();
+    void signal_stop();
+    void join();
+  };
+
+  /*
+    takes scoring states from global state queue and compute their results.
+    If frontier is empty then do mem index (need to add mem_k) or centroid, if
+    not then progress state with issue io, then state explore frontier.
+
+almost the same as search thread but progress state for only 1 step. Need to
+handle the enable loc bullshit
+   */
+
+  void state_explore_frontier_scoring(SearchState<T, TagT> *state);
+
+  class ScoringThread {
+  private:
+    SSDPartitionIndex *parent;
+    std::thread real_thread;
+    // id used so that parent can send queries round robin
+    uint64_t thread_id;
+    std::atomic<bool> running{false};
+    void *ctx = nullptr;
+
+    moodycamel::ConsumerToken search_thread_consumer_token;
+
+    std::atomic<uint64_t> number_concurrent_queries = 0;
+
+    std::atomic<uint64_t> number_own_states = 0;
+    std::atomic<uint64_t> number_foreign_states = 0;    
+    void process_state(SearchExecutionState s,
+                       SearchState<T, TagT> *state);
+    void main_loop_batch();
+
+    void add_states_to_batch(SearchState<T, TagT> **states, size_t num_states);
+    
+    
+  public:
+    ScoringThread(SSDPartitionIndex<T, TagT> *parent, uint64_t thread_id);
+    void start();
+    void signal_stop();
+    void join();
+  };
+
+  std::vector<std::unique_ptr<OrchestrationThread>> orchestration_threads;
+  std::vector<std::unique_ptr<ScoringThread>> scoring_threads;
 private:
   /**
      handles commmunication with servers and clients, note that if you enqueue a
@@ -504,7 +591,8 @@ public:
 
   uint8_t get_partition_assignment(uint32_t node_id) {
     if (dist_search_mode != DistributedSearchMode::STATE_SEND &&
-        dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER)
+        dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER &&
+        dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN)
       return my_partition_id;
     return partition_assignment[node_id];
   }
@@ -601,6 +689,7 @@ private:
   PreallocatedQueue<SearchState<T>> preallocated_state_queue;
   PreallocatedQueue<QueryEmbedding<T>> preallocated_query_emb_queue;
   PreallocatedQueue<search_result_t> preallocated_result_queue;
+
 private:
   /**
      notify based on client peer id

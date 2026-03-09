@@ -16,6 +16,7 @@ BASE_PORT=8000
 if [ $# -lt 21 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
+    echo "  num_servers: number of scoring/search servers. One addition process will be launched for client (making it num_servers + 1), and if mode is distributedann then one additional process will be launched for orchestration server (num_server + 2 in total). The orhcestration and client processes will live in the same physical server"
     echo "  dataset_name: bigann"
     echo "  dataset_size: 10M or 100M or 1B"
     echo "  dist_search_mode: STATE_SEND or SCATTER_GATHER or SINGLE_SERVER or DISTRIBUTED_ANN"
@@ -69,6 +70,8 @@ LVEC=${LVEC:1}
 # Numeric validation
 [[ ! "$NUM_SERVERS" =~ ^[0-9]+$ ]] && { echo "Error: num_servers must be a positive integer"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
 [[ "$NUM_SERVERS" -lt 1 ]] && { echo "Error: num_servers must be at least 1"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
+
+
 
 
 USE_MEM_INDEX=false
@@ -146,7 +149,7 @@ if [[ "$DIST_SEARCH_MODE" == "SINGLE_SERVER" ]]; then
     GRAPH_SUFFIX=""
 else
     if [[ $OVERLAP == "true" ]]; then
-	if [ "$DIST_SEARCH_MODE" == "STATE_SEND" || "$DIST_SEARCH_MODE" == "STATE_SEND_CLIENT_GATHER" ]; then
+	if [[ "$DIST_SEARCH_MODE" == "STATE_SEND" || "$DIST_SEARCH_MODE" == "STATE_SEND_CLIENT_GATHER" ]]; then
 	    PREFIX="global_overlap_partitions"
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else
@@ -191,11 +194,24 @@ else
         echo "Error: IP range overflow (needs $((NUM_SERVERS+1)) IPs starting at $SERVER_STARTING_ADDRESS)"
         [ $SOURCED -eq 1 ] && return 1 || exit 1
     fi
-    for ((i=0; i<NUM_SERVERS; i++)); do
+    for ((i=0; i<=NUM_SERVERS; i++)); do
         PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+i)):$BASE_PORT")
     done
-    PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+NUM_SERVERS-1)):$((BASE_PORT+1))")
+    # PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+NUM_SERVERS - 1)):$((BASE_PORT+1))")
 fi
+
+if [[ $DIST_SEARCH_MODE == "DISTRIBUTED_ANN" ]]; then
+    # add one additional process for orhcestration server
+    if [ $MODE == "local" ]; then
+	PEER_IPS+=("127.0.0.1:$((BASE_PORT+NUM_SERVERS+1))")
+    else
+	IFS='.' read -r OCT1 OCT2 OCT3 OCT4 <<< "$SERVER_STARTING_ADDRESS"
+	# need to add 1 to base port because we already have a server on OCT4+NUM_SERVERS with BASE_PORT
+	PEER_IPS+=("$OCT1.$OCT2.$OCT3.$((OCT4+NUM_SERVERS)):$((BASE_PORT+1))")
+    fi
+fi
+
+
 
 
 
@@ -206,7 +222,7 @@ if [[ "$MODE" == "distributed" ]]; then
 
 
     # Only take NUM_SERVERS + 1 hosts (servers + client)
-    NEEDED_HOSTS=$((NUM_SERVERS))
+    NEEDED_HOSTS=$((NUM_SERVERS + 1))
     
     if [ $NEEDED_HOSTS -gt ${#ALL_CLOUDLAB_HOSTS[@]} ]; then
         echo "Error: Need $NEEDED_HOSTS CloudLab hosts but only ${#ALL_CLOUDLAB_HOSTS[@]} available"
@@ -242,8 +258,8 @@ EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NU
 
 
 export NUM_SEARCH_THREADS NUM_ORCHESTRATION_THREADS NUM_SCORING_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BATCH_SIZE USE_COUNTER_THREAD COUNTER_SLEEP_MS 
-export NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE WRITE_QUERY_CSV NUM_QUERIES_TO_SEND TOP_N MEDOID_FILE
-export NUM_SERVERS DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
+export NUM_SERVERS NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L RECORD_STATS SEND_RATE WRITE_QUERY_CSV NUM_QUERIES_TO_SEND TOP_N MEDOID_FILE
+export DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
 export ANNGRAHPS_PREFIX GRAPH_PREFIX QUERY_BIN TRUTHSET_BIN
 export PEER_IPS
 export PEER_IPS_STR="${PEER_IPS[*]}"

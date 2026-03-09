@@ -48,7 +48,7 @@ public:
         m, my_partition_id, num_search_threads, num_orchestration_threads,
         num_scoring_threads, reader, communicator, dist_search_mode, nullptr,
         batch_size, use_batching, max_batch_size, use_counter_thread,
-								 counter_csv, counter_sleep_ms, use_logging, log_file);
+        counter_csv, counter_sleep_ms, use_logging, log_file);
     int res = ssd_partition_index->load(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
@@ -60,20 +60,20 @@ public:
       ssd_partition_index->load_mem_index(
           m, ssd_partition_index->get_data_dim(), mem_index_path);
     }
-    if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-      throw std::invalid_argument("DistributedANN not yet supported");
-      // communicator->register_receive_handler(
-      //     [index_ptr = (ssd_partition_index.get())](const char *buffer,
-      //                                               size_t size) {
-      //       index_ptr->distributed_ann_receive_handler(buffer, size);
-      //     });
-    } else {
-      communicator->register_receive_handler(
-          [index_ptr = (ssd_partition_index.get())](const char *buffer,
-                                                    size_t size) {
-            index_ptr->receive_handler(buffer, size);
-          });
-    }
+    // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
+    // throw std::invalid_argument("DistributedANN not yet supported");
+    // communicator->register_receive_handler(
+    //     [index_ptr = (ssd_partition_index.get())](const char *buffer,
+    //                                               size_t size) {
+    //       index_ptr->distributed_ann_receive_handler(buffer, size);
+    //     });
+    // } else {
+    communicator->register_receive_handler(
+        [index_ptr = (ssd_partition_index.get())](const char *buffer,
+                                                  size_t size) {
+          index_ptr->receive_handler(buffer, size);
+        });
+    // }
     std::cout << "done with constructor" << std::endl;
   }
   void start() {

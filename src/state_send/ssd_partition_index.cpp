@@ -36,6 +36,18 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     preallocated_result_queue = PreallocatedQueue<search_result_t>(
 								   search_result_t::MAX_PRE_ALLOC_ELEMENTS, search_result_t::reset);
+    if (num_orchestration_threads == 0 && num_scoring_threads > 0) {
+      is_orchestration_server = false;
+    } else if (num_orchestration_threads > 0 && num_scoring_threads == 0) {
+      is_orchestration_server = true;
+    } else if (num_orchestration_threads > 0 && num_scoring_threads > 0) {
+      throw std::invalid_argument("num_orchestration_threads and scoring "
+                                  "threads can't both be larger than 0");
+    } else {
+      throw std::invalid_argument("num_orchestration_threads and scoring "
+                                  "threads can't both be 0");
+    }
+        
     // throw std::invalid_argument("DistributedANN not yet supported");
   } else {
     preallocated_state_queue = PreallocatedQueue<SearchState<T, TagT>>(
@@ -70,7 +82,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   if (use_batching && max_batch_size == 0)
     throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
-  if (num_queries_balance > max_queries_balance) {
+   if (num_queries_balance > max_queries_balance) {
     throw std::invalid_argument("number of queries to balance too big " +
                                 std::to_string(num_queries_balance));
   }
@@ -90,7 +102,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
   //     LOG(INFO) << "Cosine metric chosen for (normalized) float data."
   //                  "Changing distance to L2 to boost accuracy.";
   //     m = pipeann::Metric::L2;
-  //     data_is_normalized = true;
+  //     data_is_normalized = true; 
   //   } else {
   //     LOG(ERROR) << "WARNING: Cannot normalize integral data types."
   //                << " This may result in erroneous results or poor recall."
@@ -122,22 +134,40 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     this->enable_tags = false;
     this->enable_locs = false;
   } else if (this->dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    this->enable_tags = false;
-    this->enable_locs = true;
+    if (!is_orchestration_server) {
+      this->enable_tags = false;
+      this->enable_locs = true;
+    }
   }
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::invalid_argument("DistributedANN not yet supported");
+    // throw std::invalid_argument("DistributedANN not yet supported");
+    LOG(INFO) << "starting orchestration threads " << num_orchestration_threads;
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads;
+         thread_id++) {
+      orchestration_threads.emplace_back(
+					 std::make_unique<OrchestrationThread>(this, thread_id));
+    }
+
+    LOG(INFO) << "starting scoring threads " << num_scoring_threads;
+    for (uint64_t thread_id = 0; thread_id < num_scoring_threads;
+         thread_id++) {
+      scoring_threads.emplace_back(
+				   std::make_unique<ScoringThread>(this, thread_id));
+    }
   } else {
     LOG(INFO) << "starting threads " << num_search_threads;
     for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
       search_threads.emplace_back(
           std::make_unique<SearchThread>(this, thread_id));
     }
-    if (use_batching) {
-      batching_thread = std::make_unique<BatchingThread>(this);
-    }
   }
+  if (use_batching) {
+      batching_thread = std::make_unique<BatchingThread>(this);
+  } else {
+    throw std::invalid_argument("Has to have batching enabled, will look at later how if necessary");
+  }
+  
   if (use_counter_thread) {
     counter_thread =
         std::make_unique<CounterThread>(this, counter_csv, counter_sleep_ms);
@@ -346,7 +376,9 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
   }
   if (dist_search_mode == DistributedSearchMode::STATE_SEND ||
-      dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
+      dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER ||
+      (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN &&
+       is_orchestration_server)) {
     std::string cluster_file = iprefix + "_partition_assignment.bin";
     ;
     // std::string cluster_file(cluster_assignment_file);
@@ -440,7 +472,13 @@ void SSDPartitionIndex<T, TagT>::apply_tags_to_result(uint32_t *node_id,
 
 template <typename T, typename TagT> void SSDPartitionIndex<T, TagT>::start() {
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::invalid_argument("DistributedANN not yet supported");
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+      orchestration_threads[thread_id]->start();
+    }
+    for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
+      scoring_threads[thread_id]->start();
+    }
+
   } else {
     for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
       search_threads[thread_id]->start();
@@ -458,7 +496,19 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::shutdown() {
   LOG(INFO) << "SHUTDOWN CALLED";
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
-    throw std::invalid_argument("DistributedANN not yet supported");
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+      orchestration_threads[thread_id]->signal_stop();
+    }
+    for (uint64_t thread_id = 0; thread_id < num_orchestration_threads; thread_id++) {
+      orchestration_threads[thread_id]->join();
+    }    
+    for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
+      scoring_threads[thread_id]->signal_stop();
+    }
+    for (uint64_t thread_id = 0; thread_id < num_scoring_threads; thread_id++) {
+      scoring_threads[thread_id]->join();
+    }    
+
   } else {
     for (uint64_t thread_id = 0; thread_id < num_search_threads; thread_id++) {
       search_threads[thread_id]->signal_stop();
@@ -534,6 +584,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
   size_t offset = 0;
   std::memcpy(&msg_type, buffer, sizeof(msg_type));
   offset += sizeof(msg_type);
+  std::vector<search_result_t *> results(64);  
   SingletonLogger::get_logger().info("[{}] [{}] [{}]:BEGIN_HANDLER",
                                      get_timestamp_ns(), msg_id,
                                      message_type_to_string(msg_type));
@@ -683,6 +734,35 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
     query_emb_map.erase(query_id);
     // SingletonLogger::get_logger().info("[{}] [{}] [{}]:END_QUERY_MAP_ERASE",
     // get_timestamp_ns(), msg_id, message_type_to_string(msg_type));
+  } else if (msg_type == MessageType::RESULTS) {
+    // need to implement result handling
+    if (unlikely(dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN)) {
+      throw std::runtime_error("can't receive results if not  DISTRIBUTED_ANN");
+    }
+    if (unlikely(num_orchestration_threads == 0)) {
+      throw std::runtime_error("can't receive results if not orchestration server");
+    }
+    
+    size_t num_search_results;
+    std::memcpy(&num_search_results, buffer + offset,
+                sizeof(num_search_results));
+    offset += sizeof(num_search_results);
+    preallocated_result_queue.dequeue_exact(num_search_results, results.data());
+
+    search_result_t::deserialize_results(buffer + offset, results.data(),
+                                         num_search_results);
+    for (size_t i = 0; i < num_search_results; i++) {
+      search_result_t *&result = results[i];
+      if (unlikely(result->orchestration_thread_id >=
+                   num_orchestration_threads)) {
+        throw std::runtime_error(
+            "orchestration thread id is " +
+            std::to_string(result->orchestration_thread_id) +
+            " larger than num orchestration threads " +
+            std::to_string(num_orchestration_threads));
+      }
+      orchestration_threads[result->orchestration_thread_id]->enqueue_computation_result(result);
+    }
   } else {
     throw std::runtime_error("Weird message type value");
   }
@@ -1113,14 +1193,17 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
     if (i > 0 && state->full_retset[i].id == state->full_retset[i - 1].id) {
       continue; // deduplicate.
     }
+  
+    if (unlikely(num_res > search_result_t::get_max_num_res())) {
+      throw std::runtime_error("num res larger than max allowable");
+    }
+    
     // write_data(char *buffer, const char *data, size_t size, size_t &offset)
     node_id[num_res] = state->full_retset[i].id; // use ID to replace tags
     distance[num_res] = state->full_retset[i].distance;
     num_res++;
   }
-  if (num_res > search_result_t::get_max_num_res()) {
-    throw std::runtime_error("num res larger than max allowable");
-  }
+
   apply_tags_to_result(node_id, num_res);
   write_data(buffer, reinterpret_cast<const char *>(&num_res), sizeof(num_res),
              offset);
@@ -1150,6 +1233,30 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
   if (record_stats) {
     offset += state->stats->write_serialize(buffer + offset);
   }
+
+  write_data(buffer,
+             reinterpret_cast<const char *>(&state->is_distributed_ann_scoring_state),
+             sizeof(state->is_distributed_ann_scoring_state), offset);
+  if (state->is_distributed_ann_scoring_state) {
+    size_t size_full_retset = state->full_retset.size();
+    write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
+               sizeof(size_full_retset), offset);
+    for (size_t i = 0; i < size_full_retset; i++) {
+      write_data(buffer, reinterpret_cast<const char *>(&state->full_retset[i].id),
+                 sizeof(state->full_retset[i].id), offset);
+      write_data(buffer,
+                 reinterpret_cast<const char *>(&state->full_retset[i].distance),
+                 sizeof(state->full_retset[i].distance), offset);
+    }
+    write_data(buffer, reinterpret_cast<const char *>(&state->orchestration_thread_id),
+               sizeof(state->orchestration_thread_id), offset);
+    write_data(buffer,
+               reinterpret_cast<const char *>(&state->scoring_io_request),
+               sizeof(state->scoring_io_request), offset);
+  }
+
+
+  
   write_data(buffer, reinterpret_cast<const char *>(&is_final_result),
              sizeof(is_final_result), offset);
   return offset;
@@ -1160,6 +1267,7 @@ size_t SSDPartitionIndex<T, TagT>::state_get_serialize_result_size(
     SearchState<T, TagT> *state) {
   size_t num_bytes = 0;
   uint64_t num_res = 0;
+
   for (uint64_t i = 0;
        i < state->full_retset.size() &&
        (dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER
@@ -1172,14 +1280,26 @@ size_t SSDPartitionIndex<T, TagT>::state_get_serialize_result_size(
     num_res++;
   }
   bool is_final_result = state_search_ends(state);
+  bool record_stats = (state->stats != nullptr) && is_final_result;    
   num_bytes +=
       sizeof(state->query_id) + sizeof(state->client_peer_id) +
       sizeof(state->k_search) + sizeof(num_res) + sizeof(uint32_t) * num_res +
       sizeof(float) * num_res + sizeof(size_t) +
       sizeof(uint8_t) * state->partition_history.size() + sizeof(size_t) +
       sizeof(uint32_t) * state->partition_history_hop_idx.size() +
-      sizeof(bool) + sizeof(is_final_result);
-  if (state->stats != nullptr) {
+      sizeof(record_stats) + sizeof(state->is_distributed_ann_scoring_state) +
+      sizeof(is_final_result);
+    
+  if (state->is_distributed_ann_scoring_state) {
+    // num_bytes += sizeof(distributedann_full_nbr.id) +
+    // sizeof(distributedann_full_nbr.distance);
+    num_bytes += sizeof(size_t);
+    num_bytes += state->full_retset.size() * (sizeof(float) + sizeof(unsigned));
+    num_bytes += sizeof(state->orchestration_thread_id);
+    num_bytes += sizeof(state->scoring_io_request);
+  }
+
+  if (record_stats) {
     num_bytes += state->stats->get_serialize_size();
   }
   return num_bytes;
@@ -1217,70 +1337,20 @@ bool SSDPartitionIndex<T, TagT>::state_should_send_emb(
          state->partition_history.cend();
 }
 
+
 template <typename T, typename TagT>
-void SSDPartitionIndex<T, TagT>::OrchestrationThread::add_states_to_batch(
-    SearchState<T, TagT> **states, size_t num_states) {
-  for (size_t i = 0; i < num_states; i++) {
-    if (states[i] == nullptr) {
-      assert(this->running == false);
-      // poison pill from queue
-      break;
-    }
-    if (states[i]->query_emb == nullptr) {
-      states[i]->query_emb =
-          this->parent->query_emb_map.find(states[i]->query_id);
-    }
-    if (states[i]->query_emb->normalized) {
-      if (this->parent->metric == pipeann::Metric::COSINE ||
-          this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-        // LOG(INFO) << "normalizing metric " <<
-        // pipeann::get_metric_str(parent->metric);
+uint64_t SSDPartitionIndex<T, TagT>::get_random_scoring_server_id() {
+  static thread_local std::random_device dev;
+  static thread_local std::mt19937 rng(dev());
+  static thread_local std::uniform_int_distribution<std::mt19937::result_type>
 
-        // inherent_dim is the dim of the actuall query
-        uint64_t inherent_dim = this->parent->metric == pipeann::Metric::INNER_PRODUCT
-                                    ? this->parent->data_dim - 1
-                                    : this->parent->data_dim;
-        if (unlikely(inherent_dim != states[i]->query_emb->dim)) {
-          throw std::runtime_error("inherint dim diff from query dim");
-        }
-        float query_norm = 0;
-        for (size_t j = 0; j < inherent_dim; j++) {
-          query_norm += states[i]->query_emb->query[j] *
-                        states[i]->query_emb->query[j];
-        }
-        if (this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-          states[i]->query_emb->query[this->parent->data_dim - 1] = 0;
-          // zero the extra dim because of mips conversion to l2 having 1
-          // extra dim
-        }
-        query_norm = std::sqrt(query_norm);
-        // query_norm = 1;
-        for (size_t j = 0; j < inherent_dim; j++) {
-          states[i]->query_emb->query[j] =
-              (T)(states[i]->query_emb->query[j] / query_norm);
-        }
+  // -2 because the last node is the client, second to last is orchestration
+  // thread
 
-        states[i]->query_emb->query_norm = query_norm;
-      }
-      states[i]->query_emb->normalized = true;
-    }
-    // we don't need to populate pq dists because orchestration thread should
-    // know nothing about pq or any data related to index except partition
-    // assignment
-
-    // push an empty state to push_state
-    // scoring server will handle empty state depending on mem_l value
-    // if mem_l > 0. Destination server will be a
-    
-    SearchState<T, TagT> * initialization_state;
-    // need to specify destination server + replace
-    uint64_t random_scoring_server_id = this->get_random_scoring_server_id();
-    this->parent->preallocated_state_queue.dequeue_exact(1,
-                                                         &initialization_state);
-    initialization_state->client_peer_id = this->parent->my_partition_id;
-    this->parent->send_state(initialization_state, random_scoring_server_id);
-  }
+  dist(0, other_peer_ids.size() - 2);
+  return other_peer_ids[dist(rng)];
 }
+
 
 template class SSDPartitionIndex<float, uint32_t>;
 template class SSDPartitionIndex<uint8_t, uint32_t>;

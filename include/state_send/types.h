@@ -10,6 +10,7 @@
 #include "tsl/robin_set.h"
 #include "utils.h"
 #include <chrono>
+#include <limits>
 #include <stdexcept>
 #include <variant>
 #define MAX_N_CMPS 16384
@@ -278,6 +279,8 @@ enum class SearchExecutionState {
   FRONTIER_EMPTY
 };
 
+
+
 enum class UpdateFrontierValue {
   // these 3 value categories are mutually exclusive
   FRONTIER_EMPTY_NO_OFF_SERVER,
@@ -291,6 +294,7 @@ enum class UpdateFrontierValue {
   // frontier is empty because all nodes visited by state update frontier are
   // off server
 };
+
 
 struct QueryStats {
   double total_us = 0; // total time to process query in micros
@@ -348,7 +352,11 @@ struct search_result_t {
   std::vector<uint8_t> partition_history;
   std::vector<uint32_t> partition_history_hop_idx;
   std::shared_ptr<QueryStats> stats = nullptr;
-  void *hint; // currently only used by distributedann, stores pointer to an
+
+  bool is_distributedann_scoring_result = false;
+  std::vector<pipeann::Neighbor> full_retset;
+  size_t orchestration_thread_id = std::numeric_limits<size_t>::max(); 
+  void *hint = nullptr; // currently only used by distributedann, stores pointer to an
   // io_request which has a pointer to the state used by
   // orchestration thread. If we have multiple orchestration thread, how to you
   // place it into the correct thread then?
@@ -516,6 +524,8 @@ struct alignas(SECTOR_LEN) SearchState {
   std::vector<fnhood_t> frontier_nhoods;
   std::vector<IORequest> frontier_read_reqs;
 
+  
+
   unsigned cur_list_size = 0, cmps = 0, k = 0;
   uint64_t mem_l = 0, l_search = 0, k_search = 0, beam_width = 0;
   uint64_t query_id;
@@ -543,6 +553,22 @@ struct alignas(SECTOR_LEN) SearchState {
   // don't need this i think bool sent_state = false;
   // // used for state_send_client_gather
   // bool need_to_send_result_when_send_state = false;
+
+  // TODO Need this when doing querying for distributedann per their description
+  // used by distributedann for rpc results
+  bool is_distributed_ann_scoring_state =
+      false; // if true then need to serialize cutoff, thread id and frontier
+  std::vector<search_result_t *>
+      frontier_distributedann_result; // don't need to serialize
+  float distributed_distance_cutoff = std::numeric_limits<float>::max();
+  size_t orchestration_thread_id;
+  // each scoring state is associated with a IOREQUEST, need to serialize for
+  // both state and result
+  void* scoring_io_request;
+  
+  // if is_distributedann_scoring_state then we need to send frontier
+
+
 
   /*
     deserialize one search state

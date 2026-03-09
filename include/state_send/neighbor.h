@@ -9,7 +9,7 @@
 namespace pipeann {
 
   struct Neighbor {
-    unsigned id;
+    unsigned id = std::numeric_limits<unsigned>::max();
     float distance;
     bool flag;
 
