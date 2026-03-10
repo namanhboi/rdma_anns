@@ -358,6 +358,7 @@ handle the enable loc bullshit
    */
 
   void state_explore_frontier_scoring(SearchState<T, TagT> *state);
+  void state_explore_frontier_scoring_simple(SearchState<T, TagT> *state);
 
   class ScoringThread {
   private:
@@ -478,7 +479,7 @@ public:
       uint64_t max_queries_balance = 8, bool use_batching = false,
       uint64_t max_batch_size = 0, bool use_counter_thread = false,
       std::string counter_csv = "", uint64_t counter_sleep_ms = 500,
-      bool use_logging = false, const std::string &log_file = "");
+		    bool use_logging = false, const std::string &log_file = "", bool use_mem_index = false);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -571,6 +572,8 @@ public:
   // load compressed data, and obtains the handle to the disk-resident index
   // also loads in the paritition index mapping file if num_partitions > 1
   int load(const char *index_prefix, bool new_index_format = true);
+
+
 
   void load_mem_index(pipeann::Metric metric, const size_t query_dim,
                       const std::string &mem_index_path);
@@ -681,6 +684,7 @@ private:
   bool load_flag = false;   // already loaded.
   
   // each of the variables below correspond to a load function
+  bool enable_mem_index = false;
   bool enable_disk_index = false;
   bool enable_tags = false; 
   bool enable_locs = false; 

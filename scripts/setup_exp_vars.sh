@@ -267,7 +267,6 @@ export USER
 export EXPERIMENT_NAME
 export USE_LOGGING
 export MASTER_LOG_FOLDER_NAME
-export DISTRIBUTEDANN_CLIENT_PARTITION_ASSIGNMENT_FILE
 
 if [[ "$MODE" == "distributed" ]]; then
     export CLOUDLAB_HOSTS

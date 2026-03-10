@@ -53,44 +53,46 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::add_states_to_batch(
       // poison pill from queue
       break;
     }
+    states[i]->frontier_read_reqs.reserve(
+					  distributedann::MAX_BEAM_WIDTH_DISTRIBUTED_ANN);
     states[i]->orchestration_thread_id = this->thread_id;
     if (states[i]->query_emb == nullptr) {
       states[i]->query_emb =
           this->parent->query_emb_map.find(states[i]->query_id);
     }
-    if (states[i]->query_emb->normalized) {
-      if (this->parent->metric == pipeann::Metric::COSINE ||
-          this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-        // LOG(INFO) << "normalizing metric " <<
-        // pipeann::get_metric_str(parent->metric);
+    if (!states[i]->query_emb->normalized) {
+    //   if (this->parent->metric == pipeann::Metric::COSINE ||
+    //       this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
+    //     // LOG(INFO) << "normalizing metric " <<
+    //     // pipeann::get_metric_str(parent->metric);
 
-        // inherent_dim is the dim of the actuall query
-        uint64_t inherent_dim = this->parent->metric == pipeann::Metric::INNER_PRODUCT
-                                    ? this->parent->data_dim - 1
-                                    : this->parent->data_dim;
-        if (unlikely(inherent_dim != states[i]->query_emb->dim)) {
-          throw std::runtime_error("inherint dim diff from query dim");
-        }
-        float query_norm = 0;
-        for (size_t j = 0; j < inherent_dim; j++) {
-          query_norm += states[i]->query_emb->query[j] *
-                        states[i]->query_emb->query[j];
-        }
-        if (this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-          states[i]->query_emb->query[this->parent->data_dim - 1] = 0;
-          // zero the extra dim because of mips conversion to l2 having 1
-          // extra dim
-        }
-        query_norm = std::sqrt(query_norm);
-        // query_norm = 1;
-        for (size_t j = 0; j < inherent_dim; j++) {
-          states[i]->query_emb->query[j] =
-              (T)(states[i]->query_emb->query[j] / query_norm);
-        }
+    //     // inherent_dim is the dim of the actuall query
+    //     uint64_t inherent_dim = this->parent->metric == pipeann::Metric::INNER_PRODUCT
+    //                                 ? this->parent->data_dim - 1
+    //                                 : this->parent->data_dim;
+    //     if (unlikely(inherent_dim != states[i]->query_emb->dim)) {
+    //       throw std::runtime_error("inherint dim diff from query dim");
+    //     }
+    //     float query_norm = 0;
+    //     for (size_t j = 0; j < inherent_dim; j++) {
+    //       query_norm += states[i]->query_emb->query[j] *
+    //                     states[i]->query_emb->query[j];
+    //     }
+    //     if (this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
+    //       states[i]->query_emb->query[this->parent->data_dim - 1] = 0;
+    //       // zero the extra dim because of mips conversion to l2 having 1
+    //       // extra dim
+    //     }
+    //     query_norm = std::sqrt(query_norm);
+    //     // query_norm = 1;
+    //     for (size_t j = 0; j < inherent_dim; j++) {
+    //       states[i]->query_emb->query[j] =
+    //           (T)(states[i]->query_emb->query[j] / query_norm);
+    //     }
 
-        states[i]->query_emb->query_norm = query_norm;
-      }
-      states[i]->query_emb->normalized = true;
+    // states[i]->query_emb->query_norm = parent->_max_base_norm;
+      // }
+      // states[i]->query_emb->normalized = true;
     }
     // we don't need to populate pq dists because orchestration thread should
     // know nothing about pq or any data related to index except partition
@@ -99,6 +101,7 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::add_states_to_batch(
     // push an empty state to push_state
     // scoring server scoring threads will handle empty state depending on mem_l
     // value if mem_l > 0. Destination server will be random
+    number_concurrent_queries++;
     this->parent->state_send_scoring_queries_distributedann(states[i]);
   }
 }
@@ -127,7 +130,7 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::process_state(
 
     // we send states as queries, need distance cutoff, which is the distance of
     // last node in retset
-
+    
     this->parent->state_send_scoring_queries_distributedann(state);
   } else {
     throw std::runtime_error(
@@ -143,20 +146,24 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::main_loop_batch() {
   
   while (this->running) {
     uint64_t num_states_to_dequeue =
-        this->parent->num_queries_balance - this->number_concurrent_queries;
+      this->parent->num_queries_balance - this->number_concurrent_queries;
     if (num_states_to_dequeue > 0) {
+      // LOG(INFO) << "num_states_to_dequeue " << num_states_to_dequeue;
+      // LOG(INFO) << "num queries balance  " << this->parent->num_queries_balance;
+      // LOG(INFO) << "num concurrent queries  " << this->number_concurrent_queries;
       size_t num_dequeued = this->parent->global_state_queue.try_dequeue_bulk(
           this->state_consumer_token, allocated_states.begin(),
 									      num_states_to_dequeue);
       add_states_to_batch(allocated_states.data(), num_dequeued);
+      // LOG(INFO) << parent->preallocated_result_queue.get_approx_num_free();
     }
     search_result_t *computation_result;
-    this->parent->preallocated_result_queue.dequeue_exact(1,
-                                                          &computation_result);
+    // this->parent->preallocated_result_queue.dequeue_exact(1,
+                                                          // &computation_result);
     bool dequeued = computation_result_queue.try_dequeue(result_consumer_token,
                                                          computation_result);
     if (!dequeued) {
-      this->parent->preallocated_result_queue.free(computation_result);
+      // this->parent->preallocated_result_queue.free(computation_result);
       continue;
     }
     if (computation_result == nullptr) {
@@ -165,17 +172,19 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::main_loop_batch() {
       }
       break;
     }
-    if (!running) break;
-    
+    if (!running)
+      break;
+    // search_result_t::print_result(computation_result);
     // need to call function to update state with results
-    IORequest *io_req= static_cast<IORequest *>(computation_result->hint);
+    IORequest *io_req= reinterpret_cast<IORequest *>(computation_result->hint);
     io_req->finished = true;
     SearchState<T, TagT> *state =
-      static_cast<SearchState<T, TagT> *>(io_req->search_state);
+      reinterpret_cast<SearchState<T, TagT> *>(io_req->search_state);
     state->frontier_distributedann_result.push_back(computation_result);
     if (!this->parent->state_io_finished(state)) {
       continue;
     }
+    
     
     // each io request to a frontier in state is an rpc to scoring service,
     // which computes for a set of nodes its pq distance to neighbors + full
@@ -185,8 +194,30 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::main_loop_batch() {
     // state_explore_frontier_distributedann need to run until the state is
     // ended
 
+    // explore doesn't work if pool is empty, need a way to differentiate
+    // initialization result from normal result
+    if (state->cur_list_size == 0) {
+      // initialization result was received
+      for (size_t i = 0; i < std::min(computation_result->num_res, state->l_search); i++) {
+        state->retset[i] = {computation_result->node_id[i],
+                            computation_result->distance[i], true};
+        state->cur_list_size++;
+      }
+      for (size_t i = 0; i < computation_result->full_retset.size(); i++) {
+        state->full_retset.push_back(computation_result->full_retset[i]);
+      }
+      parent->preallocated_result_queue.free(computation_result);
+      state->frontier_distributedann_result.clear();
+      this->parent->state_update_frontier_orchestration(state);
+      // LOG(INFO) << " scoring
+      // parent->state_print_detailed(state);
+      this->parent->state_send_scoring_queries_distributedann(state);
+      continue;
+    }
+
     SearchExecutionState s = SearchExecutionState::FRONTIER_EMPTY;
     while (s == SearchExecutionState::FRONTIER_EMPTY) {
+      // LOG(INFO) << "frontier empty mate";
       s = this->parent->state_explore_frontier_orchestration(state);
     }
     this->process_state(s, state);

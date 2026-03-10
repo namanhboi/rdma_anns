@@ -389,8 +389,9 @@ template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_print_detailed(
     SearchState<T, TagT> *state) {
 
-  LOG(INFO) << "=================State for query " << state->query_id
-            << ", hop " << state->stats->n_hops << "==============";
+  LOG(INFO) << "=================State for query " << state->query_id;
+  if (state->stats != nullptr )
+    LOG(INFO)<< ", hop " << state->stats->n_hops << "==============";
   LOG(INFO) << "frontier size " << state->frontier.size();
   if (state->frontier.size() == 1) {
     LOG(INFO) << "frontier: " << state->frontier[0];
@@ -421,13 +422,15 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
     SearchState<T, TagT> *state) {
   std::vector<pipeann::Neighbor> &result = state->full_retset;
   if (dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
-    std::partial_sort(result.begin(), result.begin() + state->k_search,
+    std::partial_sort(result.begin(),
+                      result.begin() + std::min(state->k_search, result.size()),
                       result.end());
   }
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
   }
-  if (unlikely(state->query_emb->query_norm == 0.0)) {
+  if (unlikely(!this->is_orchestration_server &&
+               state->query_emb->query_norm == 0.0)) {
     throw std::runtime_error("query norm needs to be 0");
   }
   // std::cout << "top_k final retset after sorting" << std::endl;
@@ -453,18 +456,19 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
 
 template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
-    SearchState<T, TagT> *state) {
+									   SearchState<T, TagT> *state) {
+  // LOG(INFO) << "sending scoring state";
   // send one state for each scoring server
-  static std::vector<SearchState<T, TagT> *> scoring_server_batches(
-      other_peer_ids.size() - 2, nullptr);
-
+  std::vector<SearchState<T, TagT> *> scoring_server_batches(
+      other_peer_ids.size() - 1, nullptr);
+  
   if (state->frontier.empty()) {
     uint8_t partition_assignment = get_random_scoring_server_id();
-    SearchState<T, TagT> *&scoring_state =
-        scoring_server_batches[partition_assignment];
-    if (scoring_state != nullptr) {
-      throw std::runtime_error("scoring_state should be unitilized");
-    }
+    SearchState<T, TagT> *scoring_state;
+        // scoring_server_batches[partition_assignment];
+    // if (scoring_state != nullptr) {
+      // throw std::runtime_error("scoring_state should be unitilized");
+    // }
     preallocated_state_queue.dequeue_exact(1, &scoring_state);
     scoring_state->is_distributed_ann_scoring_state = true;
     scoring_state->orchestration_thread_id = state->orchestration_thread_id;
@@ -474,7 +478,6 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
     scoring_state->l_search = state->l_search;
     scoring_state->k_search = state->k_search;
     scoring_state->beam_width = state->beam_width;
-    scoring_state->query_id = state->query_id;
 
     // this is so server can send result back
     scoring_state->client_peer_id = my_partition_id;
@@ -487,14 +490,16 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
         state_should_send_emb(state, partition_assignment);
     // scoring_state->frontier.push_back(state->frontier[i]);
     scoring_state->distributed_distance_cutoff =
-        std::numeric_limits<float>::max();
+      std::numeric_limits<float>::max();
+    scoring_server_batches[partition_assignment] = scoring_state;
     // frontier remain empty, scoring server interpret this as asking for mem
     // index search or mem_l
   } else {
+    // LOG(INFO) << "Sending non initialization query";
     for (size_t i = 0; i < state->frontier.size(); i++) {
       uint8_t partition_assignment =
           get_partition_assignment(state->frontier[i]);
-      SearchState<T, TagT> *&scoring_state =
+      SearchState<T, TagT> *scoring_state =
           scoring_server_batches[partition_assignment];
       if (scoring_state == nullptr) {
         preallocated_state_queue.dequeue_exact(1, &scoring_state);
@@ -516,7 +521,8 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
         // what about cur_list_size, should be 0 i reckon
 
         scoring_state->should_send_emb =
-            state_should_send_emb(state, partition_assignment);
+          state_should_send_emb(state, partition_assignment);
+        scoring_server_batches[partition_assignment] = scoring_state;
       }
       scoring_state->frontier.push_back(state->frontier[i]);
       if (state->cur_list_size == 0)
@@ -528,8 +534,10 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
   }
 
   for (size_t pid = 0; pid < scoring_server_batches.size(); pid++) {
-    if (scoring_server_batches[pid] == nullptr)
+    if (scoring_server_batches[pid] == nullptr) {
+      // scoring_server_batches[pid] = nullptr;
       continue;
+    }
     if (std::find(state->partition_history.begin(),
                   state->partition_history.end(),
                   pid) == state->partition_history.end()) {
@@ -542,9 +550,12 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
     state->frontier_read_reqs.push_back(req);
     scoring_server_batches[pid]->scoring_io_request =
       &(state->frontier_read_reqs[state->frontier_read_reqs.size() - 1]);
-        
-
+    // std::cout << "scoring state frontier size"
+    // << scoring_server_batches[pid]->frontier.size() << std::endl;
+    
+    // state_print_detailed(scoring_server_batches[pid]);
     send_state(scoring_server_batches[pid], pid);
+    // LOG(INFO) <<"sent scoring state to pid " << pid;
     scoring_server_batches[pid] = nullptr;
   }
 }
@@ -556,7 +567,6 @@ bool SSDPartitionIndex<T, TagT>::state_update_frontier_orchestration(
   state->frontier_read_reqs.clear();
   uint32_t marker = state->k;
   uint32_t num_seen = 0;
-  uint32_t num_off_server_nodes = 0;
   while (marker < state->cur_list_size &&
          // state->frontier.size() < state->beam_width &&
          num_seen < state->beam_width) {
@@ -592,6 +602,7 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
   }
 
   for (search_result_t *&result : state->frontier_distributedann_result) {
+    
     if (unlikely(!result->is_distributedann_scoring_result)) {
       throw std::runtime_error("orchestration thread can't process a result "
                                "that isn't a distributedann scoring result");
@@ -605,7 +616,7 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
     
     for (size_t m = 0; m < result->num_res; m++) {
       const uint32_t id = result->node_id[m];
-      bool cont_flag = true;
+      bool cont_flag = false;
       for (uint32_t i = 0; i < state->cur_list_size; i++) {
         if (state->retset[i].id == id) {
           cont_flag = true;
@@ -621,9 +632,11 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
         //
         state->stats->n_cmps++;
       }
-      if (dist >= state->retset[state->cur_list_size - 1].distance &&
-          (state->cur_list_size == state->l_search))
-        continue;
+      // if (state->cur_list_size > 0) {
+	if (dist >= state->retset[state->cur_list_size - 1].distance &&
+            (state->cur_list_size == state->l_search))
+          continue;
+      // }
       pipeann::Neighbor nn(id, dist, true);
       auto r = pipeann::InsertIntoPool(state->retset, state->cur_list_size, nn);
       if (state->cur_list_size < state->l_search) {
@@ -634,6 +647,7 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
         nk = r;
       }
     }
+    this->preallocated_result_queue.free(result);
   }
   if (nk <= state->k) {
     state->k = nk; // k is the best position in retset updated in this round.
@@ -649,9 +663,9 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
   }
 
   // free results
-  for (search_result_t *result : state->frontier_distributedann_result) {
-    this->preallocated_result_queue.free(result);
-  }
+  // for (search_result_t *result : state->frontier_distributedann_result) {
+  //   this->preallocated_result_queue.free(result);
+  // }
   state->frontier_distributedann_result.clear();
 
   if (state_search_ends(state)) {
@@ -667,8 +681,135 @@ SSDPartitionIndex<T, TagT>::state_explore_frontier_orchestration(
 
 
 template <typename T, typename TagT>
+void SSDPartitionIndex<T, TagT>::state_explore_frontier_scoring_simple(
+								SearchState<T, TagT> *state) {
+  // LOG(INFO) <<"explore is called";
+  auto nk = state->cur_list_size;
+  // if (!state->frontier.empty()) {
+  //   if (state->stats) {
+  //     state->stats->n_hops++;
+  //   }
+  // }
+  for (auto &frontier_nhood : state->frontier_nhoods) {
+    auto [id, loc, sector_buf] = frontier_nhood;
+    char *node_disk_buf = this->offset_to_loc(sector_buf, loc);
+    unsigned *node_buf = this->offset_to_node_nhood(node_disk_buf);
+    uint64_t nnbrs = (uint64_t)(*node_buf);
+    T *node_fp_coords = this->offset_to_node_coords(node_disk_buf);
+    // std::cout << "node_id " << id << " loc " << loc<< std::endl;
+    // std::cout << "num neighbors of node " << id<< ": " << nnbrs << std::endl;
+    // uint32_t* nbrs = node_buf + 1;
+    // for (size_t i = 0; i < nnbrs; i++)
+    //   {
+    // 	std::cout << nbrs[i] << ",";
+    //   }
+    // std::cout << std::endl << std::endl;
+
+    T *node_fp_coords_copy = state->data_buf;
+    memcpy(node_fp_coords_copy, node_fp_coords,
+           this->data_dim * sizeof(T)); // check dim here
+    float cur_expanded_dist = this->dist_cmp->compare(
+        state->query_emb->query, node_fp_coords_copy, (unsigned)this->data_dim);
+
+    pipeann::Neighbor n(id, cur_expanded_dist, true);
+    state->full_retset.push_back(n);
+    // LOG(INFO) << id << " " << cur_expanded_dist;
+    unsigned *node_nbrs = (node_buf + 1);
+    // state->cpu_timer.reset();
+    // compute node_nbrs <-> query dist in PQ space
+    state_compute_dists(state, node_nbrs, nnbrs, state->dist_scratch);
+    // if (state->stats != nullptr) {
+    // state->stats->n_cmps += (double)nnbrs;
+    // state->stats->cpu_us += (double)state->cpu_timer.elapsed();
+    // }
+    // state->cpu_timer.reset();
+    // LOG(INFO) << id << " " << nnbrs << ": " <<
+    // list_to_string<unsigned>(node_nbrs, nnbrs); process prefetch-ed nhood
+    for (uint64_t m = 0; m < nnbrs; ++m) {
+      unsigned id = node_nbrs[m];
+      // if (state->visited.find(id) != state->visited.end()) {
+      // continue;
+      // } else {
+      // state->visited.insert(id);
+      bool cont_flag = false;
+      for (uint32_t i = 0; i < state->cur_list_size; i++) {
+        if (state->retset[i].id == id) {
+          cont_flag = true;
+          break;
+        }
+      }
+      if (cont_flag) {
+        continue;
+      }
+      // this is more optimal than visited set apparently
+      // if (state->visited.count(id) != 0) {
+      // continue;
+      // }
+
+      state->cmps++;
+      float dist = state->dist_scratch[m];
+      if (state->stats != nullptr) {
+        state->stats->n_cmps++;
+      }
+      // state->visited.insert(id);
+      if ((state->distributed_distance_cutoff <= dist)) {
+	continue;
+      }
+      if (state->cur_list_size != 0 &&
+          dist >= state->retset[state->cur_list_size - 1].distance &&
+          (state->cur_list_size == state->l_search))
+        continue;
+
+      pipeann::Neighbor nn(id, dist, true);
+      // variable search_L for deleted nodes.
+      // Return position in sorted list where nn inserted.
+      uint32_t r;
+      if (state->cur_list_size == 0) {
+        r = 0;
+        // state->cur_list_size++;
+        state->retset[0] = nn;
+      }else {
+      r = InsertIntoPool(state->retset, state->cur_list_size, nn);
+      }
+
+      if (state->cur_list_size < state->l_search) {
+        state->cur_list_size++;
+      }
+
+      if (r < nk) {
+        nk = r;
+      }
+      // }
+    }
+    // if (state->stats != nullptr) {
+    // state->stats->cpu_us += (double)state->cpu_timer.elapsed();
+    // }
+  }
+
+  if (nk <= state->k) {
+    state->k = nk; // k is the best position in retset updated in this round.
+  } else {
+    // if (get_random_partition_assignment(state->retset[state->k].id) ==
+    // my_partition_id) { state->k++;
+    // } else if (!state->retset[state->k].flag) {
+    // state->k++;
+    // }
+    if (!state->retset[state->k].flag) {
+      state->k++;
+    }
+  }
+}
+
+
+
+
+
+
+
+template <typename T, typename TagT>
 void SSDPartitionIndex<T, TagT>::state_explore_frontier_scoring(
 								SearchState<T, TagT> *state) {
+  // LOG(INFO) <<"explore is called";
   auto nk = state->cur_list_size;
   if (!state->frontier.empty()) {
     if (state->stats) {

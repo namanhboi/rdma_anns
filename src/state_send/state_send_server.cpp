@@ -48,18 +48,18 @@ public:
         m, my_partition_id, num_search_threads, num_orchestration_threads,
         num_scoring_threads, reader, communicator, dist_search_mode, nullptr,
         batch_size, use_batching, max_batch_size, use_counter_thread,
-        counter_csv, counter_sleep_ms, use_logging, log_file);
+								 counter_csv, counter_sleep_ms, use_logging, log_file, use_mem_index);
     int res = ssd_partition_index->load_new(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
     }
 
-    if (use_mem_index) {
-      auto mem_index_path = index_prefix + "_mem.index";
-      LOG(INFO) << "Load memory index " << mem_index_path;
-      ssd_partition_index->load_mem_index(
-          m, ssd_partition_index->get_data_dim(), mem_index_path);
-    }
+    // if (use_mem_index) {
+    //   auto mem_index_path = index_prefix + "_mem.index";
+    //   LOG(INFO) << "Load memory index " << mem_index_path;
+    //   ssd_partition_index->load_mem_index(
+    //       m, ssd_partition_index->get_data_dim(), mem_index_path);
+    // }
     // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     // throw std::invalid_argument("DistributedANN not yet supported");
     // communicator->register_receive_handler(

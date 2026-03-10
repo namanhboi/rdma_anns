@@ -191,9 +191,10 @@ size_t SearchState<T, TagT>::write_serialize(char *buffer) const {
              reinterpret_cast<const char *>(&is_distributed_ann_scoring_state),
              sizeof(is_distributed_ann_scoring_state), offset);
   if (is_distributed_ann_scoring_state) {
-    size_t size_frontier = full_retset.size();
+    size_t size_frontier = frontier.size();
     write_data(buffer, reinterpret_cast<const char *>(&size_frontier),
                sizeof(size_frontier), offset);
+    // frontier = std::vector<unsigned>(size_frontier);
     write_data(buffer, reinterpret_cast<const char *>(frontier.data()),
                sizeof(unsigned) * size_frontier, offset);
     write_data(buffer,
@@ -252,7 +253,7 @@ size_t SearchState<T, TagT>::get_serialize_size() const {
   num_bytes += sizeof(is_distributed_ann_scoring_state);
   if (is_distributed_ann_scoring_state) {
     num_bytes += sizeof(size_t);
-    num_bytes += sizeof(unsigned) * full_retset.size();
+    num_bytes += sizeof(unsigned) * frontier.size();
     num_bytes += sizeof(distributed_distance_cutoff);
     num_bytes += sizeof(orchestration_thread_id);
     num_bytes += sizeof(scoring_io_request);
@@ -316,7 +317,7 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
 
   for (size_t i = 0; i < size_full_retset; i++) {
     std::memcpy(&state->full_retset[i].id, buffer + offset,
-                sizeof(state->full_retset[i].distance));
+                sizeof(state->full_retset[i].id));
     offset += sizeof(state->full_retset[i].id);
 
     std::memcpy(&state->full_retset[i].distance, buffer + offset,
@@ -337,7 +338,9 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   std::memcpy(&state->cur_list_size, buffer + offset,
               sizeof(state->cur_list_size));
   offset += sizeof(state->cur_list_size);
-
+  if (state->cur_list_size > 1024) {
+    throw std::runtime_error("cur_list size too big");
+  }
   for (size_t i = 0; i < state->cur_list_size; i++) {
     std::memcpy(&state->retset[i].id, buffer + offset,
                 sizeof(state->retset[i].id));
@@ -590,7 +593,6 @@ void SearchState<T, TagT>::get_search_result(
 
 template <typename T, typename TagT>
 void SearchState<T, TagT>::reset(SearchState *state) {
-  state->frontier.clear();
   state->sector_idx = 0;
   // state->visited.clear(); // does not deallocate memory.
   state->full_retset.clear();
@@ -613,6 +615,8 @@ void SearchState<T, TagT>::reset(SearchState *state) {
   state->is_distributed_ann_scoring_state = false;
   state->distributed_distance_cutoff = std::numeric_limits<float>::max();
   state->frontier_distributedann_result.clear();
+  state->orchestration_thread_id = std::numeric_limits<size_t>::max();
+  state->scoring_io_request = nullptr;
 }
 
 void
@@ -673,6 +677,7 @@ search_result_t::deserialize(const char *buffer, search_result_t* res) {
     size_t size_full_retset;
     std::memcpy(&size_full_retset, buffer + offset, sizeof(size_full_retset));
     offset += sizeof(size_full_retset);
+    res->full_retset.clear();
     for (size_t i = 0; i < size_full_retset; i++) {
       unsigned id;
       float distance;
@@ -689,9 +694,6 @@ search_result_t::deserialize(const char *buffer, search_result_t* res) {
                 sizeof(res->hint));
     offset += sizeof(res->hint);
   }
-  
-
-
   
   std::memcpy(&res->is_final_result, buffer + offset,
               sizeof(res->is_final_result));
@@ -842,6 +844,30 @@ void search_result_t::reset(search_result_t * res) {
   res->orchestration_thread_id =
     std::numeric_limits<size_t>::max();
   res->hint = nullptr;
+}
+void search_result_t::print_result(search_result_t *result) {
+  std::cout << "query_id " << result->query_id << std::endl
+            << "client peer id" << result->client_peer_id << std::endl
+            << "k_search " << result->k_search << std::endl
+  << "num_res  " << result->num_res << std::endl;
+  std::cout << "retset: " ;
+  for (size_t i = 0; i < result->num_res; i++) {
+    std::cout << "(" << result->node_id[i] << "," << result->distance[i]
+    << "),";
+  }
+  std::cout << std::endl;
+  std::cout << "is_distributedann_scoring_result "
+  << result->is_distributedann_scoring_result << std::endl;
+  if (result->is_distributedann_scoring_result) {
+    std::cout << "full retset ";
+    for (size_t i = 0; i < result->full_retset.size(); i++) {
+      std::cout << "(" << result->full_retset[i].id << ", "
+      << result->full_retset[i].distance << "),";
+    }
+    std::cout << "orchestration thread id " << result->orchestration_thread_id
+    << std::endl;
+  }
+  
 }
 
 

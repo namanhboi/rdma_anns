@@ -411,9 +411,9 @@ int main(int argc, char **argv) {
   }
   po::notify(vm);
 
-  if (beam_width > BALANCE_BATCH_MAX_BEAMWIDTH) {
+  if (beam_width > 64) {
     LOG(ERROR) << "Beam width can't be larger than "
-               << BALANCE_BATCH_MAX_BEAMWIDTH;
+               << 64;
     return 1;
   }
 

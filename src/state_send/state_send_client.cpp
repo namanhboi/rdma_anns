@@ -166,7 +166,8 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
       QueryEmbedding<T>::write_serialize_queries(r->addr + offset,
                                                  batch_of_queries);
       uint32_t server_peer_id =
-          parent->other_peer_ids[parent->other_peer_ids.size() - 1];
+        parent->other_peer_ids[parent->other_peer_ids.size() - 1];
+      // LOG(INFO) << server_peer_id;
       parent->communicator->send_to_peer(parent->other_peer_ids[server_peer_id],
                                          r);
     }
@@ -363,6 +364,10 @@ void StateSendClient<T>::receive_result_handler(const char *buffer,
     search_result_t::deserialize_results(buffer + offset, results.data(),
                                          num_search_results);
     this->result_queue.enqueue_bulk(results.begin(), num_search_results);
+  } else {
+    throw std::runtime_error("Receive unexpected type" +
+                             message_type_to_string(msg_type));
+
   }
 }
 

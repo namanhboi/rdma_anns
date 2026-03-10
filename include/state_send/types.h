@@ -353,6 +353,7 @@ struct search_result_t {
   std::vector<uint32_t> partition_history_hop_idx;
   std::shared_ptr<QueryStats> stats = nullptr;
 
+
   bool is_distributedann_scoring_result = false;
   std::vector<pipeann::Neighbor> full_retset;
   size_t orchestration_thread_id = std::numeric_limits<size_t>::max(); 
@@ -382,7 +383,8 @@ struct search_result_t {
                                   size_t num_results);
 
   static size_t get_max_num_res() { return MAX_L_SEARCH * 2; }
-  static void reset(search_result_t *);
+  static void reset(search_result_t * result);
+  static void print_result(search_result_t * result);
 };
 
 struct client_gather_result_t {

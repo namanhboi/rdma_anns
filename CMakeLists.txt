@@ -9,44 +9,45 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_C_COMPILER_LAUNCHER ccache)
 # set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+if(CMAKE_BUILD_TYPE STREQUAL "Release") 
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
+  check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
 
-# Then, for the runtime.
-set(CPU_SUPPORTS_AVX512 FALSE)
-set(CPU_SUPPORTS_AVX2 FALSE)
+  # Then, for the runtime.
+  set(CPU_SUPPORTS_AVX512 FALSE)
+  set(CPU_SUPPORTS_AVX2 FALSE)
 
-try_run(
-	RUN_RESULT
-	COMPILE_RESULT
-	"${CMAKE_BINARY_DIR}"
-	SOURCES "${PROJECT_SOURCE_DIR}/test/test_cpu.cpp"
-	COMPILE_OUTPUT_VARIABLE COMPILE_OUT
-	RUN_OUTPUT_VARIABLE RUN_OUT
-)
+  try_run(
+    RUN_RESULT
+    COMPILE_RESULT
+    "${CMAKE_BINARY_DIR}"
+    SOURCES "${PROJECT_SOURCE_DIR}/test/test_cpu.cpp"
+    COMPILE_OUTPUT_VARIABLE COMPILE_OUT
+    RUN_OUTPUT_VARIABLE RUN_OUT
+  )
 
 
-if(COMPILE_RESULT AND RUN_RESULT EQUAL 3) # AVX512 + AVX2
-	set(CPU_SUPPORTS_AVX512 TRUE)
-	message(STATUS "CPU supports AVX512")
-elseif(COMPILE_RESULT AND RUN_RESULT EQUAL 1) # AVX2
-	set(CPU_SUPPORTS_AVX2 TRUE)
-	message(STATUS "CPU supports AVX2")
-else()
-	message(STATUS "CPU does not support AVX512 or detection failed")
-endif()
+  if(COMPILE_RESULT AND RUN_RESULT EQUAL 3) # AVX512 + AVX2
+    set(CPU_SUPPORTS_AVX512 TRUE)
+    message(STATUS "CPU supports AVX512")
+  elseif(COMPILE_RESULT AND RUN_RESULT EQUAL 1) # AVX2
+    set(CPU_SUPPORTS_AVX2 TRUE)
+    message(STATUS "CPU supports AVX2")
+  else()
+    message(STATUS "CPU does not support AVX512 or detection failed")
+  endif()
 
-if(COMPILER_SUPPORTS_AVX512F AND CPU_SUPPORTS_AVX512)
+  if(COMPILER_SUPPORTS_AVX512F AND CPU_SUPPORTS_AVX512)
     message(STATUS "Compiler and CPU supports -mavx512f. Enabling AVX512F.")
-	add_definitions(-DUSE_AVX512)
-elseif(COMPILER_SUPPORTS_AVX2 AND CPU_SUPPORTS_AVX2)
-	message(STATUS "Compiler and CPU supports -mavx2. Enabling AVX2.")
-	add_definitions(-DUSE_AVX2)
-else()
+    add_definitions(-DUSE_AVX512)
+  elseif(COMPILER_SUPPORTS_AVX2 AND CPU_SUPPORTS_AVX2)
+    message(STATUS "Compiler and CPU supports -mavx2. Enabling AVX2.")
+    add_definitions(-DUSE_AVX2)
+  else()
     message(STATUS "Compiler or CPU do not support -mavx512f and -mavx2.")
+  endif()
 endif()
-
 
 
 include_directories(
@@ -85,49 +86,49 @@ option(DISK_KV "Search udl 2 with ssd based search where data is loaded from kv 
 
 
 if(TEST_UDL1)
-    add_compile_definitions(TEST_UDL1)
+  add_compile_definitions(TEST_UDL1)
 endif()
 
 if(TEST_UDL2)
-    add_compile_definitions(TEST_UDL2)
+  add_compile_definitions(TEST_UDL2)
 endif()
 
 if(IN_MEM)
-    add_compile_definitions(IN_MEM)
+  add_compile_definitions(IN_MEM)
 endif()
 
 if(DISK_FS_DISKANN_WRAPPER)
-    add_compile_definitions(DISK_FS_DISKANN_WRAPPER)
+  add_compile_definitions(DISK_FS_DISKANN_WRAPPER)
 endif()
 
 if(DISK_FS_DISTRIBUTED)
-    add_compile_definitions(DISK_FS_DISTRIBUTED)
+  add_compile_definitions(DISK_FS_DISTRIBUTED)
 endif()
 
 if(PQ_KV)
-    add_compile_definitions(PQ_KV)
+  add_compile_definitions(PQ_KV)
 endif()
 if(PQ_FS)
-    add_compile_definitions(PQ_FS)
+  add_compile_definitions(PQ_FS)
 endif()
 
 if(DISK_KV)
-    add_compile_definitions(DISK_KV)
+  add_compile_definitions(DISK_KV)
 endif()
 
 
 if(TEST_COMPUTE_PIPELINE)
-    add_compile_definitions(TEST_COMPUTE_PIPELINE)
+  add_compile_definitions(TEST_COMPUTE_PIPELINE)
 endif()
 
 if(TEST_GLOBAL_UDL_HANDLER)
-    add_compile_definitions(TEST_GLOBAL_UDL_HANDLER)
+  add_compile_definitions(TEST_GLOBAL_UDL_HANDLER)
 endif()
 
 
 # Allow DATA_TYPE to be set from command line
 if(NOT DEFINED DATA_TYPE)
-    set(DATA_TYPE "float")  # default
+  set(DATA_TYPE "float")  # default
 endif()
 
 add_subdirectory(extern/gp-ann)
