@@ -27,7 +27,7 @@ DATA_FOLDER=$5
 GLOBAL_INDEX_PREFIX=$6
 SCATTER_GATHER_R=$7
 SCATTER_GATHER_L=$8
-MAX_NORM_FILE=${9:""}
+MAX_NORM_FILE=${9:-""}
 
 # Removed 'shift 1' as it isn't necessary unless you are iterating over remaining arguments
 
