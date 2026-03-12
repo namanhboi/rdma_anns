@@ -86,18 +86,16 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
     rsync -av "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     rsync -av --no-links "$STATE_SEND_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     
-    if [[ $i -eq 0 ]]; then
-        # send the pq data files + the partition assignment file to base location of the cloudlab host
-        # also send the global mem index
-        # this is just to make sure statesend has all the data it needs
-        # need to not send any symlink files as we will symlink the data later
-        
-        # FIXED: Typo in COMRPESSED to COMPRESSED (Assuming it was misspelled)
-        # FIXED: Replaced '/' with ':'
-        rsync -v "$PQ_COMPRESSED_PATH" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
-        rsync -v "$PQ_PIVOT_PATH" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
-        rsync -v "${MEM_INDEX_PATH}"* "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
-    fi
+    # send the pq data files + the partition assignment file to base location of the cloudlab host
+    # also send the global mem index
+    # this is just to make sure statesend has all the data it needs
+    # need to not send any symlink files as we will symlink the data later
+    
+    # FIXED: Typo in COMRPESSED to COMPRESSED (Assuming it was misspelled)
+    # FIXED: Replaced '/' with ':'
+    rsync -v "$PQ_COMPRESSED_PATH" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
+    rsync -v "$PQ_PIVOT_PATH" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
+    rsync -v "${MEM_INDEX_PATH}"* "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     
     # need to delete all data after sending
     # FIXED: Removed brace expansion for safer variable deletion
