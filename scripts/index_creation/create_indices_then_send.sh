@@ -27,6 +27,7 @@ DATA_FOLDER=$5
 GLOBAL_INDEX_PREFIX=$6
 SCATTER_GATHER_R=$7
 SCATTER_GATHER_L=$8
+MAX_NORM_FILE=${9:""}
 
 # Removed 'shift 1' as it isn't necessary unless you are iterating over remaining arguments
 
@@ -71,7 +72,8 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
          $METRIC \
          $PARTITION_ASSIGNMENT_FILE \
          $DATA_FOLDER \
-         $GLOBAL_INDEX_PREFIX
+         $GLOBAL_INDEX_PREFIX \
+	 $MAX_NORM_FILE
     
     # FIXED: Replaced '/' with ':' for remote rsync targets
     rsync -av --no-links "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
