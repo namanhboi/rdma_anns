@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 source "${SCRIPT_DIR}/common_vars.sh"
-source "${SCRIPT_DIR}/cloudlab_addresses.sh"
+source "${SCRIPT_DIR}/../cloudlab_addresses.sh"
 
 DATA_TYPE=float
 DATASET_NAME=text2image1B
