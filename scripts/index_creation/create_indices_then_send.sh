@@ -63,7 +63,7 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
          $DATASET_SIZE \
          $DATA_TYPE \
          $PARTITION_ID_FILE \
-         $BASE_FILE \
+         $NORMALIZED_BASE_FILE \
          $GRAPH_FILE \
          $SCATTER_GATHER_R \
          $SCATTER_GATHER_L \
