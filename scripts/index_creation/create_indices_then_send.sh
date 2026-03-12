@@ -83,6 +83,7 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
 	 $MAX_NORM_FILE
     
     # FIXED: Replaced '/' with ':' for remote rsync targets
+    ssh $CLOUDLAB_HOST "mkdir -p $CLOUDLAB_DATA_FOLDER"
     rsync -av "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     rsync -av --no-links "$STATE_SEND_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     
