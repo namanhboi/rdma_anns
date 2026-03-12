@@ -237,3 +237,11 @@ target_compile_options(convert_old_pq_format PRIVATE
   $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
 )
 
+
+add_executable(create_random_partition_files create_random_partition_files.cpp)
+target_link_libraries(create_random_partition_files ssd_state_send)
+target_compile_options(create_random_partition_files PRIVATE
+  $<$<CONFIG:Debug>:${DEBUG_CXX_FLAGS}>
+  $<$<CONFIG:Release>:${RELEASE_CXX_FLAGS}>
+)
+

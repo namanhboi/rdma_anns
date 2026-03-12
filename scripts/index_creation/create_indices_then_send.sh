@@ -34,6 +34,11 @@ PARTITION_ASSIGNMENT_FILE="${PARTITION_IDS_PREFIX}_assignment.bin"
 
 CLOUDLAB_DATA_FOLDER="/mydata/local/anngraphs/${DATASET_NAME}/${DATASET_SIZE}/"
 
+NORMALIZED_BASE_FILE=$BASE_FILE
+if [[ $METRIC == "mips" ]]; then
+    NORMALIZED_BASE_FILE=${NORMALIZED_BASE_FILE}${NORMALIZED_SUFFIX}
+fi
+
 for ((i=0; i<$NUM_SERVERS; i++)); do
     # FIXED: Added the missing 'T' in PARTITION
     PARTITION_ID_FILE="${PARTITION_IDS_PREFIX}${i}_ids_uint32.bin"
