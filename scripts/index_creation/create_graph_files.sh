@@ -60,7 +60,7 @@ fi
 
 if [[ $METRIC == "mips" ]]; then
     if [[ $BASE_FILE == *"${NORMALIZED_SUFFIX}" ]]; then
-	echo "for graph creation, base file provided must be non-normalized (aka not end with ${NORMALIZED_SUFFIX})"
+	echo "for graph creation, base file provided must be non-normalized (aka not end with ${NORMALIZED_SUFFIX}): $BASE_FILE"
 	exit 1
     fi
 fi

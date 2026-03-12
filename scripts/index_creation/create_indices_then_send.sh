@@ -84,7 +84,7 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
     
     # FIXED: Replaced '/' with ':' for remote rsync targets
     ssh $CLOUDLAB_HOST "mkdir -p $CLOUDLAB_DATA_FOLDER"
-    rsync -av "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
+    rsync -avL "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     rsync -av --no-links "$STATE_SEND_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     
     # send the pq data files + the partition assignment file to base location of the cloudlab host
