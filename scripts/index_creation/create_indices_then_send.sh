@@ -39,11 +39,18 @@ NORMALIZED_BASE_FILE=$BASE_FILE
 if [[ $METRIC == "mips" ]]; then
     NORMALIZED_BASE_FILE=${NORMALIZED_BASE_FILE}${NORMALIZED_SUFFIX}
 fi
+EXCLUDED_LIST=(0)
 
 for ((i=0; i<$NUM_SERVERS; i++)); do
     # FIXED: Added the missing 'T' in PARTITION
     PARTITION_ID_FILE="${PARTITION_IDS_PREFIX}${i}_ids_uint32.bin"
     CLOUDLAB_HOST="${ALL_CLOUDLAB_HOSTS[$i]}"
+
+# Check if the current server index is in the excluded list
+    if [[ " ${EXCLUDED_LIST[*]} " =~ " $i " ]]; then
+        echo "Skipping excluded server index: $i"
+        continue
+    fi    
     
     echo "Working on partition id file : $PARTITION_ID_FILE"
     echo "Working on $CLOUDLAB_HOST"
@@ -76,7 +83,7 @@ for ((i=0; i<$NUM_SERVERS; i++)); do
 	 $MAX_NORM_FILE
     
     # FIXED: Replaced '/' with ':' for remote rsync targets
-    rsync -av --no-links "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
+    rsync -av "$SCATTER_GATHER_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     rsync -av --no-links "$STATE_SEND_OUTPUT" "${CLOUDLAB_HOST}:${CLOUDLAB_DATA_FOLDER}"
     
     if [[ $i -eq 0 ]]; then

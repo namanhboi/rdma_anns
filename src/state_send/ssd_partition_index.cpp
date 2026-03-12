@@ -1505,7 +1505,7 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
       num_res++;
     }
   } else {
-    num_res = state->cur_list_size;
+    num_res = std::min(state->cur_list_size, (unsigned)state->l_search);
     for (size_t i = 0; i < num_res; i++) {
       node_id[i] = state->retset[i].id;
       distance[i] = state->retset[i].distance;
@@ -1547,7 +1547,7 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
       reinterpret_cast<const char *>(&state->is_distributed_ann_scoring_state),
       sizeof(state->is_distributed_ann_scoring_state), offset);
   if (state->is_distributed_ann_scoring_state) {
-    size_t size_full_retset = state->full_retset.size();
+    size_t size_full_retset = std::min(state->full_retset.size(), state->l_search);
     write_data(buffer, reinterpret_cast<const char *>(&size_full_retset),
                sizeof(size_full_retset), offset);
     for (size_t i = 0; i < size_full_retset; i++) {

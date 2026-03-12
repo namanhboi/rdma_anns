@@ -422,9 +422,17 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
     SearchState<T, TagT> *state) {
   std::vector<pipeann::Neighbor> &result = state->full_retset;
   if (dist_search_mode != DistributedSearchMode::STATE_SEND_CLIENT_GATHER) {
-    std::partial_sort(result.begin(),
-                      result.begin() + std::min(state->k_search, result.size()),
-                      result.end());
+    if (dist_search_mode != DistributedSearchMode::DISTRIBUTED_ANN)  {
+      std::partial_sort(result.begin(),
+                        result.begin() +
+                            std::min(state->k_search, result.size()),
+                        result.end());
+    } else {
+      std::partial_sort(result.begin(),
+                        result.begin() +
+                            std::min(state->l_search, result.size()),
+                        result.end());
+    }
   }
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
@@ -478,6 +486,7 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
     scoring_state->l_search = state->l_search;
     scoring_state->k_search = state->k_search;
     scoring_state->beam_width = state->beam_width;
+    scoring_state->mem_l = state->mem_l;
 
     // this is so server can send result back
     scoring_state->client_peer_id = my_partition_id;
@@ -511,7 +520,7 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
         scoring_state->l_search = state->l_search;
         scoring_state->k_search = state->k_search;
         scoring_state->beam_width = state->beam_width;
-        scoring_state->query_id = state->query_id;
+        scoring_state->mem_l = state->mem_l;
 
         // this is so server can send result back
         scoring_state->client_peer_id = my_partition_id;
