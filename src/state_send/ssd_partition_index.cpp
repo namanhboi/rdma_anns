@@ -82,7 +82,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     SingletonLogger::get_logger(log_file, spdlog::level::off);
   }
 
-  LOG(INFO) << "DIST SEARCH MODE IS " << (int)dist_search_mode;
+  LOG(INFO) << "DIST SEARCH MODE IS " << dist_search_mode_to_string(dist_search_mode);
   if (use_batching && max_batch_size == 0)
     throw std::runtime_error("max_batch_size can't be 0 if we use batching");
 
@@ -285,6 +285,30 @@ void SSDPartitionIndex<T, TagT>::load_disk_index(
     LOG(INFO) << ", max node len (bytes): " << max_node_len;
     LOG(INFO) << ", max node degree: " << max_degree;
   }
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    std::string medoid_file = disk_index_file + "_medoids.bin";
+    if (file_exists(medoid_file)) {
+      LOG(INFO) << "Using medoid file"; 
+      size_t medoid_pts, medoid_dim;
+      uint32_t *medoid_id;
+      pipeann::load_bin<uint32_t>(medoid_file, medoid_id, medoid_pts, medoid_dim);
+      if (medoid_pts != 1) {
+	throw std::runtime_error("medoid pts not 1 : " +
+				 std::to_string(medoid_pts));
+      }
+      if (medoid_dim != 1) {
+	throw std::runtime_error("medoid dim not 1 : " +
+				 std::to_string(medoid_dim));
+      }
+      medoid_id_on_file = *medoid_id;
+      LOG(INFO) << "MEDOID ID ON FILE" << medoid_id_on_file;      
+      // throw std::runtime_error("TOP_N but medoid file doesn't exist " +
+      // medoid_file);
+    } else {
+      LOG(INFO) << "medoid file " << medoid_file << " doesn't exist, use 0 as default"; 
+    }
+  }
+  
   std::cout << "max_degree is " << max_degree << std::endl;
   this->num_points = this->init_num_pts = disk_nnodes;
   size_per_io =
@@ -416,7 +440,7 @@ void SSDPartitionIndex<T, TagT>::load_max_norm(
 }
 
 template <typename T, typename TagT>
-int SSDPartitionIndex<T, TagT>::load_new(const char *index_prefix,
+int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
                                          bool new_index_format) {
   std::string iprefix = std::string(index_prefix);
   std::string disk_index_file = iprefix + "_disk.index";
@@ -454,275 +478,6 @@ int SSDPartitionIndex<T, TagT>::load_new(const char *index_prefix,
   }
 
   LOG(INFO) << "SSDIndex loaded successfully.";
-  load_flag = true;
-  return 0;
-}
-
-template <typename T, typename TagT>
-int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
-                                     bool new_index_format) {
-  std::string pq_table_bin, pq_compressed_vectors, disk_index_file,
-      centroids_file;
-
-  std::string iprefix = std::string(index_prefix);
-  pq_table_bin = iprefix + "_pq_pivots.bin";
-  pq_compressed_vectors = iprefix + "_pq_compressed.bin";
-  disk_index_file = iprefix + "_disk.index";
-  this->_disk_index_file = disk_index_file;
-  centroids_file = disk_index_file + "_centroids.bin";
-
-  std::ifstream index_metadata(disk_index_file, std::ios::binary);
-
-  size_t tags_offset = 0;
-  size_t pq_pivots_offset = 0;
-  size_t pq_vectors_offset = 0;
-  uint64_t disk_nnodes;
-  uint64_t disk_ndims;
-  size_t medoid_id_on_file;
-  uint64_t file_frozen_id;
-
-  if (new_index_format) {
-    uint32_t nr, nc;
-
-    READ_U32(index_metadata, nr);
-    READ_U32(index_metadata, nc);
-
-    READ_U64(index_metadata, disk_nnodes);
-    READ_U64(index_metadata, disk_ndims);
-
-    READ_U64(index_metadata, medoid_id_on_file);
-    READ_U64(index_metadata, max_node_len);
-    READ_U64(index_metadata, nnodes_per_sector);
-    data_dim = disk_ndims;
-    max_degree = ((max_node_len - data_dim * sizeof(T)) / sizeof(unsigned)) - 1;
-    if (max_degree != this->range) {
-      LOG(ERROR) << "Range mismatch: " << max_degree << " vs " << this->range
-                 << ", setting range to " << max_degree;
-      this->range = max_degree;
-    }
-
-    LOG(INFO) << "Meta-data: # nodes per sector: " << nnodes_per_sector
-              << ", max node len (bytes): " << max_node_len
-              << ", max node degree: " << max_degree << ", npts: " << nr
-              << ", dim: " << nc << " disk_nnodes: " << disk_nnodes
-              << " disk_ndims: " << disk_ndims;
-
-    if (nnodes_per_sector > this->kMaxElemInAPage) {
-      LOG(ERROR)
-          << "nnodes_per_sector: " << nnodes_per_sector << " is greater than "
-          << this->kMaxElemInAPage
-          << ". Please recompile with a higher value of kMaxElemInAPage.";
-      return -1;
-    }
-
-    READ_U64(index_metadata, this->num_frozen_points);
-    READ_U64(index_metadata, file_frozen_id);
-    if (this->num_frozen_points == 1) {
-      this->frozen_location = file_frozen_id;
-      // if (this->num_frozen_points == 1) {
-      LOG(INFO) << " Detected frozen point in index at location "
-                << this->frozen_location
-                << ". Will not output it at search time.";
-    }
-    READ_U64(index_metadata, tags_offset);
-    READ_U64(index_metadata, pq_pivots_offset);
-    READ_U64(index_metadata, pq_vectors_offset);
-
-    LOG(INFO) << "Tags offset: " << tags_offset
-              << " PQ Pivots offset: " << pq_pivots_offset
-              << " PQ Vectors offset: " << pq_vectors_offset;
-  } else { // old index file format
-    size_t actual_index_size = get_file_size(disk_index_file);
-    size_t expected_file_size;
-    READ_U64(index_metadata, expected_file_size);
-    if (actual_index_size != expected_file_size) {
-      LOG(INFO) << "File size mismatch for " << disk_index_file
-                << " (size: " << actual_index_size << ")"
-                << " with meta-data size: " << expected_file_size;
-      return -1;
-    }
-
-    READ_U64(index_metadata, disk_nnodes);
-    READ_U64(index_metadata, medoid_id_on_file);
-    READ_U64(index_metadata, max_node_len);
-    READ_U64(index_metadata, nnodes_per_sector);
-    max_degree = ((max_node_len - data_dim * sizeof(T)) / sizeof(unsigned)) - 1;
-
-    LOG(INFO) << "Disk-Index File Meta-data: # nodes per sector: "
-              << nnodes_per_sector;
-    LOG(INFO) << ", max node len (bytes): " << max_node_len;
-    LOG(INFO) << ", max node degree: " << max_degree;
-  }
-  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
-    std::string medoid_file = disk_index_file + "_medoids.bin";
-    if (!file_exists(medoid_file)) {
-      throw std::runtime_error("TOP_N but medoid file doesn't exist " +
-                               medoid_file);
-    }
-    size_t medoid_pts, medoid_dim;
-    uint32_t *medoid_id;
-    pipeann::load_bin<uint32_t>(medoid_file, medoid_id, medoid_pts, medoid_dim);
-    if (medoid_pts != 1) {
-      throw std::runtime_error("medoid pts not 1 : " +
-                               std::to_string(medoid_pts));
-    }
-    if (medoid_dim != 1) {
-      throw std::runtime_error("medoid dim not 1 : " +
-                               std::to_string(medoid_dim));
-    }
-    medoid_id_on_file = *medoid_id;
-  }
-  
-  std::cout << "max_degree is " << max_degree << std::endl;
-  this->num_points = this->init_num_pts = disk_nnodes;
-  size_per_io =
-      SECTOR_LEN *
-      (nnodes_per_sector > 0 ? 1 : DIV_ROUND_UP(max_node_len, SECTOR_LEN));
-  LOG(INFO) << "Size per IO: " << size_per_io;
-
-  index_metadata.close();
-
-  pq_pivots_offset = 0;
-  pq_vectors_offset = 0;
-
-  LOG(INFO) << "After single file index check, Tags offset: " << tags_offset
-            << " PQ Pivots offset: " << pq_pivots_offset
-            << " PQ Vectors offset: " << pq_vectors_offset;
-
-  size_t npts_u64, nchunks_u64;
-  pipeann::load_bin<uint8_t>(pq_compressed_vectors, data, npts_u64, nchunks_u64,
-                             pq_vectors_offset);
-
-  this->n_chunks = nchunks_u64;
-  this->global_graph_num_points = npts_u64;
-  this->cur_id = this->num_points;
-
-  LOG(INFO) << "Load compressed vectors from file: " << pq_compressed_vectors
-            << " offset: " << pq_vectors_offset << " num points: " << npts_u64
-            << " n_chunks: " << nchunks_u64;
-
-  pq_table.load_pq_centroid_bin(pq_table_bin.c_str(), nchunks_u64,
-                                pq_pivots_offset);
-
-  if (dist_search_mode == DistributedSearchMode::SINGLE_SERVER &&
-      disk_nnodes != npts_u64) {
-    LOG(INFO) << "Mismatch in #points for compressed data file and disk "
-                 "index file: "
-              << disk_nnodes << " vs " << npts_u64;
-    throw std::invalid_argument(
-        "Mismatch in #points for compressed data file and disk "
-        "index file: " +
-        std::to_string(disk_nnodes) + " " + std::to_string(npts_u64));
-    return -1;
-  }
-
-  this->data_dim = pq_table.get_dim();
-  this->aligned_dim = ROUND_UP(this->data_dim, 8);
-
-  LOG(INFO) << "Loaded PQ centroids and in-memory compressed vectors. #points: "
-            << num_points << " #dim: " << data_dim
-            << " #aligned_dim: " << aligned_dim << " #chunks: " << n_chunks;
-
-  // read index metadata
-  // open AlignedFileReader handle to index_file
-  std::string index_fname(disk_index_file);
-  reader->open(index_fname, false, false);
-
-  // load tags
-  if (this->enable_tags) {
-    std::string tag_file = disk_index_file + ".tags";
-    LOG(INFO) << "Loading tags from " << tag_file;
-    this->load_tags(tag_file);
-  }
-
-  num_medoids = 1;
-  medoids = new uint32_t[1];
-  medoids[0] = (uint32_t)(medoid_id_on_file);
-  // loading the id2loc file
-  LOG(INFO) << "enable locs : " << enable_locs;
-  if (enable_locs) {
-    LOG(INFO) << "enabled locs";
-    std::string id2loc_file = iprefix + "_ids_uint32.bin";
-    if (!file_exists(id2loc_file)) {
-      throw std::invalid_argument(
-          "dist search mode is  " +
-          dist_search_mode_to_string(dist_search_mode) +
-          ", but the id2loc file doesn't exist: " + id2loc_file);
-    }
-    LOG(INFO) << "Load id2loc from existing file: " << id2loc_file;
-    std::vector<TagT> id2loc_v;
-    size_t id2loc_num, id2loc_dim;
-    pipeann::load_bin<TagT>(id2loc_file, id2loc_v, id2loc_num, id2loc_dim, 0);
-    if (id2loc_dim != 1) {
-      throw std::runtime_error(
-          "dim from id2loc file " + id2loc_file +
-          " had value not 1: " + std::to_string(id2loc_dim));
-    }
-    if (id2loc_num != num_points) {
-      throw std::runtime_error(
-          "num points from id2loc file " + id2loc_file + " had value" +
-          std::to_string(id2loc_num) +
-          " not equal to numpoints from index: " + std::to_string(num_points));
-    }
-    for (uint32_t i = 0; i < id2loc_num; i++) {
-      id2loc_.insert_or_assign(id2loc_v[i], i);
-    }
-    LOG(INFO) << "Id2loc file loaded successfully: " << id2loc_.size();
-  }
-  if (dist_search_mode == DistributedSearchMode::STATE_SEND ||
-      dist_search_mode == DistributedSearchMode::STATE_SEND_CLIENT_GATHER ||
-      (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN &&
-       is_orchestration_server)) {
-    std::string cluster_file = iprefix + "_partition_assignment.bin";
-    ;
-    // std::string cluster_file(cluster_assignment_file);
-    if (!file_exists(cluster_file)) {
-      throw std::invalid_argument(
-          "dist search omde is   " +
-          dist_search_mode_to_string(dist_search_mode) +
-          ", but the cluster assignment bin file doesn't exist: " +
-          cluster_file);
-    }
-
-    size_t ca_num_pts, ca_dim;
-    std::vector<uint8_t> tmp;
-    pipeann::load_bin<uint8_t>(cluster_file, partition_assignment, ca_num_pts,
-                               ca_dim);
-
-    // for (const auto &node_id : tmp) {
-    // partition_assignment.push_back({node_id});
-    // }
-    // uint8_t num_partitions;
-    // load_partition_assignment_file(cluster_file, partition_assignment,
-    //                                num_partitions);
-    // for (auto &assignment : partition_assignment) {
-    //   auto it =
-    //     std::find(assignment.begin(), assignment.end(), my_partition_id);
-    //   if (it != assignment.end()) {
-    // 	assignment = {my_partition_id};
-    //   }
-    // }
-    LOG(INFO) << "cluster assignment file loaded successfully.";
-  }
-
-  std::string norm_file = std::string(_disk_index_file) + "_max_base_norm.bin";
-  if (this->metric == pipeann::Metric::INNER_PRODUCT) {
-    if (file_exists(norm_file)) {
-      uint64_t dumr, dumc;
-      float *norm_val;
-      pipeann::load_bin(norm_file, norm_val, dumr, dumc);
-      this->_max_base_norm = norm_val[0];
-      LOG(INFO) << "Setting rescaling factor of base vector to "
-                << this->_max_base_norm;
-      delete[] norm_val;
-    } else {
-      throw std::runtime_error(
-          "distance metric is mips but max norm base  file doesn't exist");
-    }
-  }
-
-  LOG(INFO) << "SSDIndex loaded successfully.";
-
   load_flag = true;
   return 0;
 }

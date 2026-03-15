@@ -49,7 +49,7 @@ public:
         num_scoring_threads, reader, communicator, dist_search_mode, nullptr,
         batch_size, use_batching, max_batch_size, use_counter_thread,
 								 counter_csv, counter_sleep_ms, use_logging, log_file, use_mem_index);
-    int res = ssd_partition_index->load_new(index_prefix.c_str(), true);
+    int res = ssd_partition_index->load(index_prefix.c_str(), true);
     if (res != 0) {
       std::runtime_error("error loading index");
     }

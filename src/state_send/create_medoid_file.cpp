@@ -1,4 +1,5 @@
 #include "disk_utils.h"
+#include "parlay/primitives.h"
 #include "utils.h"
 #include <boost/program_options.hpp>
 #include <boost/program_options/options_description.hpp>
@@ -6,6 +7,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -100,11 +102,26 @@ void create_medoid_file(const std::string &base_file,
   // Save final results
   std::string out_fn = medoid_file;
   pipeann::save_bin<T>(out_fn, all_medoids_flat.data(), ids_files.size(), dim);
+
+
+  parlay::sequence<uint32_t> medoid_local_ids = parlay::tabulate(ids_files.size(), [&](size_t i) {
+    uint32_t medoid_global_id = medoid_global_ids[i];
+    std::vector<uint32_t> partition_ids;
+    size_t num_partition_ids, dim;
+    pipeann::load_bin(ids_files[i], partition_ids, num_partition_ids, dim);
+    for (uint32_t j = 0; j < num_partition_ids; j++) {
+      if (partition_ids[j] == medoid_global_id) {
+	return j;
+      }
+    }
+    return std::numeric_limits<uint32_t>::max();
+  });
+  
   for (size_t i = 0; i < medoid_global_ids.size(); i++) {
     std::string disk_index_path =
-      index_path_prefix + "_partition" + std::to_string(i) + "_disk.index";
+      index_path_prefix + "_cluster" + std::to_string(i) + "_disk.index";
     std::string medoid_path = disk_index_path + "_medoids.bin";
-    pipeann::save_bin<uint32_t>(medoid_path, &medoid_global_ids[i], 1, 1);
+    pipeann::save_bin<uint32_t>(medoid_path, &medoid_local_ids[i], 1, 1);
   }
 
   // Unmap full_data before finishing (optional but clean)

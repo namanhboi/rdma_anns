@@ -1203,8 +1203,8 @@ void calculate_medoid(
     auto l2 = pipeann::get_distance_function<T>(pipeann::L2);
 
     // 1. Fixed sample sizes for statistical significance
-    size_t num_candidates = std::min<size_t>(n_part, 1000); 
-    size_t num_references = std::min<size_t>(n_part, 500);
+    size_t num_candidates = std::min<size_t>(n_part, 10000); 
+    size_t num_references = std::min<size_t>(n_part, 1000);
 
     // 2. Random Sampling (Fixed Parlay syntax)
     parlay::random_generator gen(42); 
