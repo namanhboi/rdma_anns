@@ -685,6 +685,7 @@ void SSDPartitionIndex<T, TagT>::receive_handler(const char *buffer,
       // message_type_to_string(msg_type));
       new_search_state->client_type = ClientType::TCP;
       new_search_state->mem_l = query->mem_l;
+      new_search_state->mem_k = query->mem_k;
       new_search_state->l_search = query->l_search;
       new_search_state->k_search = query->k_search;
       new_search_state->beam_width = query->beam_width;

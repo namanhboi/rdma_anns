@@ -461,6 +461,7 @@ template <typename T> struct QueryEmbedding {
   uint64_t query_id;
   uint64_t client_peer_id;
   uint64_t mem_l = 0;
+  uint64_t mem_k = 0;
   uint64_t l_search;
   uint64_t k_search;
   uint64_t beam_width;
@@ -529,7 +530,7 @@ struct alignas(SECTOR_LEN) SearchState {
   
 
   unsigned cur_list_size = 0, cmps = 0, k = 0;
-  uint64_t mem_l = 0, l_search = 0, k_search = 0, beam_width = 0;
+  uint64_t mem_l = 0, mem_k = 0, l_search = 0, k_search = 0, beam_width = 0;
   uint64_t query_id;
 
   // all the partition/server ids that it has been through

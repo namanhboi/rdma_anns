@@ -308,6 +308,7 @@ CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --beam_width=$BEAM_WIDTH \
   --K=$K_VALUE \
   --mem_L=$MEM_L \
+  --mem_k=$MEM_K \
   --record_stats=$RECORD_STATS \
   --dist_search_mode=$DIST_SEARCH_MODE \
   --client_peer_id=$CLIENT_ID \

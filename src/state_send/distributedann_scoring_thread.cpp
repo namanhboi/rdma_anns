@@ -111,8 +111,8 @@ void SSDPartitionIndex<T, TagT>::ScoringThread::add_states_to_batch(
         std::vector<unsigned> mem_tags(states[i]->mem_l);
         std::vector<float> mem_dists(states[i]->mem_l);
         this->parent->mem_index_->search_with_tags(
-            states[i]->query_emb->query, states[i]->mem_l, states[i]->mem_l,
-            mem_tags.data(), mem_dists.data());
+            states[i]->query_emb->query, states[i]->mem_k, states[i]->mem_l,
+						   mem_tags.data(), mem_dists.data());
         this->parent->state_compute_and_add_to_retset(
             states[i], mem_tags.data(),
             std::min((unsigned)states[i]->mem_l,

@@ -177,7 +177,7 @@ template <typename T> void StateSendClient<T>::ClientThread::main_loop() {
 template <typename T>
 uint64_t
 StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
-                           const uint64_t mem_l, const uint64_t l_search,
+                           const uint64_t mem_l, const uint64_t mem_k, const uint64_t l_search,
                            const uint64_t beam_width, bool record_stats) {
   uint64_t query_id = this->query_id.fetch_add(1);
   std::shared_ptr<QueryEmbedding<T>> query =
@@ -185,6 +185,7 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   query->query_id = query_id;
   query->client_peer_id = my_id;
   query->mem_l = mem_l;
+  query->mem_k = mem_k;  
   query->l_search = l_search;
   query->k_search = k_search;
   query->beam_width = beam_width;

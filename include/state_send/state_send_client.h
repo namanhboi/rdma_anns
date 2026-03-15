@@ -128,7 +128,7 @@ public:
   
   void start();
 
-  uint64_t search(const T *query_emb, const uint64_t k_search, const uint64_t mem_l,
+  uint64_t search(const T *query_emb, const uint64_t k_search, const uint64_t mem_l, const uint64_t mem_k,
 		  const uint64_t l_search, const uint64_t beam_width, bool record_stats);
 
   void wait_results(const uint64_t num_results);

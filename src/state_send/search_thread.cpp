@@ -185,7 +185,7 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
             std::vector<float> mem_dists(allocated_states[i]->mem_l);
             parent->mem_index_->search_with_tags(
                 allocated_states[i]->query_emb->query,
-                allocated_states[i]->mem_l, allocated_states[i]->mem_l,
+                allocated_states[i]->mem_k, allocated_states[i]->mem_l,
                 mem_tags.data(), mem_dists.data());
             parent->state_compute_and_add_to_retset(
                 allocated_states[i], mem_tags.data(),

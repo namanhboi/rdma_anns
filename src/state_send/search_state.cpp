@@ -408,6 +408,7 @@ void SSDPartitionIndex<T, TagT>::state_print_detailed(
   LOG(INFO) << "cmps: " << state->cmps;
   LOG(INFO) << "k: " << state->k;
   LOG(INFO) << "mem_l: " << state->mem_l;
+  LOG(INFO) << "mem_k: " << state->mem_k;  
   // LOG(INFO) << "l_search: " << state->l_search;
   // LOG(INFO) << "k_search: " << state->k_search;
   // LOG(INFO) << "beam_width: " << state->beam_width;
@@ -487,6 +488,7 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
     scoring_state->k_search = state->k_search;
     scoring_state->beam_width = state->beam_width;
     scoring_state->mem_l = state->mem_l;
+    scoring_state->mem_k = state->mem_k;
 
     // this is so server can send result back
     scoring_state->client_peer_id = my_partition_id;
@@ -521,6 +523,7 @@ void SSDPartitionIndex<T, TagT>::state_send_scoring_queries_distributedann(
         scoring_state->k_search = state->k_search;
         scoring_state->beam_width = state->beam_width;
         scoring_state->mem_l = state->mem_l;
+        scoring_state->mem_k = state->mem_k;
 
         // this is so server can send result back
         scoring_state->client_peer_id = my_partition_id;

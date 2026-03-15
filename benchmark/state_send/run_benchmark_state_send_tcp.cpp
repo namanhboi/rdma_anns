@@ -61,7 +61,7 @@ template <typename T>
 int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       std::string query_bin, std::string truthset_bin,
                       uint32_t num_queries_to_send, std::vector<uint64_t> &Lvec,
-                      uint64_t beam_width, uint64_t K, uint64_t mem_L,
+                      uint64_t beam_width, uint64_t K, uint64_t mem_L, uint64_t mem_k, 
                       bool record_stats, bool write_query_csv,
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
@@ -164,7 +164,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
 
     std::vector<uint64_t> query_ids;
     for (int i = 0; i < (int64_t)num_queries_to_send; i += 1) {
-      uint64_t query_id = client.search(query + (i * query_dim), K, mem_L, L,
+      uint64_t query_id = client.search(query + (i * query_dim), K, mem_L,mem_k,  L,
                                         beam_width, record_stats);
       query_ids.push_back(query_id);
       if (microsecond_sleep_time != 0) {
@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
   std::vector<uint64_t> Lvec;
   uint64_t beam_width;
   uint64_t K;
-  uint64_t mem_L;
+  uint64_t mem_L, mem_k;
   bool record_stats;
   bool write_query_csv;
   std::string dist_search_mode_str;
@@ -377,7 +377,9 @@ int main(int argc, char **argv) {
                   "Beam width")("K", po::value<uint64_t>(&K)->required(),
                                 "K value")(
       "mem_L", po::value<uint64_t>(&mem_L)->required(),
-      "Memory L")("record_stats", po::value<bool>(&record_stats)->required(),
+      "Memory L")(
+      "mem_k", po::value<uint64_t>(&mem_k)->required(),
+      "Memory K")("record_stats", po::value<bool>(&record_stats)->required(),
                   "Record statistics flag")(
       "dist_search_mode",
       po::value<std::string>(&dist_search_mode_str)->required(),
@@ -420,20 +422,20 @@ int main(int argc, char **argv) {
   if (data_type == "uint8") {
     search_disk_index<uint8_t>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+			       Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
         address_list, result_output_folder, top_n, medoid_file);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+			      Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
         address_list, result_output_folder, top_n, medoid_file);
 
   } else if (data_type == "float") {
     search_disk_index<float>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-        Lvec, beam_width, K, mem_L, record_stats, write_query_csv,
+			     Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
         address_list, result_output_folder, top_n, medoid_file);
   } else {
