@@ -553,6 +553,26 @@ int SSDPartitionIndex<T, TagT>::load(const char *index_prefix,
     LOG(INFO) << ", max node len (bytes): " << max_node_len;
     LOG(INFO) << ", max node degree: " << max_degree;
   }
+  if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
+    std::string medoid_file = disk_index_file + "_medoids.bin";
+    if (!file_exists(medoid_file)) {
+      throw std::runtime_error("TOP_N but medoid file doesn't exist " +
+                               medoid_file);
+    }
+    size_t medoid_pts, medoid_dim;
+    uint32_t *medoid_id;
+    pipeann::load_bin<uint32_t>(medoid_file, medoid_id, medoid_pts, medoid_dim);
+    if (medoid_pts != 1) {
+      throw std::runtime_error("medoid pts not 1 : " +
+                               std::to_string(medoid_pts));
+    }
+    if (medoid_dim != 1) {
+      throw std::runtime_error("medoid dim not 1 : " +
+                               std::to_string(medoid_dim));
+    }
+    medoid_id_on_file = *medoid_id;
+  }
+  
   std::cout << "max_degree is " << max_degree << std::endl;
   this->num_points = this->init_num_pts = disk_nnodes;
   size_per_io =
