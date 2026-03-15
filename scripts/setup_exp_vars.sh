@@ -59,7 +59,7 @@ NUM_ORCHESTRATION_THREADS=${20}
 NUM_SCORING_THREADS=${21}
 shift 21
 LVEC=$(printf " %s" "$@")
-LVEC=${LVEC:1}
+LVEC=${LVEC:-1}
 
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" && "$DATASET_NAME" != "OpenAIArXiv" ]] && { echo "Error: dataset_name must be 'bigann', deep1b, 'MSSPACEV1B', 'text2image1B', 'OpenAIArxiv'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
@@ -124,8 +124,8 @@ elif [[ "$DATASET_NAME" == "text2image1B" ]]; then
 	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.heldout.30K.fbin"
 	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/diskann_recomputed_gt100-heldout.30K.fbin"
     else
-	echo "ERROR: text2image only supported for local currently"
-	exit 1
+	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.heldout.30K.fbin"
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/diskann_recomputed_gt100-heldout.30K.fbin"
     fi
 elif [[ "$DATASET_NAME" == "OpenAIArXiv" ]]; then
     DATA_TYPE="float"
