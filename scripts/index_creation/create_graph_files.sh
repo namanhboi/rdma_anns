@@ -14,7 +14,7 @@ source ${SCRIPT_DIR}/common_vars.sh
 
 
 if [[ $# -ne 10 ]]; then
-    echo "Usage: <data_type> <metric> <partition_id_file> <base_file> <R> <L> <data_folder> <num_partitions> <mode>"
+    echo "Usage: <data_type> <metric> <partition_id_file> <base_file> <R> <L> <ALPHA> <data_folder> <num_partitions> <mode>"
     exit 1
 fi
 
