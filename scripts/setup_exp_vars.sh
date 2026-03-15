@@ -125,7 +125,7 @@ elif [[ "$DATASET_NAME" == "text2image1B" ]]; then
 	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/diskann_recomputed_gt100-heldout.30K.fbin"
     else
 	QUERY_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/query.heldout.30K.fbin"
-	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/diskann_recomputed_gt100-heldout.30K.fbin"
+	TRUTHSET_BIN="${ANNGRAHPS_PREFIX}/${DATASET_NAME}/${DATASET_SIZE}/diskann_recomputed_gt100-heldout.30K.fbin"
     fi
 elif [[ "$DATASET_NAME" == "OpenAIArXiv" ]]; then
     DATA_TYPE="float"
