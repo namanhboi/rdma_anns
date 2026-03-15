@@ -15,25 +15,9 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source ${SCRIPT_DIR}/common_vars.sh
 
 if [[ $# -ne 14 && $# -ne 15 ]]; then
-    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_output> <scatter_gather_r> <scatter_gather_l> <state_send_output> <mode> <metric> <partition_assignment_file> <max_norm_file>"
-    echo "  dataset_name: bigann"
-    echo "  dataset_size: 10M or 100M or 1B"
-    echo "  data_type: uint8 or int8 or float"
-    echo "  partition_id_file: /mydata/local/anngraphs/bigann/1B/global_partitions_5/pipeann_1B_partition0_ids_uint32.bin"
-    echo "  base_file: /mydata/local/anngraphs/bigann/1B/base.1B.u8bin"
-    echo "  graph_file: /mydata/local/anngraphs/bigann/1B/vamana_64_128_1.2"
-    echo "  scatter_gather_r: 64"
-    echo "  scatter_gather_l: 128"
-    echo "  num_servers"
-    echo "  mode: local or distributed"
-    echo "  metric: l2, mips"
-    echo "  partition_assignment_file:  /home/nam/big-ann-benchmarks/data/text2image1B/1M/pipeann_1M_partition_assignment.bin"
-    echo "  data_folder: folder to store the data and graph file created, for local it shuold be $HOME/big-ann-benchmarks/data/<DATASET_NAME>/<DATASET_SIZE>/ , on cloudlab /mydata/local/anngraphs/<DATASET_NAME>/<DATASET_SIZE>"
-    echo "  global_index_prefix: used to get the mem index and pq data"
-    echo "  MAX_NORM_FILE: used for mips, can leave blank "
+    echo "Usage: ${BASH_SOURCE[0]} <dataset_name> <dataset_size> <data_type> <partition_file> <base_file> <graph_file> <scatter_gather_r> <scatter_gather_l> <num_servers> <mode> <metric> <partition_assignment_file> <data_folder> <global_index_prefix> <max_norm_file:optional>"
     exit 1
 fi
-
 
 DATASET_NAME=$1
 DATASET_SIZE=$2
