@@ -30,7 +30,7 @@ for NODE_ID in "$@"; do
         
         echo "--- Syncing to Node $NODE_ID ($CLOUDLAB_HOST) ---"
         # -v: verbose, -L: follow symlinks, -p: preserve permissions
-        rsync -vL "$FILE" "${CLOUDLAB_HOST}:~/"
+        rsync -vL "$FILE" "${CLOUDLAB_HOST}:$FILE"
     else
         echo "Warning: Node ID '$NODE_ID' not found in ALL_CLOUDLAB_HOSTS. Skipping."
     fi
