@@ -438,10 +438,9 @@ void SSDPartitionIndex<T, TagT>::state_finalize_distance(
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     return;
   }
-  // if (unlikely(!this->is_orchestration_server &&
-               // state->query_emb->query_norm == 0.0)) {
-    // throw std::runtime_error("query norm needs to be 0");
-  // }
+  if (unlikely(state->query_emb->query_norm == 0.0)) {
+    throw std::runtime_error("query norm needs to be 0");
+  }
   // std::cout << "top_k final retset after sorting" << std::endl;
   // for (size_t i = 0; i < state->k_search; i++) {
   // std::cout << "("<< result[i].id << ","<<result[i].distance<<"),";

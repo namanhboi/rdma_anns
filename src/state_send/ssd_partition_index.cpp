@@ -423,8 +423,9 @@ void SSDPartitionIndex<T, TagT>::load_max_norm(
     const std::string &max_norm_file) {
   if (metric != pipeann::Metric::INNER_PRODUCT) {
     throw std::runtime_error("Don't need to load max norm file if not ip");
+  }
 
-    if (file_exists(max_norm_file)) {
+  if (file_exists(max_norm_file)) {
       uint64_t dumr, dumc;
       float *norm_val;
       pipeann::load_bin(max_norm_file, norm_val, dumr, dumc);
@@ -435,9 +436,9 @@ void SSDPartitionIndex<T, TagT>::load_max_norm(
     } else {
       throw std::runtime_error(
           "distance metric is mips but max norm base file doesn't exist");
-    }
   }
-  LOG(INFO) << "Loaded max norm file";
+  LOG(INFO) << "Loaded max norm file " << max_norm_file;
+  LOG(INFO) << "max norm is " << this->_max_base_norm;
 }
 
 template <typename T, typename TagT>
