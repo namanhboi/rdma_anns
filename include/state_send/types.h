@@ -42,7 +42,7 @@ constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 100000;
 // to pipeann methods then the beam width of those will be higher but we don't
 // care since it won't be using states
 constexpr uint32_t BALANCE_BATCH_MAX_BEAMWIDTH = 64;
-constexpr uint32_t MAX_NUM_NEIGHBORS = 128;
+constexpr uint32_t MAX_NUM_NEIGHBORS = 256;
 constexpr uint32_t MAX_NUM_PQ_CHUNKS = 64;
 
 enum class ClientType : uint32_t { LOCAL = 0, TCP = 1, RDMA = 2 };
