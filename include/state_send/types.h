@@ -33,7 +33,7 @@ size_t write_data(char *buffer, const char *data, size_t size, size_t &offset);
 static constexpr int kMaxVectorDim = 512;
 static constexpr int maxKSearch = 256;
 // need to enforce this shit
-static constexpr uint32_t MAX_L_SEARCH = 512;
+static constexpr uint32_t MAX_L_SEARCH = 2048;
 
 constexpr uint64_t MAX_PRE_ALLOC_ELEMENTS = 100000;
 
