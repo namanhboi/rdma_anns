@@ -21,7 +21,7 @@ constexpr uint32_t max_num_servers = 128;
 
 
 struct Region {
-  static constexpr size_t MAX_BYTES_REGION = 80000;
+  static constexpr size_t MAX_BYTES_REGION = 80000 * 2;
   static constexpr size_t MAX_PRE_ALLOC_ELEMENTS =100000;
   
   char *addr; // address to whatever is sent must be allocated with new []
