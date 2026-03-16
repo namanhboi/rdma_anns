@@ -148,7 +148,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       this->enable_disk_index = false;
       this->enable_tags = false;
       this->enable_locs = false;
-      this->enable_pq = true;
+      this->enable_pq = false;
       this->enable_partition_assignment = true;
     }
   }
