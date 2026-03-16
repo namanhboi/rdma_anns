@@ -61,38 +61,37 @@ void SSDPartitionIndex<T, TagT>::OrchestrationThread::add_states_to_batch(
           this->parent->query_emb_map.find(states[i]->query_id);
     }
     if (!states[i]->query_emb->normalized) {
-    //   if (this->parent->metric == pipeann::Metric::COSINE ||
-    //       this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-    //     // LOG(INFO) << "normalizing metric " <<
-    //     // pipeann::get_metric_str(parent->metric);
+      if (this->parent->metric == pipeann::Metric::COSINE ||
+          this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
+        // LOG(INFO) << "normalizing metric " <<
+        // pipeann::get_metric_str(parent->metric);
 
-    //     // inherent_dim is the dim of the actuall query
-    //     uint64_t inherent_dim = this->parent->metric == pipeann::Metric::INNER_PRODUCT
-    //                                 ? this->parent->data_dim - 1
-    //                                 : this->parent->data_dim;
-    //     if (unlikely(inherent_dim != states[i]->query_emb->dim)) {
-    //       throw std::runtime_error("inherint dim diff from query dim");
-    //     }
-    //     float query_norm = 0;
-    //     for (size_t j = 0; j < inherent_dim; j++) {
-    //       query_norm += states[i]->query_emb->query[j] *
-    //                     states[i]->query_emb->query[j];
-    //     }
-    //     if (this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
-    //       states[i]->query_emb->query[this->parent->data_dim - 1] = 0;
-    //       // zero the extra dim because of mips conversion to l2 having 1
-    //       // extra dim
-    //     }
-    //     query_norm = std::sqrt(query_norm);
-    //     // query_norm = 1;
-    //     for (size_t j = 0; j < inherent_dim; j++) {
-    //       states[i]->query_emb->query[j] =
-    //           (T)(states[i]->query_emb->query[j] / query_norm);
-    //     }
-
-    // states[i]->query_emb->query_norm = parent->_max_base_norm;
-      // }
-      // states[i]->query_emb->normalized = true;
+        // inherent_dim is the dim of the actuall query
+        uint64_t inherent_dim = this->parent->metric == pipeann::Metric::INNER_PRODUCT
+                                    ? this->parent->data_dim - 1
+                                    : this->parent->data_dim;
+        if (unlikely(inherent_dim != states[i]->query_emb->dim)) {
+          throw std::runtime_error("inherint dim diff from query dim");
+        }
+        float query_norm = 0;
+        for (size_t j = 0; j < inherent_dim; j++) {
+          query_norm += states[i]->query_emb->query[j] *
+                        states[i]->query_emb->query[j];
+        }
+        if (this->parent->metric == pipeann::Metric::INNER_PRODUCT) {
+          states[i]->query_emb->query[this->parent->data_dim - 1] = 0;
+          // zero the extra dim because of mips conversion to l2 having 1
+          // extra dim
+        }
+        query_norm = std::sqrt(query_norm);
+        // query_norm = 1;
+        for (size_t j = 0; j < inherent_dim; j++) {
+          states[i]->query_emb->query[j] =
+              (T)(states[i]->query_emb->query[j] / query_norm);
+        }
+        states[i]->query_emb->query_norm = parent->_max_base_norm;
+      }
+      states[i]->query_emb->normalized = true;
     }
     // we don't need to populate pq dists because orchestration thread should
     // know nothing about pq or any data related to index except partition

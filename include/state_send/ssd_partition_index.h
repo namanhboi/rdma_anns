@@ -469,12 +469,14 @@ public:
      is_local = true and num_parittion = 1 is fine, this just means that we send
      query and receive results via tcp.
    */
-  SSDPartitionIndex(
-      pipeann::Metric m, uint8_t partition_id, uint32_t num_search_threads,
-      uint32_t num_orchestration_threads, uint32_t num_scoring_threads,
-      std::shared_ptr<AlignedFileReader> &fileReader,
-      std::unique_ptr<P2PCommunicator> &communicator,
-      DistributedSearchMode dist_search_mode,
+  SSDPartitionIndex(pipeann::Metric m, uint8_t partition_id,
+                    uint32_t num_search_threads,
+                    uint32_t num_orchestration_threads,
+                    uint32_t num_scoring_threads,
+                    std::shared_ptr<AlignedFileReader> &fileReader,
+                    std::unique_ptr<P2PCommunicator> &communicator,
+                    DistributedSearchMode dist_search_mode,
+                    SearchThreadMode search_thread_mode,
       pipeann::IndexBuildParameters *parameters = nullptr,
       uint64_t max_queries_balance = 8, bool use_batching = false,
       uint64_t max_batch_size = 0, bool use_counter_thread = false,
@@ -704,6 +706,7 @@ private:
 
 private:
   DistributedSearchMode dist_search_mode;
+  SearchThreadMode search_thread_mode;
   // section is for commmunication
   std::unique_ptr<P2PCommunicator> &communicator;
   std::vector<uint64_t> other_peer_ids;

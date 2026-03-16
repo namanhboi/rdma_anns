@@ -35,7 +35,8 @@ public:
                   uint8_t my_partition_id, uint32_t num_search_threads,
                   uint32_t num_orchestration_threads,
                   uint32_t num_scoring_threads, bool use_mem_index,
-                  DistributedSearchMode dist_search_mode, uint64_t batch_size,
+                  DistributedSearchMode dist_search_mode,
+                  SearchThreadMode search_thread_mode, uint64_t batch_size,
                   bool use_batching, uint64_t max_batch_size,
                   bool use_counter_thread, std::string counter_csv,
                   uint64_t counter_sleep_ms, bool use_logging,
@@ -46,7 +47,7 @@ public:
 
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
         m, my_partition_id, num_search_threads, num_orchestration_threads,
-        num_scoring_threads, reader, communicator, dist_search_mode, nullptr,
+								 num_scoring_threads, reader, communicator, dist_search_mode, search_thread_mode, nullptr,
         batch_size, use_batching, max_batch_size, use_counter_thread,
 								 counter_csv, counter_sleep_ms, use_logging, log_file, use_mem_index);
     int res = ssd_partition_index->load(index_prefix.c_str(), true);
@@ -128,7 +129,7 @@ int main(int argc, char **argv) {
 
   uint64_t num_queries_balance;
   // uint64_t max_batch_size = data["max_batch_size"].get<uint64_t>();
-  std::string dist_search_mode_str;
+  std::string dist_search_mode_str, search_thread_mode_str;
   // bool use_batching = data["use_batching"].get<bool>();
   // uint64_t max_batch_size = data["max_batch_size"].get<bool>();
   bool use_batching;
@@ -161,6 +162,9 @@ int main(int argc, char **argv) {
                 "Number of queries balance")(
       "dist_search_mode",
       po::value<std::string>(&dist_search_mode_str)->required(),
+      "Distance search mode")(
+      "search_thread_mode",
+			      po::value<std::string>(&search_thread_mode_str)->default_value("BATANN"),
       "Distance search mode")("use_batching",
                               po::value<bool>(&use_batching)->required(),
                               "Use batching flag")(
@@ -216,6 +220,8 @@ int main(int argc, char **argv) {
   }
 
   dist_search_mode = get_distributed_search_mode(dist_search_mode_str);
+  SearchThreadMode search_thread_mode =
+    get_search_thread_mode(search_thread_mode_str);
 
   // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
     // throw std::runtime_error("Distributedann yet to be implemented");
@@ -231,15 +237,15 @@ int main(int argc, char **argv) {
     auto server = std::make_unique<StateSendServer<uint8_t>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         num_orchestration_threads, num_scoring_threads, use_mem_index,
-        dist_search_mode, num_queries_balance, use_batching, max_batch_size,
-        use_counter_thread, counter_csv, counter_sleep_ms, use_logging,
-        log_file);
+        dist_search_mode, search_thread_mode, num_queries_balance, use_batching,
+        max_batch_size, use_counter_thread, counter_csv, counter_sleep_ms,
+							     use_logging, log_file);
     run_server(std::move(server));
   } else if (data_type == "int8") {
     auto server = std::make_unique<StateSendServer<int8_t>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         num_orchestration_threads, num_scoring_threads, use_mem_index,
-        dist_search_mode, num_queries_balance, use_batching, max_batch_size,
+        dist_search_mode, search_thread_mode,num_queries_balance, use_batching, max_batch_size,
         use_counter_thread, counter_csv, counter_sleep_ms, use_logging,
         log_file);
     run_server(std::move(server));
@@ -247,9 +253,9 @@ int main(int argc, char **argv) {
     auto server = std::make_unique<StateSendServer<float>>(
         address_list, index_path_prefix, m, server_peer_id, num_search_threads,
         num_orchestration_threads, num_scoring_threads, use_mem_index,
-        dist_search_mode, num_queries_balance, use_batching, max_batch_size,
-        use_counter_thread, counter_csv, counter_sleep_ms, use_logging,
-        log_file);
+        dist_search_mode, search_thread_mode, num_queries_balance, use_batching,
+        max_batch_size, use_counter_thread, counter_csv, counter_sleep_ms,
+							   use_logging, log_file);
     run_server(std::move(server));
   }
 

@@ -165,7 +165,8 @@ if [[ $DIST_SEARCH_MODE != "DISTRIBUTED_ANN" ]]; then
     --use_logging=$USE_LOGGING \
     --log_file=$LOG_FILE \
     --num_orchestration_threads=$NUM_ORCHESTRATION_THREADS \
-    --num_scoring_threads=$NUM_SCORING_THREADS"
+    --num_scoring_threads=$NUM_SCORING_THREADS \
+    --search_thread_mode=$SEARCH_THREAD_MODE"
 	echo ${SERVER_CMD}
 	
 	# Launch server via SSH
@@ -212,7 +213,8 @@ else
     --use_logging=$USE_LOGGING \
     --log_file=$LOG_FILE \
     --num_orchestration_threads=0 \
-    --num_scoring_threads=$NUM_SCORING_THREADS"
+    --num_scoring_threads=$NUM_SCORING_THREADS \
+    --search_thread_mode=$SEARCH_THREAD_MODE"
 	echo ${SERVER_CMD}
 	
 	# Launch server via SSH

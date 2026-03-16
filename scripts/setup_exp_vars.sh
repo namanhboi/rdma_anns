@@ -13,7 +13,7 @@ SERVER_STARTING_ADDRESS="10.10.1.1"
 BASE_PORT=8000
 
 
-if [ $# -lt 22 ]; then
+if [ $# -lt 23 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  num_servers: number of scoring/search servers. One addition process will be launched for client (making it num_servers + 1), and if mode is distributedann then one additional process will be launched for orchestration server (num_server + 2 in total). The orhcestration and client processes will live in the same physical server"
@@ -58,7 +58,8 @@ K_VALUE=${19}
 TOP_N=${20}
 NUM_ORCHESTRATION_THREADS=${21}
 NUM_SCORING_THREADS=${22}
-shift 22
+SEARCH_THREAD_MODE=${23}
+shift 23
 LVEC=$(printf " %s" "$@")
 LVEC=${LVEC:-1}
 
@@ -260,7 +261,7 @@ EXPERIMENT_NAME=${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NU
 
 export NUM_SEARCH_THREADS NUM_ORCHESTRATION_THREADS NUM_SCORING_THREADS USE_MEM_INDEX NUM_QUERIES_BALANCE USE_BATCHING MAX_BATCH_SIZE USE_COUNTER_THREAD COUNTER_SLEEP_MS 
 export NUM_SERVERS NUM_CLIENT_THREADS LVEC BEAM_WIDTH K_VALUE MEM_L MEM_K RECORD_STATS SEND_RATE WRITE_QUERY_CSV NUM_QUERIES_TO_SEND TOP_N MEDOID_FILE
-export DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE MODE
+export DATASET_NAME DATASET_SIZE DATA_TYPE DIMENSION METRIC DIST_SEARCH_MODE SEARCH_THREAD_MODE MODE
 export ANNGRAHPS_PREFIX GRAPH_PREFIX QUERY_BIN TRUTHSET_BIN
 export PEER_IPS
 export PEER_IPS_STR="${PEER_IPS[*]}"

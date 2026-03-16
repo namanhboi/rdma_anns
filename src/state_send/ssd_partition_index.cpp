@@ -18,7 +18,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     uint32_t num_orchestration_threads, uint32_t num_scoring_threads,
     std::shared_ptr<AlignedFileReader> &fileReader,
     std::unique_ptr<P2PCommunicator> &communicator,
-    DistributedSearchMode dist_search_mode,
+    DistributedSearchMode dist_search_mode, SearchThreadMode search_thread_mode,
     pipeann::IndexBuildParameters *params, uint64_t num_queries_balance,
     bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
     std::string counter_csv, uint64_t counter_sleep_ms, bool use_logging,
@@ -26,7 +26,8 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
-      dist_search_mode(dist_search_mode), max_batch_size(max_batch_size),
+      dist_search_mode(dist_search_mode),
+      search_thread_mode(search_thread_mode), max_batch_size(max_batch_size),
       use_batching(use_batching), use_counter_thread(use_counter_thread),
       pq_table(m), metric(m), num_search_threads(num_search_threads),
       num_orchestration_threads(num_orchestration_threads),
@@ -147,7 +148,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       this->enable_disk_index = false;
       this->enable_tags = false;
       this->enable_locs = false;
-      this->enable_pq = false;
+      this->enable_pq = true;
       this->enable_partition_assignment = true;
     }
   }
@@ -391,7 +392,6 @@ void SSDPartitionIndex<T, TagT>::load_pq(
         "index file: " +
         std::to_string(this->num_points) + " " + std::to_string(npts_u64));
   }
-
   this->data_dim = pq_table.get_dim();
   this->aligned_dim = ROUND_UP(this->data_dim, 8);
 
@@ -434,9 +434,10 @@ void SSDPartitionIndex<T, TagT>::load_max_norm(
       delete[] norm_val;
     } else {
       throw std::runtime_error(
-          "distance metric is mips but max norm base  file doesn't exist");
+          "distance metric is mips but max norm base file doesn't exist");
     }
   }
+  LOG(INFO) << "Loaded max norm file";
 }
 
 template <typename T, typename TagT>

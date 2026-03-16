@@ -56,6 +56,8 @@ enum class DistributedSearchMode : uint32_t {
   SCATTER_GATHER_TOP_N = 5
 };
 
+
+
 inline std::string dist_search_mode_to_string(DistributedSearchMode mode) {
   if (mode == DistributedSearchMode::SCATTER_GATHER) {
     return "SCATTER_GATHER";
@@ -92,6 +94,43 @@ get_distributed_search_mode(std::string dist_search_mode_str) {
                                 dist_search_mode_str);
   }
 }
+
+
+enum class SearchThreadMode: uint32_t {
+  BATANN, // dequeue once # of balancing < # max to balance
+  PIPEANN_COROSEARCH, // dequeue only once # of balancing is 0, then dequeue # max to balance
+  DISKANN // dequeue 1 at a time, if # of balancing is 0 then dequeue 1 again
+};
+
+
+inline SearchThreadMode
+get_search_thread_mode(std::string search_thread_mode_str) {
+  if (search_thread_mode_str == "BATANN") {
+    return SearchThreadMode::BATANN;
+  } else if (search_thread_mode_str == "PIPEANN_COROSEARCH") {
+    return SearchThreadMode::PIPEANN_COROSEARCH;
+  } else if (search_thread_mode_str == "DISKANN") {
+    return SearchThreadMode::DISKANN;
+  } else {
+    throw std::invalid_argument("Search thread mode has weird value " + search_thread_mode_str);
+  }
+}
+
+
+inline std::string
+search_thread_mode_to_string(SearchThreadMode search_thread_mode) {
+  if (search_thread_mode == SearchThreadMode::BATANN) {
+    return "BATANN";
+  } else if (search_thread_mode == SearchThreadMode::PIPEANN_COROSEARCH) {
+    return "PIPEANN_COROSEARCH";
+  } else if (search_thread_mode == SearchThreadMode::DISKANN) {
+    return "DISKANN";
+  } else {
+    throw std::invalid_argument("Search thread mode has weird value " +
+                                std::to_string((uint32_t)search_thread_mode));
+  }
+}
+
 
 using fnhood_t = std::tuple<unsigned, unsigned, char *>;
 
