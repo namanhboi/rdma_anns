@@ -558,7 +558,7 @@ struct alignas(SECTOR_LEN) SearchState {
 
   // search state.
   std::vector<pipeann::Neighbor> full_retset;
-  pipeann::Neighbor retset[1024];
+  pipeann::Neighbor retset[MAX_L_SEARCH * 2];
   // tsl::robin_set<uint32_t> visited;
 
   std::vector<unsigned> frontier;
