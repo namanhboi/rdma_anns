@@ -341,7 +341,7 @@ void SearchState<T, TagT>::deserialize(const char *buffer, SearchState *state) {
   std::memcpy(&state->cur_list_size, buffer + offset,
               sizeof(state->cur_list_size));
   offset += sizeof(state->cur_list_size);
-  if (state->cur_list_size > 1024) {
+  if (state->cur_list_size > MAX_L_SEARCH * 2) {
     throw std::runtime_error("cur_list size too big");
   }
   for (size_t i = 0; i < state->cur_list_size; i++) {
