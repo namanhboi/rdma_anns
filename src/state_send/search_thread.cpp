@@ -99,9 +99,9 @@ void SSDPartitionIndex<T, TagT>::SearchThread::main_loop_batch() {
     } else if (parent->search_thread_mode ==
                SearchThreadMode::PIPEANN_COROSEARCH) {
       num_states_to_dequeue =
-        (num_states_to_dequeue == 0) ? parent->num_queries_balance : 0;
+        (number_concurrent_queries == 0) ? parent->num_queries_balance : 0;
     } else if (parent->search_thread_mode == SearchThreadMode::DISKANN) {
-      num_states_to_dequeue = (num_states_to_dequeue == 0) ? 1 : 0;
+      num_states_to_dequeue = (number_concurrent_queries == 0) ? 1 : 0;
     }
     if (num_states_to_dequeue > 0) {
       // size_t num_dequeued = thread_state_queue.try_dequeue_bulk(
