@@ -4,44 +4,58 @@
 FILES=(
     "vamana_64_128_1.2"
     "base.1B.u8bin"
-    "indices.bin"
     "pipeann_1B_pq_compressed.bin"
     "pipeann_1B_pq_pivots.bin"
 )
 
 SOURCE_DIR="/nfs/anngraphs/bigann/1B"
 DEST_DIR="/mydata/local/anngraphs/bigann/1B"
-# Note: NODES array is technically unused in your loops since you use {1..10}, which is totally fine!
+
+# Bypasses the "Host key verification failed" prompts
+SSH_OPT="-o StrictHostKeyChecking=no"
+
+# The nodes in exact order of the daisy chain
+NODES=("nfs" "node1" "node2" "node3" "node4" "node5" "node6" "node7" "node8" "node9" "node10")
 
 # --- Execution ---
 
-# 1. Step One: Node0 pulls ALL files from NFS
-echo ">>> Phase 1: node0 pulling files from NFS..."
+# 1. Phase 0: Local check and copy on nfs (node0)
+echo ">>> Phase 0: Checking files locally on nfs (node0)..."
+mkdir -p "$DEST_DIR"
+
 for FILE in "${FILES[@]}"; do
-    echo "Transferring $FILE to node0..."
-    
-    # CORRECTED: Run locally on node0 without quotes. 
-    # Added rm -f to clear out any 0-byte failed transfers from earlier!
-    rm -f "$DEST_DIR/$FILE"
-    mkdir -p "$DEST_DIR"
-    rsync -ah --progress "$SOURCE_DIR/$FILE" "$DEST_DIR/$FILE"
+    if [ ! -f "$DEST_DIR/$FILE" ]; then
+        echo "Transferring $FILE to local nfs storage..."
+        rsync -ah --sparse --inplace --progress "$SOURCE_DIR/$FILE" "$DEST_DIR/$FILE"
+    else
+        echo "✅ $FILE already exists on node0. Skipping rsync."
+    fi
 done
 
-# 2. Step Two: Daisy Chain to the rest of the nodes
-echo ">>> Phase 1 Complete. Starting Daisy Chain..."
+echo ""
+echo ">>> Phase 0 Complete. Starting Daisy Chain..."
+
+# 2. Phase 1: Daisy Chain to the rest of the nodes
 for i in {1..10}; do
-    PREV_NODE="node$((i-1))"
-    CURR_NODE="node$i"
+    PREV_NODE="${NODES[$((i-1))]}"
+    CURR_NODE="${NODES[$i]}"
     
     echo "===================================================="
-    echo ">>> Phase $((i+1)): $CURR_NODE pulling from $PREV_NODE"
+    echo ">>> Phase $i: $CURR_NODE pulling from $PREV_NODE"
     echo "===================================================="
     
     for FILE in "${FILES[@]}"; do
-        echo "Moving $FILE to $CURR_NODE..."
-        # Pulling from the previous node's local NVMe to the current node's local NVMe
-        ssh namanh@$CURR_NODE "mkdir -p $DEST_DIR && rsync -ah --progress namanh@$PREV_NODE:$DEST_DIR/$FILE $DEST_DIR/$FILE"
+        # We send the 'if exists' logic directly to the remote node via SSH
+        ssh $SSH_OPT namanh@$CURR_NODE "
+            mkdir -p $DEST_DIR
+            if [ ! -f $DEST_DIR/$FILE ]; then
+                echo 'Moving $FILE to $CURR_NODE...'
+                rsync -ah --sparse --inplace -e 'ssh $SSH_OPT' --progress namanh@$PREV_NODE:$DEST_DIR/$FILE $DEST_DIR/$FILE
+            else
+                echo '✅ $FILE already exists on $CURR_NODE. Skipping rsync.'
+            fi
+        "
     done
 done
 
-echo "Done! All files transferred to all 11 nodes."
+echo "🎉 Done! All files transferred to all 10 compute nodes."
