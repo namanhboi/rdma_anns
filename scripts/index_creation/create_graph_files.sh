@@ -114,8 +114,13 @@ fi
 
 GLOBAL_PARLAYANN_GRAPH=$DATA_FOLDER/vamana_${R}_${L}_${ALPHA}
 if [[ ! -f $GLOBAL_PARLAYANN_GRAPH ]]; then
+    GLOBAL_GRAPH=$DATA_FOLDER/pipeann_${DATASET_SIZE}_graph
+    if [[! -f $GLOBAL_GRAPH ]]; then
     echo "Creating the global grpah file here: $GLOBAL_PARLAYANN_GRAPH" 
-    $WORKDIR/extern/ParlayANN/algorithms/vamana/neighbors -R $R -L $L -alpha $ALPHA -two_pass 0 -graph_outfile $GLOBAL_PARLAYANN_GRAPH -data_type $DATA_TYPE -dist_func $METRIC -base_path $BASE_FILE
+    $WORKDIR/extern/ParlayANN/algorithms/vamana/neighbors -R $R -L $L -alpha $ALPHA -two_pass 0 -graph_outfile $GLOBAL_PARLAYANN_GRAPH -data_type $DATA_TYPE -dist_func $METRIC -base_path $BASE_FILE	
+    else
+	GLOBAL_PARLAYANN_GRAPH=$GLOBAL_GRAPH
+    fi
 fi
 
 

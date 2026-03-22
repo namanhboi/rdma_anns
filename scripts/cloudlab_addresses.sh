@@ -3,17 +3,17 @@ SOURCED=0
 
 
 ALL_CLOUDLAB_HOSTS=(
-    "namanh@er117.utah.cloudlab.us"
-    "namanh@er035.utah.cloudlab.us"
-    "namanh@er130.utah.cloudlab.us"
-    "namanh@er063.utah.cloudlab.us"
-    "namanh@er007.utah.cloudlab.us" 
-    "namanh@er020.utah.cloudlab.us"
-    "namanh@er078.utah.cloudlab.us"
-    "namanh@er056.utah.cloudlab.us"
-    "namanh@er027.utah.cloudlab.us"
-    "namanh@er070.utah.cloudlab.us"
-    "namanh@er023.utah.cloudlab.us"
+    "namanh@er087.utah.cloudlab.us"
+    "namanh@er072.utah.cloudlab.us"
+    "namanh@er092.utah.cloudlab.us"
+    "namanh@er041.utah.cloudlab.us"
+    "namanh@er083.utah.cloudlab.us" 
+    "namanh@er051.utah.cloudlab.us"
+    "namanh@er024.utah.cloudlab.us"
+    "namanh@er045.utah.cloudlab.us"
+    "namanh@er009.utah.cloudlab.us"
+    "namanh@er046.utah.cloudlab.us"
+    "namanh@er131.utah.cloudlab.us"
 )
 
 if [[ $SOURCED == 0 ]]; then
