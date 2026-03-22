@@ -357,7 +357,6 @@ almost the same as search thread but progress state for only 1 step. Need to
 handle the enable loc bullshit
    */
 
-  void state_explore_frontier_scoring(SearchState<T, TagT> *state);
   void state_explore_frontier_scoring_simple(SearchState<T, TagT> *state);
 
   class ScoringThread {

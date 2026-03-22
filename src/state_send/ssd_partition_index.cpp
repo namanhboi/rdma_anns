@@ -1313,7 +1313,9 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
       sizeof(uint32_t) * num_partition_history_idx, offset);
   bool is_final_result = state_search_ends(state);
 
-  bool record_stats = (state->stats != nullptr) && is_final_result;
+  bool record_stats = (state->stats != nullptr);
+  
+  
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
   if (record_stats) {
@@ -1372,7 +1374,7 @@ size_t SSDPartitionIndex<T, TagT>::state_get_serialize_result_size(
     num_res = state->cur_list_size;
   }
   bool is_final_result = state_search_ends(state);
-  bool record_stats = (state->stats != nullptr) && is_final_result;
+  bool record_stats = (state->stats != nullptr);
   num_bytes +=
       sizeof(state->query_id) + sizeof(state->client_peer_id) +
       sizeof(state->k_search) + sizeof(num_res) + sizeof(uint32_t) * num_res +

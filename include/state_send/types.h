@@ -345,6 +345,7 @@ struct QueryStats {
   double n_cmps = 0;   // # cmps
   double n_hops = 0;   // # search hops
   double n_inter_partition_hops = 0;
+  // for distributedann this represents the number of rpcs that it has done
 
   size_t write_serialize(char *buffer) const;
   size_t get_serialize_size() const;
