@@ -42,6 +42,11 @@ else
     RAM_BUDGET=64
 fi
 
+if [[ $METRIC == "l2" ]]; then
+    $METRIC="Euclidian"
+fi
+
+
 if [[ ! -d "$DATA_FOLDER" ]]; then
     echo "${DATA_FOLDER} doesn't exist"
     exit 1
