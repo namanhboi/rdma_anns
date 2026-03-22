@@ -43,7 +43,7 @@ else
 fi
 
 if [[ $METRIC == "l2" ]]; then
-    $METRIC="Euclidian"
+    METRIC="Euclidian"
 fi
 
 
