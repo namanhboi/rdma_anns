@@ -220,7 +220,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
     std::string result_file =
         result_output_folder + "/result_L_" + std::to_string(L) + ".csv";
     if (write_query_csv) {
-      LOG(INFO) << "WRITE_QUERY_CSV " << write_query_csv;
+      // LOG(INFO) << "WRITE_QUERY_CSV " << write_query_csv;
       write_results_csv(results, send_timestamp, receive_timestamp,
                         result_file);
     }
