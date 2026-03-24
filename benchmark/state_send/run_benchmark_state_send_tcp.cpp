@@ -206,6 +206,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                                                                 sent);
       double lat = static_cast<double>(elapsed.count());
       e2e_latencies.push_back(lat);
+      result->stats->total_us = lat;
       sum_e2e_latencies += lat;
 
       first = std::min(first, sent);
