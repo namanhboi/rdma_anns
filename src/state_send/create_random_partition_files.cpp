@@ -43,8 +43,9 @@ int main(int argc, char **argv) {
     // 3. Push the SHUFFLED id, not the loop index 'i'
     partitions[current_partition].push_back(ids[i]);
   }
-  
+
   write_partitions_to_loc_files(partitions, index_path_prefix);
+  write_partitions_to_txt_files(index_path_prefix, num_partitions);
   create_partition_assignment_file(index_path_prefix, num_partitions);
   
   return 0;
