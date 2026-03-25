@@ -2,14 +2,17 @@
 
 # --- Configuration ---
 FILES=(
-    "vamana_64_128_1.2"
-    "base.1B.u8bin"
-    "pipeann_1B_pq_compressed.bin"
-    "pipeann_1B_pq_pivots.bin"
+    "spacev1b_base.i8bin.crop_nb_100000000"
+    "pipeann_100M_pq_compressed.bin"
+    "pipeann_100M_pq_pivots.bin"
+    "pipeann_100M_graph"
+    "pipeann_100M_mem.index"
+    "pipeann_100M_mem.index.tags"
+    "pipeann_100M_mem.index.data"
 )
 
-SOURCE_DIR="/nfs/anngraphs/bigann/1B"
-DEST_DIR="/mydata/local/anngraphs/bigann/1B"
+SOURCE_DIR="/nfs/anngraphs/MSSPACEV1B/100M"
+DEST_DIR="/mydata/local/anngraphs/MSSPACEV1B/100M"
 
 # Bypasses the "Host key verification failed" prompts
 SSH_OPT="-o StrictHostKeyChecking=no"
