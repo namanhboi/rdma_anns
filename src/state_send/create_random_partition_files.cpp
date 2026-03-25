@@ -44,8 +44,12 @@ int main(int argc, char **argv) {
     partitions[current_partition].push_back(ids[i]);
   }
 
+  for (auto &partition : partitions) {
+    std::sort(partition.begin(), partition.end());
+  }
+
   write_partitions_to_loc_files(partitions, index_path_prefix);
-  write_partitions_to_txt_files(index_path_prefix, num_partitions);
+  // write_partitions_to_txt_files(index_path_prefix, num_partitions);
   create_partition_assignment_file(index_path_prefix, num_partitions);
   
   return 0;
