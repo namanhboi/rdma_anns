@@ -16,6 +16,7 @@ if [[ $# -lt 12 ]]; then
     echo "  partition_id_file: partition id file which is used as tag file to map back to original ids"
     echo "  partition_base_file: partition base file used to create this scatter gather index. Is cut from original base file. Need to be normalized for mips "
     echo "  max_norm_file: max norm of base file (only needed for mips)"
+    exit 1
 fi
 
 DATA_TYPE=$1
