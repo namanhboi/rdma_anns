@@ -15,7 +15,7 @@ DEST_DIR="/mydata/local/anngraphs/deep1b/100M"
 SSH_OPT="-o StrictHostKeyChecking=no"
 
 # The nodes in exact order of the daisy chain
-NODES=("nfs" "node1" "node2" "node3" "node4" "node5" "node6" "node7" "node8" "node9" "node10")
+NODES=("nfs" "node1" "node2" "node3" "node4" "node5" "node6" "node7" "node8" "node9")
 
 # --- Execution ---
 
