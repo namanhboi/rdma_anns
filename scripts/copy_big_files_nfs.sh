@@ -6,9 +6,6 @@ FILES=(
     "pipeann_100M_pq_compressed.bin"
     "pipeann_100M_pq_pivots.bin"
     "pipeann_100M_graph"
-    "pipeann_100M_mem.index"
-    "pipeann_100M_mem.index.tags"
-    "pipeann_100M_mem.index.data"
 )
 
 SOURCE_DIR="/nfs/anngraphs/deep1b/100M"
