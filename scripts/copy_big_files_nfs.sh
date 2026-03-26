@@ -2,7 +2,7 @@
 
 # --- Configuration ---
 FILES=(
-    "spacev1b_base.i8bin.crop_nb_100000000"
+    "base.1B.fbin.crop_nb_100000000"
     "pipeann_100M_pq_compressed.bin"
     "pipeann_100M_pq_pivots.bin"
     "pipeann_100M_graph"
@@ -11,8 +11,8 @@ FILES=(
     "pipeann_100M_mem.index.data"
 )
 
-SOURCE_DIR="/nfs/anngraphs/MSSPACEV1B/100M"
-DEST_DIR="/mydata/local/anngraphs/MSSPACEV1B/100M"
+SOURCE_DIR="/nfs/anngraphs/deep1b/100M"
+DEST_DIR="/mydata/local/anngraphs/deep1b/100M"
 
 # Bypasses the "Host key verification failed" prompts
 SSH_OPT="-o StrictHostKeyChecking=no"
