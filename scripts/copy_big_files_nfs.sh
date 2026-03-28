@@ -2,14 +2,14 @@
 
 # --- Configuration ---
 FILES=(
-    "base.1B.fbin.crop_nb_100000000"
-    "pipeann_100M_pq_compressed.bin"
-    "pipeann_100M_pq_pivots.bin"
-    "pipeann_100M_graph"
+    "spacev1b_base.i8bin"
+    "pipeann_1B_pq_compressed.bin"
+    "pipeann_1B_pq_pivots.bin"
+    "vamana_64_128_1.2"
 )
 
-SOURCE_DIR="/nfs/anngraphs/deep1b/100M"
-DEST_DIR="/mydata/local/anngraphs/deep1b/100M"
+SOURCE_DIR="/nfs/anngraphs/MSSPACEV1B/1B"
+DEST_DIR="/mydata/local/anngraphs/MSSPACEV1B/1B"
 
 # Bypasses the "Host key verification failed" prompts
 SSH_OPT="-o StrictHostKeyChecking=no"
@@ -36,7 +36,7 @@ echo ""
 echo ">>> Phase 0 Complete. Starting Daisy Chain..."
 
 # 2. Phase 1: Daisy Chain to the rest of the nodes
-for i in {1..10}; do
+for i in {1..9}; do
     PREV_NODE="${NODES[$((i-1))]}"
     CURR_NODE="${NODES[$i]}"
     
