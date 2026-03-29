@@ -288,7 +288,7 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
         /* Attention: in SPACEV, there may be  multiple vectors with the same
           distance, which may cause lower than expected recall@1 (?) */
         recall = (float)pipeann::calculate_recall(
-            (uint32_t)num_queries_to_send, gt_ids, nullptr, (uint32_t)gt_dim,
+            (uint32_t)num_queries_to_send, gt_ids, gt_dists, (uint32_t)gt_dim,
             query_result_tags[test_id].data(), (uint32_t)K, (uint32_t)K);
       }
 
