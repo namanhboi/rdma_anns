@@ -18,7 +18,8 @@ import matplotlib.pyplot as plt
 LEGEND_NAME_MAPPING = {
     'STATE_SEND': 'BatANN',
     'SCATTER_GATHER': 'ScatterGather',
-    'SINGLE_SERVER': 'SingleServer'
+    'SINGLE_SERVER': 'SingleServer',
+    'DISTRIBUTED_ANN': 'DistributedANN'
 }
 
 # Define consistent colors for different methods
@@ -26,6 +27,7 @@ METHOD_COLORS = {
     'STATE_SEND': '#1f77b4',        # Matplotlib default blue
     'SCATTER_GATHER': '#ff7f0e',    # Matplotlib default orange
     'SINGLE_SERVER': '#2ca02c',     # Matplotlib default green
+    'DISTRIBUTED_ANN': 'red',       # Matplotlib default red
 }
 
 # Define markers for different methods
@@ -33,12 +35,13 @@ METHOD_MARKERS = {
     'STATE_SEND': 'x',        # X marker
     'SCATTER_GATHER': '.',    # Dot marker
     'SINGLE_SERVER': 'o',     # Circle marker
+    'DISTRIBUTED_ANN': '+',   # Plus marker
 }
 
 # Define line styles for different server counts
 SERVER_STYLES = {
-    5: ':',     # Solid line for 5 servers
-    10: '-',    # Dotted line for 10 servers
+    5: ':',     # Dotted line for 5 servers
+    10: '-',    # Solid line for 10 servers
 }
 
 
@@ -63,6 +66,8 @@ def parse_folder_name(folder_name):
         method = 'SCATTER_GATHER'
     elif folder_name.startswith('logs_SINGLE_SERVER'):
         method = 'SINGLE_SERVER'
+    elif folder_name.startswith('logs_DISTRIBUTED_ANN'):
+        method = 'DISTRIBUTED_ANN'        
     else:
         return None
     
@@ -73,17 +78,14 @@ def parse_folder_name(folder_name):
     beamwidth = int(beamwidth_match.group(1))
     
     # Extract dataset name and size
-    # For distributed modes: distributed_DATASET_SIZE
-    # For single server: logs_SINGLE_SERVER_DATASET_SIZE
-    if method in ['STATE_SEND', 'SCATTER_GATHER']:
+    if method in ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']:
         dataset_match = re.search(r'distributed_(\w+)_(\d+[BKMG])', folder_name)
         if not dataset_match:
             return None
         dataset_name = dataset_match.group(1)
         dataset_size = dataset_match.group(2)
         
-        # Extract number of servers - look for pattern after dataset size
-        # Pattern: ...100M_NUM_SERVERS_... or ...1B_NUM_SERVERS_...
+        # Extract number of servers
         num_servers_match = re.search(r'_(\d+[BKMG])_(\d+)_\d+_MS', folder_name)
         if not num_servers_match:
             return None
@@ -96,7 +98,6 @@ def parse_folder_name(folder_name):
         dataset_size = dataset_match.group(2)
         
         # Extract number of search threads for SINGLE_SERVER
-        # Pattern: NUM_SEARCH_THREADS_${NUM_THREADS}
         num_threads_match = re.search(r'NUM_SEARCH_THREADS_(\d+)', folder_name)
         if not num_threads_match:
             return None
@@ -158,7 +159,6 @@ def parse_client_log(log_file_path):
                 # Extract QPS (column 3), Avg Latency (column 4), and Recall (column 9)
                 qps = float(parts[2])
                 avg_latency = float(parts[3])
-                # p99_latency = float(parts[4])
                 recall = float(parts[-1])
                 
                 data_points.append((qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
@@ -176,16 +176,6 @@ def parse_client_log(log_file_path):
 def collect_data(logs_folders):
     """
     Collect all data from log folders.
-    
-    Args:
-        logs_folders: List of paths to root folders containing log subfolders
-    
-    Returns a tuple: (data_dict, dataset_info)
-    where data_dict is {(num_servers, method, beamwidth): [(qps, avg_latency, recall), ...]}
-    and dataset_info is {'name': str, 'size': str}
-    
-    Note: SINGLE_SERVER data is only included for server configurations that also have
-    STATE_SEND or SCATTER_GATHER data.
     """
     data = {}
     single_server_data = {}
@@ -256,18 +246,49 @@ def collect_data(logs_folders):
     return data, dataset_info
 
 
+def get_latency_at_target_recall(data_points, target_recall=0.95):
+    """
+    Linearly interpolates latency for a specific target recall.
+    Assumes data_points is a list of tuples: (qps, avg_latency, recall)
+    """
+    if not data_points:
+        return "No data"
+
+    # Extract just recall and latency, and sort by recall
+    points = sorted([(pt[2], pt[1]) for pt in data_points])
+    
+    # Check boundaries
+    min_recall = points[0][0]
+    max_recall = points[-1][0]
+    
+    if target_recall < min_recall:
+        return f"< {points[0][1]:.2f} μs (min recall reached: {min_recall:.4f})"
+    if target_recall > max_recall:
+        return f"> {points[-1][1]:.2f} μs (max recall reached: {max_recall:.4f})"
+        
+    # Find exact match or interpolate
+    for i in range(len(points) - 1):
+        r1, l1 = points[i]
+        r2, l2 = points[i+1]
+        
+        if r1 == target_recall:
+            return f"{l1:.2f} μs"
+            
+        if r1 < target_recall < r2:
+            # Linear interpolation
+            interpolated_latency = l1 + (l2 - l1) * ((target_recall - r1) / (r2 - r1))
+            return f"{interpolated_latency:.2f} μs"
+            
+    # Handle the case where the very last point is an exact match
+    if points[-1][0] == target_recall:
+        return f"{points[-1][1]:.2f} μs"
+        
+    return "N/A"
+
+
 def plot_lat_acc(data, dataset_info, min_recall):
     """
     Plot latency vs accuracy combining all server configurations in a single plot.
-    X-axis: Latency (μs), Y-axis: Recall
-    
-    data: {(num_servers, method, beamwidth): [(qps, avg_latency, recall), ...]}
-    dataset_info: {'name': str, 'size': str}
-    
-    Legend scheme:
-    - Color = Method (blue=BatANN, orange=ScatterGather, green=SingleServer)
-    - Line style = Server count (solid=5 servers, dotted=10 servers)
-    - Marker = Method (x=BatANN, .=ScatterGather, o=SingleServer)
     """
     if not data:
         print("No data to plot!")
@@ -281,28 +302,28 @@ def plot_lat_acc(data, dataset_info, min_recall):
     plotted_servers = set()
     
     # Sort keys by beamwidth, then server count, then method
-    method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+    method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', "DISTRIBUTED_ANN"]
     sorted_keys = sorted(data.keys(), 
-                        key=lambda x: (x[2], x[0], method_order.index(x[1]) if x[1] in method_order else 999))
+                         key=lambda x: (x[2], x[0], method_order.index(x[1]) if x[1] in method_order else 999))
     
     for (num_servers, method, beamwidth) in sorted_keys:
         data_points = data[(num_servers, method, beamwidth)]
         
-        # Extract latency (x) and recall (y) values
-        x_values = [point[1] for point in data_points if len(point) >= 3]
-        y_values = [point[2] for point in data_points if len(point) >= 3]
+        # Extract recall (x) and latency (y) values
+        x_values = [point[2] for point in data_points if len(point) >= 3]  # recall is at index 2
+        y_values = [point[1] for point in data_points if len(point) >= 3]  # avg_latency is at index 1
         
         if x_values:
-            # Sort by latency
+            # Sort by recall
             sorted_points = sorted(zip(x_values, y_values))
             x_values_sorted, y_values_sorted = zip(*sorted_points)
             
-            # Get styling - now color is based on method
+            # Get styling
             color = METHOD_COLORS.get(method, '#000000')
             linestyle = SERVER_STYLES.get(num_servers, '-')
             marker = METHOD_MARKERS.get(method, 'o')
             
-            # Plot without label - we'll create custom legend
+            # Plot
             ax.plot(x_values_sorted, y_values_sorted, 
                    marker=marker, linestyle=linestyle, 
                    linewidth=2, markersize=6, color=color)
@@ -318,23 +339,20 @@ def plot_lat_acc(data, dataset_info, min_recall):
     legend_elements = []
     from matplotlib.lines import Line2D
     
-    # Section 1: Methods (colors + markers) with display names
     if plotted_methods:
-        method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+        method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', "DISTRIBUTED_ANN"]
         for method in method_display_order:
             if method in plotted_methods:
                 color = METHOD_COLORS.get(method, '#000000')
                 marker = METHOD_MARKERS.get(method, 'o')
                 display_name = LEGEND_NAME_MAPPING.get(method, method)
                 legend_elements.append(Line2D([0], [0], color=color, linewidth=2, 
-                                             marker=marker, markersize=8, 
-                                             label=display_name))
+                                              marker=marker, markersize=8, 
+                                              label=display_name))
     
-    # Add a separator if we have both method and server entries
     if plotted_methods and plotted_servers:
         legend_elements.append(Line2D([0], [0], color='none', label=''))
     
-    # Section 2: Server count (line styles) - only if multiple server counts
     if len(plotted_servers) > 1:
         for num_servers in sorted(plotted_servers):
             linestyle = SERVER_STYLES.get(num_servers, '-')
@@ -342,25 +360,17 @@ def plot_lat_acc(data, dataset_info, min_recall):
                                          linestyle=linestyle, 
                                          label=f'{num_servers} Server{"s" if num_servers > 1 else ""}'))
     
-    # Add another separator if we have beamwidth entries to show
-    if len(plotted_servers) > 1 and len(plotted_beamwidths) > 1:
-        legend_elements.append(Line2D([0], [0], color='none', label=''))
-    
-    # Section 3: Beamwidth (text only) - only if multiple beamwidths
-    if len(plotted_beamwidths) > 1:
-        bw_label = 'Beamwidths: ' + ', '.join(str(bw) for bw in sorted(plotted_beamwidths))
-        legend_elements.append(Line2D([0], [0], color='none', label=bw_label))
-    
-    # Create title with dataset info
+    # Create title
     if dataset_info['name'] and dataset_info['size']:
         title = f"{dataset_info['name']} ({dataset_info['size']}) - Latency vs Recall"
     else:
         title = 'Latency vs Recall Comparison'
     
     ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.set_xlabel('Avg Latency (μs)', fontsize=12)
-    ax.set_ylabel('Recall@10', fontsize=12)
-    ax.set_ylim(min_recall, 1.01)
+    ax.set_xlabel('Recall@10', fontsize=12)
+    ax.set_ylabel('Avg Latency (μs)', fontsize=12)
+    ax.set_xlim(min_recall, 1.0)
+    ax.set_ylim(0, 10000)
     ax.grid(True, alpha=0.3)
     ax.legend(handles=legend_elements, fontsize=10, loc='best')
     
@@ -382,7 +392,7 @@ def main():
         '--min-recall',
         type=float,
         default=0.8,
-        help='Minimum recall value to display on y-axis (default: 0.8)'
+        help='Minimum recall value to display on x-axis (default: 0.8)'
     )
     parser.add_argument(
         '--output',
@@ -408,13 +418,37 @@ def main():
     for (num_servers, method, beamwidth) in sorted(data.keys()):
         by_server[num_servers].append((method, beamwidth))
     
+    # Print configuration summary
     for num_servers in sorted(by_server.keys()):
         print(f"  {num_servers} server(s):")
         for method, beamwidth in sorted(by_server[num_servers]):
             display_name = LEGEND_NAME_MAPPING.get(method, method)
             print(f"    {display_name} with beamwidth={beamwidth}")
+
+    # NEW: Print Latency at 0.95 Recall
+    print("\n" + "="*45)
+    print("       LATENCY AT 0.95 RECALL")
+    print("="*45)
     
-    print(f"\nGenerating plot...")
+    method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']
+    
+    for num_servers in sorted(by_server.keys()):
+        print(f"\n[ {num_servers} Server(s) ]")
+        
+        # Sort methods by standard order so it's easier to read
+        server_configs = sorted(by_server[num_servers], 
+                                key=lambda x: (method_order.index(x[0]) if x[0] in method_order else 999, x[1]))
+        
+        for method, beamwidth in server_configs:
+            display_name = LEGEND_NAME_MAPPING.get(method, method)
+            key = (num_servers, method, beamwidth)
+            lat_at_95 = get_latency_at_target_recall(data[key], target_recall=0.95)
+            
+            # Format nicely
+            print(f"  {display_name:<16} | Beamwidth: {beamwidth:<3} | Latency: {lat_at_95}")
+    print("="*45 + "\n")
+
+    print(f"Generating plot...")
     fig = plot_lat_acc(data, dataset_info, args.min_recall)
     
     if fig:

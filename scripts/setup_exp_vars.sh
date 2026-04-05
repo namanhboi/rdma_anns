@@ -13,7 +13,7 @@ SERVER_STARTING_ADDRESS="10.10.1.1"
 BASE_PORT=8000
 
 
-if [ $# -lt 23 ]; then
+if [ $# -lt 24 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  num_servers: number of scoring/search servers. One addition process will be launched for client (making it num_servers + 1), and if mode is distributedann then one additional process will be launched for orchestration server (num_server + 2 in total). The orhcestration and client processes will live in the same physical server"
@@ -59,7 +59,8 @@ TOP_N=${20}
 NUM_ORCHESTRATION_THREADS=${21}
 NUM_SCORING_THREADS=${22}
 SEARCH_THREAD_MODE=${23}
-shift 23
+IS_RANDOM_PARTITION=${24}
+shift 24
 LVEC=$(printf " %s" "$@")
 LVEC=${LVEC:-1}
 
@@ -160,10 +161,22 @@ else
 	fi	
     else
 	if [[ ("$DIST_SEARCH_MODE" == "STATE_SEND_CLIENT_GATHER") || ("$DIST_SEARCH_MODE" == "STATE_SEND") || ("$DIST_SEARCH_MODE" == "DISTRIBUTED_ANN") ]]; then
-	    PREFIX="global_partitions"
+	    if [[ $IS_RANDOM_PARTITION == "false" ]]; then
+		PREFIX="global_partitions"
+	    else
+		PREFIX="global_random_partitions"
+	    fi
+	    
+
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_partition"
 	else
-	    PREFIX="clusters"
+
+	    if [[ $IS_RANDOM_PARTITION == "false" ]]; then
+		PREFIX="clusters"
+	    else
+		PREFIX="clusters_random"
+
+	    fi
 	    GRAPH_SUFFIX="pipeann_${DATASET_SIZE}_cluster"
 	fi
     fi

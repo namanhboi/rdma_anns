@@ -2,11 +2,14 @@
 """
 Script to plot scalability of STATE_SEND, SCATTER_GATHER, and SINGLE_SERVER 
 approaches as the number of servers/threads increases.
+Evaluates all datasets, applying a specific target recall for text2image.
+Aggregates runs by taking the average of QPS and Recall for the same L value.
 """
 
 import os
 import re
 import argparse
+import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import matplotlib
@@ -17,7 +20,8 @@ import matplotlib.pyplot as plt
 LEGEND_NAME_MAPPING = {
     'STATE_SEND': 'BatANN',
     'SCATTER_GATHER': 'ScatterGather',
-    'SINGLE_SERVER': 'SingleServer'
+    'SINGLE_SERVER': 'SingleServer',
+    'DISTRIBUTED_ANN': 'DistributedANN'
 }
 
 # Define consistent colors and markers for each method
@@ -25,50 +29,46 @@ METHOD_STYLES = {
     'STATE_SEND': {'color': '#1f77b4', 'marker': 'o', 'linestyle': '-', 'label': 'BatANN'},
     'SCATTER_GATHER': {'color': '#ff7f0e', 'marker': 's', 'linestyle': '-', 'label': 'ScatterGather'},
     'SINGLE_SERVER': {'color': '#2ca02c', 'marker': '^', 'linestyle': '--', 'label': 'SingleServer'},
+    'DISTRIBUTED_ANN': {'color': 'red', 'marker': 'p', 'linestyle': '-', 'label': 'DistributedANN'},
+}
+
+# Mapping from raw log dataset names to desired display names
+DATASET_NAME_MAPPING = {
+    'bigann': 'bigann',
+    'deep1b': 'deep',
+    'MSSPACEV1B': 'msspacev1b',
+    'msspacev1b': 'msspacev1b',
+    'text2image1B' : 'text2image',
 }
 
 
 def parse_folder_name(folder_name):
-    """
-    Parse the log folder name to extract metadata.
-    Expected formats:
-los_${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_${COUNTER_SLEEP_MS}_MS_NUM_SEARCH_THREADS_${NUM_SEARCH_THREADS}_MAX_BATCH_SIZE_${MAX_BATCH_SIZE}_K_${K_VALUE}_OVERLAP_${OVERLAP}_BEAMWIDTH_${BEAM_WIDTH}
-    
-    Returns a dict with extracted fields or None if parsing fails.
-    """
-    # Only process folders that start with 'logs_'
+    """Parse the log folder name to extract metadata."""
     if not folder_name.startswith('logs_'):
         return None
     
-    # Split by underscore
     parts = folder_name.split('_')
-    
     if len(parts) < 6:
         return None
     
     try:
-        # Extract method (STATE_SEND, SCATTER_GATHER, or SINGLE_SERVER)
         if parts[1] == 'STATE' and parts[2] == 'SEND':
-            method = 'STATE_SEND'
-            start_idx = 3
+            method, start_idx = 'STATE_SEND', 3
         elif parts[1] == 'SCATTER' and parts[2] == 'GATHER':
-            method = 'SCATTER_GATHER'
-            start_idx = 3
+            method, start_idx = 'SCATTER_GATHER', 3
         elif parts[1] == 'SINGLE' and parts[2] == 'SERVER':
-            method = 'SINGLE_SERVER'
-            start_idx = 3
+            method, start_idx = 'SINGLE_SERVER', 3
+        elif parts[1] == 'DISTRIBUTED' and parts[2] == 'ANN':
+            method, start_idx = 'DISTRIBUTED_ANN', 3            
         else:
             return None
         
-        # Extract dataset name and size
         dataset_name = parts[start_idx + 1] if start_idx + 1 < len(parts) else None
         dataset_size = parts[start_idx + 2] if start_idx + 2 < len(parts) else None
         
-        # Find NUM_SERVERS (for distributed) or num_threads (for single server)
         num_servers = None
         num_threads = None
         
-        # Look for NUM_SEARCH_THREADS pattern
         for i in range(len(parts)):
             if parts[i] == 'THREADS' and i > 0 and parts[i-1] == 'SEARCH' and i > 1 and parts[i-2] == 'NUM':
                 if i + 1 < len(parts) and parts[i+1].isdigit():
@@ -76,119 +76,77 @@ los_${DIST_SEARCH_MODE}_${MODE}_${DATASET_NAME}_${DATASET_SIZE}_${NUM_SERVERS}_$
                     break
         
         if method == 'SINGLE_SERVER':
-            # For SINGLE_SERVER, we use num_threads as the key metric
-            if num_threads is None:
-                return None
+            if num_threads is None: return None
             return {
-                'method': method,
-                'num_servers': 1,
-                'num_threads': num_threads,
-                'dataset_name': dataset_name,
-                'dataset_size': dataset_size,
-                'full_name': folder_name
+                'method': method, 'num_servers': 1, 'num_threads': num_threads,
+                'dataset_name': dataset_name, 'dataset_size': dataset_size, 'full_name': folder_name
             }
         else:
-            # For STATE_SEND and SCATTER_GATHER, find NUM_SERVERS
-            # It should be a small integer (2-5) after the dataset size
             for i in range(start_idx + 2, len(parts)):
                 if parts[i].isdigit() and len(parts[i]) <= 2:
-                    # Check that previous part might be dataset size (contains M, K, etc.)
-                    if i > 0 and any(char in parts[i-1] for char in ['M', 'K', 'G']):
+                    if i > 0 and any(char in parts[i-1] for char in ['M', 'K', 'G', 'B']):
                         num_servers = int(parts[i])
                         break
             
-            if num_servers is None:
-                return None
-            
+            if num_servers is None: return None
             return {
-                'method': method,
-                'num_servers': num_servers,
-                'num_threads': num_threads if num_threads else 8,  # Default to 8
-                'dataset_name': dataset_name,
-                'dataset_size': dataset_size,
-                'full_name': folder_name
+                'method': method, 'num_servers': num_servers, 'num_threads': num_threads if num_threads else 8,
+                'dataset_name': dataset_name, 'dataset_size': dataset_size, 'full_name': folder_name
             }
-    
     except (IndexError, ValueError):
         return None
 
 
 def parse_client_log(log_file_path):
-    """
-    Parse client.log file and extract QPS and Recall data.
-    
-    Returns a list of tuples: (qps, latency, recall)
-    """
+    """Parse client.log file and extract L, QPS and Recall data."""
     data_points = []
-    
     try:
         with open(log_file_path, 'r') as f:
             lines = f.readlines()
         
-        # Find the header line
         header_found = False
         data_start_idx = 0
         
         for i, line in enumerate(lines):
             if 'L   I/O Width' in line and 'QPS' in line and 'Recall' in line:
                 header_found = True
-                data_start_idx = i + 2  # Skip header and separator line
+                data_start_idx = i + 2  
                 break
         
-        if not header_found:
-            print(f"Warning: Header not found in {log_file_path}")
-            return data_points
+        if not header_found: return data_points
         
-        # Parse data lines
         for line in lines[data_start_idx:]:
             line = line.strip()
-            if not line:
-                continue
-            
-            # Split by whitespace and extract relevant columns
+            if not line: continue
             parts = line.split()
-            if len(parts) < 9:
-                continue
+            if len(parts) < 9: continue
             
             try:
-                # Extract QPS (column 3), and Recall (column 8)
+                l_val = int(parts[0])  # Extract L value for grouping
                 qps = float(parts[2])
                 avg_latency = float(parts[3])
                 recall = float(parts[-1])
-                
-                data_points.append((qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
+                data_points.append((l_val, qps, avg_latency, recall / 100.0))
             except (ValueError, IndexError):
                 continue
-    
-    except FileNotFoundError:
-        print(f"Warning: File not found: {log_file_path}")
-    except Exception as e:
-        print(f"Error parsing {log_file_path}: {e}")
+    except Exception:
+        pass
     
     return data_points
 
 
-def get_qps_at_recall(data_points, target_recall=0.95):
-    """
-    Get QPS at target recall using linear interpolation.
-    
-    Returns QPS value or None if target_recall is out of range.
-    """
-    if not data_points:
-        return None
-    
-    # Sort by recall
+def get_qps_at_recall(data_points, target_recall):
+    """Get QPS at target recall using linear interpolation."""
+    if not data_points: return None
+    # Elements in data_points are now expected to be (qps, latency, recall)
     sorted_points = sorted(data_points, key=lambda x: x[2])
     
-    # Check if target_recall is within the range of available data
     min_recall = sorted_points[0][2]
     max_recall = sorted_points[-1][2]
     
     if target_recall < min_recall or target_recall > max_recall:
-        print(f"Warning: Target recall {target_recall} is outside available range [{min_recall:.3f}, {max_recall:.3f}]")
         return None
     
-    # Find the two points to interpolate between
     for i in range(len(sorted_points) - 1):
         recall_low = sorted_points[i][2]
         recall_high = sorted_points[i + 1][2]
@@ -197,123 +155,137 @@ def get_qps_at_recall(data_points, target_recall=0.95):
             qps_low = sorted_points[i][0]
             qps_high = sorted_points[i + 1][0]
             
-            # Linear interpolation
             if recall_high == recall_low:
-                # Avoid division by zero
-                interpolated_qps = qps_low
+                return qps_low
             else:
                 weight = (target_recall - recall_low) / (recall_high - recall_low)
-                interpolated_qps = qps_low + weight * (qps_high - qps_low)
-            
-            return interpolated_qps
+                return qps_low + weight * (qps_high - qps_low)
     
-    # If we get here, target_recall exactly matches one of the points
     for qps, _, recall in sorted_points:
         if abs(recall - target_recall) < 1e-6:
             return qps
-    
+            
     return None
 
 
-def collect_data(logs_root_folder, target_recall=0.95):
-    """
-    Collect QPS at target recall for all methods, organized by dataset.
+def collect_data(logs_root_folder, default_recall, t2i_recall):
+    """Collect QPS at target recall for methods, organized by dataset, aggregating by L."""
+    datasets = defaultdict(lambda: {'data': defaultdict(dict), 'info': {'name': None, 'size': None, 'target_recall': None}})
     
-    Returns a dict: {dataset_key: {'data': {method: {num_servers or num_threads: qps}}, 'info': {'name': str, 'size': str}}}
-    """
-    datasets = defaultdict(lambda: {'data': defaultdict(dict), 'info': {'name': None, 'size': None}})
+    # Store raw data for averaging: dataset_key -> method -> config_key -> l_val -> [(qps, lat, rec), ...]
+    raw_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+    
     logs_root = Path(logs_root_folder)
     
     if not logs_root.exists():
         print(f"Error: Root folder '{logs_root_folder}' does not exist")
         return datasets
     
-    # Iterate through all subdirectories
+    # Pass 1: Gather all raw data points mapped by their L values
     for folder in logs_root.iterdir():
-        if not folder.is_dir():
-            continue
+        if not folder.is_dir(): continue
         
-        # Parse folder name
         metadata = parse_folder_name(folder.name)
-        if metadata is None:
-            continue
+        if metadata is None: continue
         
-        # Create dataset key from name and size
         dataset_name = metadata['dataset_name']
         dataset_size = metadata['dataset_size']
         dataset_key = f"{dataset_name}_{dataset_size}"
         
-        # Store dataset info
+        # Apply dataset-specific recall rule
+        if 'text2image' in dataset_name.lower():
+            current_target_recall = t2i_recall
+        else:
+            current_target_recall = default_recall
+            
         if datasets[dataset_key]['info']['name'] is None:
-            datasets[dataset_key]['info']['name'] = dataset_name
+            # Map name if exists, otherwise keep original
+            mapped_name = DATASET_NAME_MAPPING.get(dataset_name, dataset_name)
+            datasets[dataset_key]['info']['name'] = mapped_name
             datasets[dataset_key]['info']['size'] = dataset_size
+            datasets[dataset_key]['info']['target_recall'] = current_target_recall
         
-        # Look for client.log file
         client_log = folder / 'client.log'
-        if not client_log.exists():
-            print(f"Warning: client.log not found in {folder.name}")
-            continue
+        if not client_log.exists(): continue
         
-        # Parse the log file
         data_points = parse_client_log(client_log)
-        if not data_points:
-            print(f"Warning: No data extracted from {client_log}")
-            continue
-        
-        # Get QPS at target recall
-        qps = get_qps_at_recall(data_points, target_recall)
-        if qps is None:
-            print(f"Warning: Could not find QPS at recall={target_recall} in {folder.name}")
-            continue
         
         method = metadata['method']
+        key = metadata['num_threads'] if method == 'SINGLE_SERVER' else metadata['num_servers']
         
-        # For SINGLE_SERVER, key by num_threads; for others, key by num_servers
-        if method == 'SINGLE_SERVER':
-            key = metadata['num_threads']
-        else:
-            key = metadata['num_servers']
+        # Store points by L value for averaging later
+        for l_val, qps, lat, rec in data_points:
+            raw_data[dataset_key][method][key][l_val].append((qps, lat, rec))
+            
+    # Pass 2: Average points for the same L value, then find QPS at target recall
+    for dataset_key, methods_dict in raw_data.items():
+        target_recall = datasets[dataset_key]['info']['target_recall']
         
-        datasets[dataset_key]['data'][method][key] = qps
-        
-        # Use display name in output
-        display_name = LEGEND_NAME_MAPPING.get(method, method)
-        print(f"Loaded {folder.name}: {display_name}, dataset={dataset_key}, key={key}, QPS@{target_recall}={qps:.2f}")
+        for method, config_dict in methods_dict.items():
+            for key, l_dict in config_dict.items():
+                averaged_points = []
+                
+                for l_val, points in l_dict.items():
+                    avg_qps = np.mean([p[0] for p in points])
+                    avg_lat = np.mean([p[1] for p in points])
+                    avg_rec = np.mean([p[2] for p in points])
+                    averaged_points.append((avg_qps, avg_lat, avg_rec))
+                    
+                qps = get_qps_at_recall(averaged_points, target_recall)
+                
+                if qps is not None:
+                    datasets[dataset_key]['data'][method][key] = qps
     
-    return dict(datasets)
+    return {k: v for k, v in datasets.items() if any(v['data'].values())}
 
 
-def plot_single_dataset(ax, data, dataset_info, target_recall, threads_per_server=8, show_legend=True):
-    """
-    Plot scalability comparison for a single dataset on a given axis.
+def print_summary_table(datasets):
+    """Prints a formatted summary table of QPS and Scalability to the console."""
+    print(f"\n{'='*75}")
+    print(f" SUMMARY TABLE")
+    print(f"{'='*75}")
     
-    ax: matplotlib axis to plot on
-    data: {method: {num_servers or num_threads: qps}}
-    dataset_info: {'name': str, 'size': str}
-    show_legend: whether to show the legend on this subplot
-    """
-    if not data:
-        ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+    for dataset_key, dataset in sorted(datasets.items()):
+        recall_used = dataset['info']['target_recall']
+        display_name = dataset['info']['name']
+        print(f"\nDataset: {display_name} (Evaluated @ {recall_used} Recall)")
+        print(f"{'Method':<18} | {'Hardware (Nodes/Thr)':<20} | {'QPS':<10} | {'Scalability':<10}")
+        print(f"{'-'*18}-+-{'-'*20}-+-{'-'*10}-+-{'-'*10}")
+        
+        data = dataset['data']
+        baseline_qps = None
+        
+        if 'SINGLE_SERVER' in data and 8 in data['SINGLE_SERVER']:
+            baseline_qps = data['SINGLE_SERVER'][8]
+        elif 'SINGLE_SERVER' in data and data['SINGLE_SERVER']:
+            baseline_qps = data['SINGLE_SERVER'][min(data['SINGLE_SERVER'].keys())]
+            
+        for method in ['SINGLE_SERVER', 'STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']:
+            if method not in data: continue
+            
+            display_name = LEGEND_NAME_MAPPING.get(method, method)
+            for key, qps in sorted(data[method].items()):
+                hw_str = f"{key} threads" if method == 'SINGLE_SERVER' else f"{key} servers"
+                speedup_str = f"{qps/baseline_qps:.2f}x" if baseline_qps else "N/A"
+                print(f"{display_name:<18} | {hw_str:<20} | {qps:<10.2f} | {speedup_str:<10}")
+    print(f"\n{'='*75}\n")
+
+
+def plot_single_dataset(ax, data, dataset_info, threads_per_server=8, show_legend=True, show_ylabel=False):
+    """Plot scalability comparison for a single dataset on a given axis."""
+    if not data: return False
+    
+    baseline_qps = data.get('SINGLE_SERVER', {}).get(8, None)
+    if not baseline_qps and data.get('SINGLE_SERVER'):
+        baseline_qps = data['SINGLE_SERVER'][min(data['SINGLE_SERVER'].keys())]
+        
+    if not baseline_qps:
+        ax.text(0.5, 0.5, 'No baseline data', ha='center', va='center', transform=ax.transAxes)
         return False
     
-    # Get baseline QPS from SINGLE_SERVER with 8 threads
-    baseline_qps = None
-    if 'SINGLE_SERVER' in data and 8 in data['SINGLE_SERVER']:
-        baseline_qps = data['SINGLE_SERVER'][8]
-    else:
-        # Try to find any single server data as fallback
-        if 'SINGLE_SERVER' in data and data['SINGLE_SERVER']:
-            min_threads = min(data['SINGLE_SERVER'].keys())
-            baseline_qps = data['SINGLE_SERVER'][min_threads]
-        else:
-            ax.text(0.5, 0.5, 'No baseline data', ha='center', va='center', transform=ax.transAxes)
-            return False
-    
-    # Plot optimal scalability line (y = x)
     max_x = 1
-    for method in ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']:
-        if method not in data or not data[method]:
-            continue
+    for method in ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']:
+        if method not in data or not data[method]: continue
         if method == 'SINGLE_SERVER':
             max_x = max(max_x, max(data[method].keys()) / threads_per_server)
         else:
@@ -321,214 +293,99 @@ def plot_single_dataset(ax, data, dataset_info, target_recall, threads_per_serve
     
     ax.plot([1, max_x], [1, max_x], 'k--', linewidth=1.5, alpha=0.5, label='Optimal')
     
-    # Plot each method
-    for method in ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']:
-        if method not in data or not data[method]:
-            continue
+    for method in ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']:
+        if method not in data or not data[method]: continue
         
         style = METHOD_STYLES[method]
-        
-        x_values = []
-        y_values = []
+        x_values, y_values = [], []
         
         if method == 'SINGLE_SERVER':
-            # For SINGLE_SERVER, x-axis is num_threads / threads_per_server
             for num_threads, qps in sorted(data[method].items()):
-                equiv_servers = num_threads / threads_per_server
-                speedup = qps / baseline_qps
-                x_values.append(equiv_servers)
-                y_values.append(speedup)
+                x_values.append(num_threads / threads_per_server)
+                y_values.append(qps / baseline_qps)
         else:
-            # For distributed methods, add origin point (1, 1) to connect to baseline
             x_values.append(1)
             y_values.append(1)
-            
-            # Then add actual data points
             for num_servers, qps in sorted(data[method].items()):
-                speedup = qps / baseline_qps
                 x_values.append(num_servers)
-                y_values.append(speedup)
+                y_values.append(qps / baseline_qps)
         
-        ax.plot(x_values, y_values, 
-               label=style['label'], 
-               color=style['color'],
-               marker=style['marker'], 
-               linestyle=style['linestyle'],
-               linewidth=2.5, 
-               markersize=10)
+        ax.plot(x_values, y_values, label=style['label'], color=style['color'],
+                marker=style['marker'], linestyle=style['linestyle'],
+                linewidth=2.5, markersize=10)
     
-    ax.set_xlabel('Number of Servers (or Equivalent)', fontsize=14)
-    ax.set_ylabel('Scalability', fontsize=14)
+    if show_ylabel:
+        ax.set_ylabel('Scalability (Speedup)', fontsize=20)
     
-    # Create title with dataset info
-    if dataset_info['name'] and dataset_info['size']:
-        title = f"{dataset_info['name']} ({dataset_info['size']})"
-    else:
-        title = 'Scalability Comparison'
-    
-    ax.set_title(title, fontsize=16, fontweight='bold')
+    title = f"{dataset_info['name']} @ {dataset_info['target_recall']} Recall"
+    ax.set_title(title, fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
     
-    # Only show legend if requested
     if show_legend:
-        ax.legend(fontsize=15, loc='upper left')
+        ax.legend(fontsize=10, loc='upper left')
     
-    # Set x-axis to show integer values
-    all_x = []
-    for method in ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']:
-        if method not in data or not data[method]:
-            continue
-        if method == 'SINGLE_SERVER':
-            all_x.extend([t / threads_per_server for t in data[method].keys()])
-        else:
-            all_x.extend(data[method].keys())
-    if all_x:
-        min_x = int(min(all_x))
-        max_x = int(max(all_x)) + 1
-        ax.set_xticks(range(min_x, max_x))
+    # Restrict X-axis ticks to exactly [1, 5, 10]
+    ax.set_xticks([1, 5, 10])
     
-    # Set y-axis to start from a reasonable value
+    # Increase the tick label size on both axes
+    ax.tick_params(axis='both', which='major', labelsize=12)
+    
     ax.set_ylim(bottom=0)
-    
     return True
 
 
-def plot_scalability_grid(datasets, target_recall, threads_per_server=8):
-    """
-    Plot scalability comparison for multiple datasets in a grid layout.
-    2 plots per row, centered if odd number of datasets.
-    Legend appears only on the first subplot.
-    
-    datasets: {dataset_key: {'data': {method: {num_servers or num_threads: qps}}, 'info': {'name': str, 'size': str}}}
-    """
-    if not datasets:
-        print("No data to plot!")
-        return None
-    
+def plot_scalability_grid(datasets, threads_per_server=8):
+    """Plot scalability comparison for multiple datasets in a single horizontal row."""
     n_datasets = len(datasets)
+    if n_datasets == 0: return None
     
-    # Calculate grid dimensions: 2 columns, rows as needed
-    n_cols = 2
-    n_rows = (n_datasets + 1) // 2  # Ceiling division
+    # Create 1 row and 'n_datasets' columns
+    fig, axes = plt.subplots(1, n_datasets, figsize=(3.5 * n_datasets, 4))
     
-    # Sort datasets alphabetically (case-insensitive)
+    if n_datasets == 1:
+        axes = [axes]
+        
     sorted_dataset_keys = sorted(datasets.keys(), key=lambda x: x.lower())
     
-    # For odd number of datasets, use subplot2grid for all to allow centering
-    if n_datasets % 2 == 1:
-        # Create figure
-        fig = plt.figure(figsize=(6 * n_cols, 6 * n_rows))
+    for idx, dataset_key in enumerate(sorted_dataset_keys):
+        dataset = datasets[dataset_key]
+        ax = axes[idx]
         
-        for idx, dataset_key in enumerate(sorted_dataset_keys):
-            dataset = datasets[dataset_key]
-            data = dataset['data']
-            dataset_info = dataset['info']
-            
-            if idx == n_datasets - 1:
-                # Last plot - center it by using colspan and offset
-                ax = plt.subplot2grid((n_rows, n_cols * 2), (n_rows - 1, 1), colspan=2, fig=fig)
-            else:
-                # Regular plots - 2 per row
-                row = idx // 2
-                col = idx % 2
-                ax = plt.subplot2grid((n_rows, n_cols * 2), (row, col * 2), colspan=2, fig=fig)
-            
-            # Show legend only on first subplot
-            show_legend = (idx == 0)
-            plot_single_dataset(ax, data, dataset_info, target_recall, threads_per_server, show_legend=show_legend)
-            
-            # Print baseline info
-            if 'SINGLE_SERVER' in data and 8 in data['SINGLE_SERVER']:
-                baseline_qps = data['SINGLE_SERVER'][8]
-                print(f"{dataset_key} - Baseline QPS (SingleServer, 8 threads): {baseline_qps:.2f}")
-    else:
-        # Even number - use regular subplot
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(10 * n_cols, 6 * n_rows))
+        # Show legend and ylabel ONLY on the first plot
+        is_first = (idx == 0)
+        plot_single_dataset(ax, dataset['data'], dataset['info'], threads_per_server, show_legend=is_first, show_ylabel=is_first)
         
-        # Make axes always 2D for consistent indexing
-        if n_rows == 1:
-            axes = axes.reshape(1, -1)
+    # Set a single, global X-axis title at the bottom of the figure
+    fig.supxlabel('Number of Servers (or Equivalent Threads)', fontsize=20, y=+0.05)
         
-        for idx, dataset_key in enumerate(sorted_dataset_keys):
-            dataset = datasets[dataset_key]
-            data = dataset['data']
-            dataset_info = dataset['info']
-            
-            row = idx // 2
-            col = idx % 2
-            ax = axes[row, col]
-            
-            # Show legend only on first subplot
-            show_legend = (idx == 0)
-            plot_single_dataset(ax, data, dataset_info, target_recall, threads_per_server, show_legend=show_legend)
-            
-            # Print baseline info
-            if 'SINGLE_SERVER' in data and 8 in data['SINGLE_SERVER']:
-                baseline_qps = data['SINGLE_SERVER'][8]
-                print(f"{dataset_key} - Baseline QPS (SingleServer, 8 threads): {baseline_qps:.2f}")
-    
     plt.tight_layout()
     return fig
 
-
 def main():
-    parser = argparse.ArgumentParser(
-        description='Plot scalability of STATE_SEND, SCATTER_GATHER, and SINGLE_SERVER approaches'
-    )
-    parser.add_argument(
-        'logs_folder',
-        type=str,
-        help='Path to the root folder containing all log subfolders'
-    )
-    parser.add_argument(
-        '--target-recall',
-        type=float,
-        default=0.95,
-        help='Target recall value to extract QPS for (default: 0.95)'
-    )
-    parser.add_argument(
-        '--threads-per-server',
-        type=int,
-        default=8,
-        help='Number of threads per server for distributed methods (default: 8)'
-    )
-    parser.add_argument(
-        '--output',
-        type=str,
-        default='scalability_comparison.png',
-        help='Output filename for the plot (default: scalability_comparison.png)'
-    )
-    
+    parser = argparse.ArgumentParser(description='Plot scalability for ANN Search approaches')
+    parser.add_argument('logs_folder', type=str, help='Path to the root folder containing all log subfolders')
+    parser.add_argument('--default-target-recall', type=float, default=0.95, help='Default target recall (default: 0.95)')
+    parser.add_argument('--t2i-target-recall', type=float, default=0.70, help='Target recall specifically for text2image datasets (default: 0.70)')
+    parser.add_argument('--threads-per-server', type=int, default=8, help='Threads per server (default: 8)')
+    parser.add_argument('--output', type=str, default='scalability_comparison.png', help='Output filename')
     args = parser.parse_args()
     
     print(f"Collecting data from: {args.logs_folder}")
-    print(f"Target recall: {args.target_recall}")
-    print(f"Threads per server: {args.threads_per_server}")
+    print(f"Default target recall:    {args.default_target_recall}")
+    print(f"Text2Image target recall: {args.t2i_target_recall}")
     
-    datasets = collect_data(args.logs_folder, args.target_recall)
+    datasets = collect_data(args.logs_folder, args.default_target_recall, args.t2i_target_recall)
     
     if not datasets:
-        print("No data collected. Please check your log folder structure.")
+        print("\nNo data collected! Check if your recall targets are achievable in the logs.")
         return
     
-    print(f"\nFound {len(datasets)} dataset(s):")
-    for dataset_key, dataset in sorted(datasets.items()):
-        info = dataset['info']
-        data = dataset['data']
-        print(f"\n  {dataset_key} - {info['name']} ({info['size']}):")
-        for method, values in data.items():
-            display_name = LEGEND_NAME_MAPPING.get(method, method)
-            print(f"    {display_name}: {sorted(values.keys())}")
+    print_summary_table(datasets)
     
-    print(f"\nGenerating plot(s)...")
-    fig = plot_scalability_grid(datasets, args.target_recall, args.threads_per_server)
-    
+    fig = plot_scalability_grid(datasets, args.threads_per_server)
     if fig:
         plt.savefig(args.output, dpi=300, bbox_inches='tight')
-        print(f"\nPlot saved to: {args.output}")
-    else:
-        print("Failed to generate plot.")
-
+        print(f"Plot saved to: {args.output}")
 
 if __name__ == '__main__':
     main()

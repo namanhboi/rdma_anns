@@ -3,11 +3,13 @@
 Script to plot QPS vs Recall and Latency vs Recall curves comparing different beamwidths.
 Creates two separate plots showing how beamwidth affects throughput and latency.
 All server configurations and methods are combined in each plot.
+Aggregates runs by taking the average of QPS, Latency, and Recall for the same L value.
 """
 
 import os
 import re
 import argparse
+import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import matplotlib
@@ -21,7 +23,7 @@ BEAMWIDTH_COLORS = {
     4: '#2ca02c',   # Green
     8: '#d62728',   # Red
     16: '#9467bd',  # Purple
-    32: '#8c564b',  # Brown
+    64: 'orange',  # Brown
 }
 
 # Define markers for different methods
@@ -125,9 +127,9 @@ def parse_folder_name(folder_name):
 
 def parse_client_log(log_file_path):
     """
-    Parse client.log file and extract QPS, Latency, and Recall data.
+    Parse client.log file and extract L, QPS, Latency, and Recall data.
     
-    Returns a list of tuples: (qps, avg_latency, recall)
+    Returns a list of tuples: (l_val, qps, avg_latency, recall)
     """
     data_points = []
     
@@ -161,40 +163,33 @@ def parse_client_log(log_file_path):
                 continue
             
             try:
-                # Extract QPS (column 3), Avg Latency (column 4), and Recall (column 9)
+                # Extract L (column 1), QPS (column 3), Avg Latency (column 4), and Recall (column 9)
+                l_val = int(parts[0])
                 qps = float(parts[2])
                 avg_latency = float(parts[3])
-                recall = float(parts[8])
+                recall = float(parts[-1])
                 
-                data_points.append((qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
+                data_points.append((l_val, qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
             except (ValueError, IndexError):
                 continue
-    
+                
     except FileNotFoundError:
         print(f"Warning: File not found: {log_file_path}")
     except Exception as e:
         print(f"Error parsing {log_file_path}: {e}")
-    
+        
     return data_points
 
 
 def collect_data_separately(throughput_folders, latency_folders):
     """
-    Collect throughput and latency data from separate folders.
-    
-    Args:
-        throughput_folders: List of paths to folders containing throughput logs
-        latency_folders: List of paths to folders containing latency logs
+    Collect throughput and latency data from separate folders, and average values for the same L.
     
     Returns a tuple: (data_dict, dataset_info)
-    where data_dict is {(num_servers, method, beamwidth): [(qps, avg_latency, recall), ...]}
-    and dataset_info is {'name': str, 'size': str}
-    
-    The data from throughput logs provides QPS and recall, while latency logs provide
-    latency and recall. They are merged based on matching (num_servers, method, beamwidth).
+    where data_dict is {(num_servers, method, beamwidth): {'throughput': [(avg_qps, avg_lat, avg_rec), ...], 'latency': [...]}}
     """
-    throughput_data = {}
-    latency_data = {}
+    raw_throughput = defaultdict(lambda: defaultdict(list))
+    raw_latency = defaultdict(lambda: defaultdict(list))
     dataset_info = {'name': None, 'size': None}
     
     # Collect throughput data
@@ -207,7 +202,7 @@ def collect_data_separately(throughput_folders, latency_folders):
         if not logs_root.exists():
             print(f"Warning: Root folder '{logs_root_folder}' does not exist, skipping")
             continue
-        
+            
         print(f"Scanning folder: {logs_root_folder}")
         
         for folder in logs_root.iterdir():
@@ -234,7 +229,11 @@ def collect_data_separately(throughput_folders, latency_folders):
                 continue
             
             key = (metadata['num_servers'], metadata['method'], metadata['beamwidth'])
-            throughput_data[key] = data_points
+            
+            # Group by L value
+            for l_val, qps, lat, rec in data_points:
+                raw_throughput[key][l_val].append((qps, lat, rec))
+                
             print(f"  Loaded {len(data_points)} throughput data points from {folder.name} "
                   f"(method={metadata['method']}, beamwidth={metadata['beamwidth']}, servers={metadata['num_servers']})")
     
@@ -248,7 +247,7 @@ def collect_data_separately(throughput_folders, latency_folders):
         if not logs_root.exists():
             print(f"Warning: Root folder '{logs_root_folder}' does not exist, skipping")
             continue
-        
+            
         print(f"Scanning folder: {logs_root_folder}")
         
         for folder in logs_root.iterdir():
@@ -275,11 +274,37 @@ def collect_data_separately(throughput_folders, latency_folders):
                 continue
             
             key = (metadata['num_servers'], metadata['method'], metadata['beamwidth'])
-            latency_data[key] = data_points
+            
+            # Group by L value
+            for l_val, qps, lat, rec in data_points:
+                raw_latency[key][l_val].append((qps, lat, rec))
+                
             print(f"  Loaded {len(data_points)} latency data points from {folder.name} "
                   f"(method={metadata['method']}, beamwidth={metadata['beamwidth']}, servers={metadata['num_servers']})")
     
-    # Merge the data - use the union of keys from both datasets
+    # Process the raw data to average metrics for the same 'L' values
+    throughput_data = {}
+    latency_data = {}
+
+    for key, l_dict in raw_throughput.items():
+        averaged_points = []
+        for l_val, pts in l_dict.items():
+            avg_qps = np.mean([p[0] for p in pts])
+            avg_lat = np.mean([p[1] for p in pts])
+            avg_rec = np.mean([p[2] for p in pts])
+            averaged_points.append((avg_qps, avg_lat, avg_rec))
+        throughput_data[key] = averaged_points
+
+    for key, l_dict in raw_latency.items():
+        averaged_points = []
+        for l_val, pts in l_dict.items():
+            avg_qps = np.mean([p[0] for p in pts])
+            avg_lat = np.mean([p[1] for p in pts])
+            avg_rec = np.mean([p[2] for p in pts])
+            averaged_points.append((avg_qps, avg_lat, avg_rec))
+        latency_data[key] = averaged_points
+
+    # Merge the averaged data
     all_keys = set(throughput_data.keys()) | set(latency_data.keys())
     merged_data = {}
     
@@ -288,46 +313,35 @@ def collect_data_separately(throughput_folders, latency_folders):
     print("=" * 60)
     for key in all_keys:
         if key in throughput_data and key in latency_data:
-            # Both datasets have this configuration - use data from respective sources
             merged_data[key] = {
                 'throughput': throughput_data[key],
                 'latency': latency_data[key]
             }
-            print(f"  Merged data for {key}: throughput={len(throughput_data[key])} points, latency={len(latency_data[key])} points")
+            print(f"  Merged data for {key}: throughput={len(throughput_data[key])} avg points, latency={len(latency_data[key])} avg points")
         elif key in throughput_data:
-            # Only throughput data available
             merged_data[key] = {
                 'throughput': throughput_data[key],
                 'latency': None
             }
-            print(f"  Only throughput data for {key}: {len(throughput_data[key])} points")
+            print(f"  Only throughput data for {key}: {len(throughput_data[key])} avg points")
         else:
-            # Only latency data available
             merged_data[key] = {
                 'throughput': None,
                 'latency': latency_data[key]
             }
-            print(f"  Only latency data for {key}: {len(latency_data[key])} points")
-    
+            print(f"  Only latency data for {key}: {len(latency_data[key])} avg points")
+            
     return merged_data, dataset_info
 
 
 def plot_combined(data, dataset_info, min_recall):
     """
     Plot both QPS vs Recall and Latency vs Recall side by side.
-    
-    data: {(num_servers, method, beamwidth): {'throughput': [...], 'latency': [...]}}
-    dataset_info: {'name': str, 'size': str}
-    
-    Legend scheme:
-    - Color = Beamwidth (blue=1, orange=2, green=4, red=8, purple=16, brown=32)
-    - Line style = Server count (solid, dashed, dotted, etc.)
-    - Marker = Method (x=STATE_SEND, .=SCATTER_GATHER, o=SINGLE_SERVER)
     """
     if not data:
         print("No data to plot!")
         return None
-    
+        
     # Create figure with two subplots side by side
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
     
@@ -373,7 +387,8 @@ def plot_combined(data, dataset_info, min_recall):
             recall_values = [point[2] for point in latency_points if len(point) >= 3]
             
             if latency_values and recall_values:
-                sorted_points_lat = sorted(zip(latency_values, recall_values))
+                # Zip recall first (X), latency second (Y)
+                sorted_points_lat = sorted(zip(recall_values, latency_values))
                 x_lat, y_lat = zip(*sorted_points_lat)
                 ax2.plot(x_lat, y_lat, 
                         marker=marker, linestyle=linestyle, 
@@ -427,7 +442,7 @@ def plot_combined(data, dataset_info, min_recall):
     ax1.legend(handles=legend_elements, fontsize=16, loc='best')
     ax1.tick_params(axis='y', labelsize=18)
     ax1.tick_params(axis='x', labelsize=16)
-    # Make x-ticks more sparse
+    
     import numpy as np
     if min_recall <= 0.8:
         ax1.set_xticks([0.80, 0.90, 1.00])
@@ -437,35 +452,27 @@ def plot_combined(data, dataset_info, min_recall):
         ax1.set_xticks([0.90, 0.95, 1.00])
     else:
         ax1.set_xticks([0.95, 1.00])
-    # Reduce number of y-ticks
     ax1.yaxis.set_major_locator(plt.MaxNLocator(5))
     
     # Configure right plot (Latency vs Recall)
-    ax2.set_title('Recall vs Latency', fontsize=16, fontweight='bold')
-    ax2.set_xlabel('Avg Latency (μs)', fontsize=16)
-    ax2.set_ylabel('Recall@10', fontsize=16)
-    ax2.set_ylim(min_recall, 1.01)
+    ax2.set_title('Latency vs Recall', fontsize=16, fontweight='bold')
+    ax2.set_xlabel('Recall@10', fontsize=16)
+    ax2.set_ylabel('Avg Latency (μs)', fontsize=16)
+    ax2.set_xlim(min_recall, 1.01)
     ax2.grid(True, alpha=0.3)
     ax2.tick_params(axis='y', labelsize=18)
     ax2.tick_params(axis='x', labelsize=16)
-    # Make y-ticks more sparse
-    if min_recall <= 0.8:
-        ax2.set_yticks([0.80, 0.90, 1.00])
-    elif min_recall <= 0.85:
-        ax2.set_yticks([0.85, 0.90, 0.95, 1.00])
-    elif min_recall <= 0.90:
-        ax2.set_yticks([0.90, 0.95, 1.00])
-    else:
-        ax2.set_yticks([0.95, 1.00])
-    # Reduce number of x-ticks
-    ax2.xaxis.set_major_locator(plt.MaxNLocator(5))
     
-    # Add overall title with dataset info
-    # if dataset_info['name'] and dataset_info['size']:
-    #     fig.suptitle(f"{dataset_info['name']} ({dataset_info['size']}) - Beamwidth Comparison", 
-    #                 fontsize=16, fontweight='bold', y=0.98)
-    # else:
-    #     fig.suptitle('Beamwidth Comparison', fontsize=16, fontweight='bold', y=0.98)
+    if min_recall <= 0.8:
+        ax2.set_xticks([0.80, 0.90, 1.00])
+    elif min_recall <= 0.85:
+        ax2.set_xticks([0.85, 0.90, 0.95, 1.00])
+    elif min_recall <= 0.90:
+        ax2.set_xticks([0.90, 0.95, 1.00])
+    else:
+        ax2.set_xticks([0.95, 1.00])
+    ax2.yaxis.set_major_locator(plt.MaxNLocator(5))
+    ax2.set_ylim(0,10000)
     
     plt.tight_layout()
     return fig
@@ -507,7 +514,7 @@ def main():
     if not latency_folder.exists():
         print(f"Error: Latency folder not found: {latency_folder}")
         return
-    
+        
     print(f"Collecting data from:")
     print(f"  Throughput folder: {throughput_folder}")
     print(f"  Latency folder: {latency_folder}")
@@ -517,7 +524,7 @@ def main():
     if not data:
         print("No data collected. Please check your log folder structure.")
         return
-    
+        
     print(f"\nFound data for {len(data)} configuration(s)")
     print(f"Dataset: {dataset_info['name']} ({dataset_info['size']})")
     
@@ -525,7 +532,7 @@ def main():
     by_server = defaultdict(list)
     for (num_servers, method, beamwidth) in sorted(data.keys()):
         by_server[num_servers].append((method, beamwidth))
-    
+        
     for num_servers in sorted(by_server.keys()):
         print(f"  {num_servers} server(s):")
         for method, beamwidth in sorted(by_server[num_servers]):
@@ -537,7 +544,7 @@ def main():
             if has_latency:
                 status.append("latency")
             print(f"    {method} with beamwidth={beamwidth} ({', '.join(status)})")
-    
+            
     # Generate combined plot
     print(f"\nGenerating combined throughput and latency plot...")
     fig = plot_combined(data, dataset_info, args.min_recall)

@@ -9,6 +9,7 @@ import re
 LEGEND_NAME_MAPPING = {
     'STATE_SEND': 'BatANN',
     'SCATTER_GATHER': 'ScatterGather',
+    'DISTRIBUTED_ANN': 'DistributedANN',
     'SINGLE_SERVER': 'SingleServer'
 }
 
@@ -149,7 +150,7 @@ def load_data_from_folder(base_folder):
                 continue
             
             method = method_folder.name
-            if method not in ['SCATTER_GATHER', 'STATE_SEND']:
+            if method not in ['SCATTER_GATHER', 'STATE_SEND', 'DISTRIBUTED_ANN']:
                 continue
             
             # Find CSV files in this folder
@@ -171,7 +172,7 @@ def plot_latency_comparison(df, output_file='latency_comparison.png'):
     """Create box-and-whisker plot comparing latencies."""
     # Get unique send rates and sort them
     send_rates = sorted(df['send_rate'].unique())
-    methods = ['SCATTER_GATHER', 'STATE_SEND']
+    methods = ['SCATTER_GATHER', 'STATE_SEND', 'DISTRIBUTED_ANN']
     
     # Prepare data for plotting - check which methods exist for each rate
     data_by_rate_method = {}
@@ -189,7 +190,7 @@ def plot_latency_comparison(df, output_file='latency_comparison.png'):
     # Set up positions for box plots
     n_rates = len(send_rates)
     width = 0.5  # Increased from 0.35 to 0.5
-    colors = {'SCATTER_GATHER': '#ff7f0e', 'STATE_SEND': '#1f77b4'}  # Swapped: orange for SCATTER_GATHER, blue for STATE_SEND
+    colors = {'SCATTER_GATHER': '#ff7f0e', 'STATE_SEND': '#1f77b4', 'DISTRIBUTED_ANN': 'red'}  # Swapped: orange for SCATTER_GATHER, blue for STATE_SEND
     
     # Prepare data for box plots
     all_data = []
@@ -254,7 +255,9 @@ def plot_latency_comparison(df, output_file='latency_comparison.png'):
         Patch(facecolor=colors['SCATTER_GATHER'], alpha=0.7, 
               label=LEGEND_NAME_MAPPING.get('SCATTER_GATHER', 'SCATTER_GATHER')),
         Patch(facecolor=colors['STATE_SEND'], alpha=0.7, 
-              label=LEGEND_NAME_MAPPING.get('STATE_SEND', 'STATE_SEND'))
+              label=LEGEND_NAME_MAPPING.get('STATE_SEND', 'STATE_SEND')),
+              Patch(facecolor=colors['DISTRIBUTED_ANN'], alpha=0.7, 
+              label=LEGEND_NAME_MAPPING.get('DISTRIBUTED_ANN', 'DISTRIBUTED_ANN'))
     ]
     ax.legend(handles=legend_elements, loc='upper left', fontsize=18)
     
@@ -292,6 +295,7 @@ def plot_latency_comparison(df, output_file='latency_comparison.png'):
                 print(f"    Max: {np.max(latencies):.2f} μs")
                 print(f"    P25: {np.percentile(latencies, 25):.2f} μs")
                 print(f"    P75: {np.percentile(latencies, 75):.2f} μs")
+                print(f"    P99: {np.percentile(latencies, 99):.2f} μs") # Added P99 here
                 print(f"    Outliers: {n_outliers} / {total} ({pct_outliers:.2f}%)")
             else:
                 display_name = LEGEND_NAME_MAPPING.get(method, method)
@@ -315,7 +319,7 @@ def main():
     parser = argparse.ArgumentParser(description='Plot latency comparison from experimental results')
     parser.add_argument('folder', type=str, help='Base folder containing send_rate_* subdirectories')
     parser.add_argument('--output', type=str, default='latency_comparison.png',
-                       help='Output file name for the plot (default: latency_comparison.png)')
+                        help='Output file name for the plot (default: latency_comparison.png)')
     
     args = parser.parse_args()
     

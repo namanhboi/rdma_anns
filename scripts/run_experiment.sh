@@ -275,7 +275,13 @@ else
     if [[ "$DATASET_SIZE" == "1B" ]]; then
 	sleep 120
     else
-	sleep 30
+	if [[ $DATASET_NAME != "text2image1B" ]]; then
+	    sleep 30
+	else
+	    sleep 120
+	fi
+	
+	
     fi
 fi
 
@@ -466,7 +472,7 @@ if [[ "$MODE" == "distributed" ]]; then
     echo "  Copying client.log from $LAST_CLOUDLAB_HOST..."
     
     # Copy only client.log from the last host
-    scp $SSH_OPTS "$LAST_CLOUDLAB_HOST:${REMOTE_LOG_DIR}/client.log" "$LOCAL_LOG_DIR/client.log" && {
+    scp -r $SSH_OPTS "$LAST_CLOUDLAB_HOST:${REMOTE_LOG_DIR}/*" "$LOCAL_LOG_DIR" && {
         echo "    ✓ client.log saved to: $LOCAL_LOG_DIR/client.log"
     } || {
         echo "    ⚠ Could not copy client.log from $LAST_CLOUDLAB_HOST"

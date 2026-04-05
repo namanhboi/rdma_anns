@@ -3,30 +3,43 @@
 Script to plot QPS vs Recall curves comparing different datasets and methods.
 Creates a grid with dataset sizes (100M, 1B) as columns, dataset names as rows.
 All server configurations are plotted in the same subplot with different line/marker styles.
-Adds speedup annotations for STATE_SEND vs SCATTER_GATHER.
+Adds speedup annotations for STATE_SEND vs SCATTER_GATHER and DISTRIBUTED_ANN.
+Aggregates runs by taking the average of QPS and Recall for the same L value.
 """
 
 import os
 import re
 import argparse
+import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
+import hashlib
 
 # Define consistent colors for different methods
 METHOD_COLORS = {
     'STATE_SEND': '#1f77b4',      # Blue
     'SCATTER_GATHER': '#ff7f0e',  # Orange
     'SINGLE_SERVER': '#2ca02c',   # Green
+    'DISTRIBUTED_ANN': 'red'      # Red
 }
+
+def get_color_for_method(method):
+    """Fallback to a generated color if the method isnt in the predefined list."""
+    if method in METHOD_COLORS:
+        return METHOD_COLORS[method]
+    # Generate a consistent hex color based on the method name
+    hash_obj = hashlib.md5(method.encode())
+    return '#' + hash_obj.hexdigest()[:6]
 
 # Legend name mapping
 LEGEND_NAME_MAPPING = {
     'STATE_SEND': 'BatANN',
     'SCATTER_GATHER': 'ScatterGather',
-    'SINGLE_SERVER': 'SingleServer'
+    'SINGLE_SERVER': 'SingleServer',
+    'DISTRIBUTED_ANN': 'DistributedANN'
 }
 
 # Define line styles for different server configurations
@@ -76,6 +89,7 @@ def get_display_name(dataset_name):
         'deep1b': 'DEEP',
         'MSSPACEV1B': 'MSSPACEV1B',
         'msspacev1b': 'MSSPACEV1B',
+        'text2image1B' : 'text2image',
     }
     
     return name_mapping.get(dataset_name, dataset_name.upper())
@@ -94,44 +108,36 @@ def parse_folder_name(folder_name):
     
     Returns a dict with extracted fields or None if parsing fails.
     """
-    # Determine the method
     method = None
-    if folder_name.startswith('logs_STATE_SEND'):
-        method = 'STATE_SEND'
-    elif folder_name.startswith('logs_SCATTER_GATHER'):
-        method = 'SCATTER_GATHER'
-    elif folder_name.startswith('logs_SINGLE_SERVER'):
-        method = 'SINGLE_SERVER'
-    else:
+    if folder_name.startswith('logs_'):
+        if '_distributed_' in folder_name:
+            method = folder_name[5:folder_name.find('_distributed_')]
+        elif folder_name.startswith('logs_SINGLE_SERVER'):
+            method = 'SINGLE_SERVER'
+        else:
+            match = re.match(r'logs_([A-Z_]+)_', folder_name)
+            if match:
+                method = match.group(1)
+                
+    if not method:
         return None
     
-    # Extract beamwidth using regex
     beamwidth_match = re.search(r'BEAMWIDTH_(\d+)', folder_name)
     if not beamwidth_match:
         return None
     beamwidth = int(beamwidth_match.group(1))
     
-    # Extract dataset name and size
-    # For distributed modes: distributed_DATASET_SIZE
-    # For single server: logs_SINGLE_SERVER_DATASET_SIZE
-    if method in ['STATE_SEND', 'SCATTER_GATHER']:
+    if method != 'SINGLE_SERVER':
         dataset_match = re.search(r'distributed_([A-Za-z0-9]+)_(\d+[BKMG])', folder_name)
         if not dataset_match:
             return None
         dataset_name_with_size = dataset_match.group(1)
         dataset_size = dataset_match.group(2)
         
-        # Remove size suffix from dataset name if present
-        # e.g., "bigann_100M" -> "bigann", "deep1b" -> "deep1b", "MSSPACEV1B" -> "MSSPACEV1B"
-        # Look for common patterns where size is embedded
         dataset_name = re.sub(r'_?\d+[BKMG]$', '', dataset_name_with_size)
-        # Also handle cases like "deep1b" where "1b" is part of the name
-        # Keep it as-is if no underscore+size pattern found
         if not dataset_name:
             dataset_name = dataset_name_with_size
         
-        # Extract number of servers - look for pattern after dataset size
-        # Pattern: ...100M_NUM_SERVERS_... or ...1B_NUM_SERVERS_...
         num_servers_match = re.search(r'_(\d+[BKMG])_(\d+)_\d+_MS', folder_name)
         if not num_servers_match:
             return None
@@ -143,19 +149,15 @@ def parse_folder_name(folder_name):
         dataset_name_with_size = dataset_match.group(1)
         dataset_size = dataset_match.group(2)
         
-        # Remove size suffix from dataset name if present
         dataset_name = re.sub(r'_?\d+[BKMG]$', '', dataset_name_with_size)
         if not dataset_name:
             dataset_name = dataset_name_with_size
         
-        # Extract number of search threads for SINGLE_SERVER
-        # Pattern: NUM_SEARCH_THREADS_${NUM_THREADS}
         num_threads_match = re.search(r'NUM_SEARCH_THREADS_(\d+)', folder_name)
         if not num_threads_match:
             return None
         num_threads = int(num_threads_match.group(1))
         
-        # Map threads to equivalent number of servers (8 threads = 1 server)
         num_servers = num_threads // 8
         if num_servers == 0:
             return None  # Invalid configuration
@@ -172,9 +174,7 @@ def parse_folder_name(folder_name):
 
 def parse_client_log(log_file_path):
     """
-    Parse client.log file and extract QPS and Recall data.
-    
-    Returns a list of tuples: (qps, latency, recall)
+    Parse client.log file and extract L, QPS and Recall data.
     """
     data_points = []
     
@@ -182,38 +182,35 @@ def parse_client_log(log_file_path):
         with open(log_file_path, 'r') as f:
             lines = f.readlines()
         
-        # Find the header line
         header_found = False
         data_start_idx = 0
         
         for i, line in enumerate(lines):
             if 'L   I/O Width' in line and 'QPS' in line and 'Recall' in line:
                 header_found = True
-                data_start_idx = i + 2  # Skip header and separator line
+                data_start_idx = i + 2
                 break
         
         if not header_found:
             print(f"Warning: Header not found in {log_file_path}")
             return data_points
         
-        # Parse data lines
         for line in lines[data_start_idx:]:
             line = line.strip()
             if not line:
                 continue
             
-            # Split by whitespace and extract relevant columns
             parts = line.split()
             if len(parts) < 9:
                 continue
             
             try:
-                # Extract QPS (column 3), and Recall (column 9)
+                l_val = int(parts[0])
                 qps = float(parts[2])
                 avg_latency = float(parts[3])
                 recall = float(parts[-1])
                 
-                data_points.append((qps, avg_latency, recall / 100.0))  # Convert recall to 0-1 range
+                data_points.append((l_val, qps, avg_latency, recall / 100.0))
             except (ValueError, IndexError):
                 continue
     
@@ -227,132 +224,129 @@ def parse_client_log(log_file_path):
 
 def collect_data(logs_folder):
     """
-    Collect all data from log folder.
-    
-    Args:
-        logs_folder: Path to root folder containing log subfolders
-    
-    Returns a nested dict: 
-    {
-        dataset_name: {
-            num_servers: {
-                (method, beamwidth): [(qps, latency, recall), ...]
-            }
-        }
-    }
+    Collect all data from log folder and aggregate results (average) for the same L.
     """
-    data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    single_server_data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    raw_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+    raw_single_server_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     
     logs_root = Path(logs_folder)
     
     if not logs_root.exists():
         print(f"Error: Root folder '{logs_folder}' does not exist")
-        return data
+        return {}
     
     print(f"Scanning folder: {logs_folder}")
     
-    # Iterate through all subdirectories (including symlinks)
     for folder in logs_root.iterdir():
         if not folder.is_dir():
             continue
         
-        # Parse folder name
         metadata = parse_folder_name(folder.name)
         if metadata is None:
-            print(f"  Skipping folder (couldn't parse): {folder.name}")
             continue
         
-        # Look for client.log file
         client_log = folder / 'client.log'
         if not client_log.exists():
-            print(f"  Warning: client.log not found in {folder.name}")
             continue
         
-        # Parse the log file
         data_points = parse_client_log(client_log)
         if not data_points:
-            print(f"  Warning: No data extracted from {client_log}")
             continue
         
-        # Store data with dataset -> num_servers -> (method, beamwidth) hierarchy
-        # Use base dataset name and store size separately for later organization
         dataset_name = metadata['dataset_name']
         dataset_size = metadata['dataset_size']
         num_servers = metadata['num_servers']
         method = metadata['method']
         beamwidth = metadata['beamwidth']
         
-        # Create a unique key combining dataset name and size for storage
         dataset_key = f"{dataset_name}_{dataset_size}"
         
-        # Store SINGLE_SERVER data separately for now
         if method == 'SINGLE_SERVER':
-            single_server_data[dataset_key][num_servers][(method, beamwidth)] = data_points
+            for l_val, qps, lat, rec in data_points:
+                raw_single_server_data[dataset_key][num_servers][(method, beamwidth)][l_val].append((qps, lat, rec))
             print(f"  Loaded {len(data_points)} data points from {folder.name} "
-                  f"(dataset={dataset_key}, method={method}, beamwidth={beamwidth}, equiv_servers={num_servers})")
+                  f"(dataset={dataset_key}, method={method}, bw={beamwidth}, equiv_servers={num_servers})")
         else:
-            data[dataset_key][num_servers][(method, beamwidth)] = data_points
+            for l_val, qps, lat, rec in data_points:
+                raw_data[dataset_key][num_servers][(method, beamwidth)][l_val].append((qps, lat, rec))
             print(f"  Loaded {len(data_points)} data points from {folder.name} "
-                  f"(dataset={dataset_key}, method={method}, beamwidth={beamwidth}, servers={num_servers})")
+                  f"(dataset={dataset_key}, method={method}, bw={beamwidth}, servers={num_servers})")
     
-    # Merge SINGLE_SERVER data only for configs that have distributed methods
+    data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    single_server_data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    
+    for dataset_key, servers_dict in raw_data.items():
+        for num_servers, methods_dict in servers_dict.items():
+            for mb_key, l_dict in methods_dict.items():
+                for l_val, points in l_dict.items():
+                    avg_qps = np.mean([p[0] for p in points])
+                    avg_lat = np.mean([p[1] for p in points])
+                    avg_rec = np.mean([p[2] for p in points])
+                    data[dataset_key][num_servers][mb_key].append((avg_qps, avg_lat, avg_rec))
+                    
+    for dataset_key, servers_dict in raw_single_server_data.items():
+        for num_servers, methods_dict in servers_dict.items():
+            for mb_key, l_dict in methods_dict.items():
+                for l_val, points in l_dict.items():
+                    avg_qps = np.mean([p[0] for p in points])
+                    avg_lat = np.mean([p[1] for p in points])
+                    avg_rec = np.mean([p[2] for p in points])
+                    single_server_data[dataset_key][num_servers][mb_key].append((avg_qps, avg_lat, avg_rec))
+    
     for dataset_key in list(single_server_data.keys()):
         for num_servers in list(single_server_data[dataset_key].keys()):
             if dataset_key in data and num_servers in data[dataset_key]:
-                # This dataset+server config has distributed methods, so include SINGLE_SERVER data
                 for key, value in single_server_data[dataset_key][num_servers].items():
                     data[dataset_key][num_servers][key] = value
-                print(f"Including SINGLE_SERVER data for {dataset_key} with {num_servers} servers")
-            else:
-                print(f"Excluding SINGLE_SERVER data for {dataset_key} with {num_servers} servers (no distributed methods)")
     
     return data
 
 
-def plot_comparison_grid(data, min_recall, dataset_sizes):
-    """
-    Plot comparison grid with dataset sizes (100M, 1B) as columns, dataset names as rows.
-    All server configurations plotted in same subplot with different line/marker styles.
-    
-    Args:
-        data: {dataset_name: {num_servers: {(method, beamwidth): [(qps, latency, recall), ...]}}}
-        min_recall: Minimum recall value for x-axis
-        dataset_sizes: {dataset_name: size_string} mapping
-    
-    Returns:
-        matplotlib figure
-    """
+def plot_comparison_grid(data, global_min_recall, dataset_sizes):
     if not data:
         print("No data to plot!")
         return None
     
-    # Reorganize data by (dataset_base_name, dataset_size)
-    # Data structure: {dataset_base_name: {dataset_size: {num_servers: {(method, beamwidth): [...]}}}}
+    # --- SETUP SPEEDUP SUMMARY COLLECTIONS ---
+    # Structure: method -> target_recall -> num_servers -> list of speedups
+    global_speedup_summary = {
+        'SCATTER_GATHER': defaultdict(lambda: defaultdict(list)),
+        'DISTRIBUTED_ANN': defaultdict(lambda: defaultdict(list))
+    }
+    
+    # Structure: dataset -> method -> target_recall -> num_servers -> list of speedups
+    dataset_speedup_summary = defaultdict(lambda: {
+        'SCATTER_GATHER': defaultdict(lambda: defaultdict(list)),
+        'DISTRIBUTED_ANN': defaultdict(lambda: defaultdict(list))
+    })
+    
+    global_methods = set()
+    global_servers = set()
+    for dataset_key in data:
+        for num_servers in data[dataset_key]:
+            global_servers.add(num_servers)
+            for (method, beamwidth) in data[dataset_key][num_servers]:
+                global_methods.add(method)
+    
     reorganized_data = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     
     for dataset_key in data.keys():
-        # Split dataset_key which is in format "name_size" (e.g., "bigann_100M", "deep1b_1B")
-        # The size is always at the end after underscore
         match = re.match(r'(.+)_(\d+[BKMG])$', dataset_key)
         if match:
             base_name = match.group(1)
             dataset_size = match.group(2)
         else:
-            # Fallback: use the whole key as base name and get size from dataset_sizes
             base_name = dataset_key
             dataset_size = dataset_sizes.get(dataset_key, 'unknown')
         
         reorganized_data[base_name][dataset_size] = data[dataset_key]
     
-    # Get sorted lists
     dataset_base_names = sorted(reorganized_data.keys())
     all_dataset_sizes = set()
     
     for base_name in dataset_base_names:
         all_dataset_sizes.update(reorganized_data[base_name].keys())
     
-    # Sort sizes: 100M before 1B
     def size_sort_key(size_str):
         if 'M' in size_str:
             return (0, int(size_str.replace('M', '')))
@@ -370,13 +364,9 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
     num_cols = len(dataset_base_names)
     
     print(f"\nCreating grid: {num_rows} rows (dataset sizes) × {num_cols} cols (dataset types)")
-    print(f"Dataset types: {dataset_base_names}")
-    print(f"Dataset sizes: {dataset_size_list}")
     
-    # Create figure
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(6 * num_cols, 6 * num_rows))
     
-    # Make sure axes is always 2D
     if num_rows == 1 and num_cols == 1:
         axes = [[axes]]
     elif num_rows == 1:
@@ -384,9 +374,10 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
     elif num_cols == 1:
         axes = [[ax] for ax in axes]
     
-    # Find min/max QPS for each dataset (row) separately, only considering points with recall >= min_recall
     dataset_qps_limits = {}
     for base_name in dataset_base_names:
+        current_min_recall = 0.2 if base_name in ['text2image1B', 'text2image'] else global_min_recall
+        
         for dataset_size in dataset_size_list:
             if dataset_size not in reorganized_data[base_name]:
                 continue
@@ -394,8 +385,7 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
             qps_values = []
             for num_servers in reorganized_data[base_name][dataset_size].keys():
                 for (method, beamwidth), data_points in reorganized_data[base_name][dataset_size][num_servers].items():
-                    # Only consider points where recall >= min_recall
-                    filtered_points = [(qps, recall) for qps, latency, recall in data_points if recall >= min_recall]
+                    filtered_points = [(qps, recall) for qps, latency, recall in data_points if recall >= current_min_recall]
                     y_values = [qps for qps, recall in filtered_points]
                     qps_values.extend(y_values)
             
@@ -406,7 +396,6 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
                 y_min = min_qps - 0.05 * qps_range
                 y_max = max_qps + 0.05 * qps_range
                 dataset_qps_limits[(base_name, dataset_size)] = (y_min, y_max)
-                print(f"  Y-axis limits for {base_name} ({dataset_size}): [{y_min:.2f}, {y_max:.2f}]")
             else:
                 dataset_qps_limits[(base_name, dataset_size)] = (None, None)
     
@@ -416,213 +405,179 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
             ax = axes[row_idx][col_idx]
             
             y_min, y_max = dataset_qps_limits.get((base_name, dataset_size), (None, None))
+            current_min_recall = 0.2 if base_name in ['text2image1B', 'text2image'] else global_min_recall
             
-            # Check if we have data for this combination
             if dataset_size not in reorganized_data[base_name]:
-                # Hide the subplot completely if no data
                 ax.set_visible(False)
                 continue
             
             dataset_data = reorganized_data[base_name][dataset_size]
-            
-            # Get all server configs for this dataset+size combination
             server_configs = sorted(dataset_data.keys())
             
-            # Track what we've plotted for legend
-            plotted_methods = {}  # method -> num_servers list
+            state_send_data = {}
+            scatter_gather_data = {}
+            distributed_ann_data = {}
             
-            # Store data for speedup calculation (per server config)
-            state_send_data = {}  # (num_servers, beamwidth) -> [(recall, qps), ...]
-            scatter_gather_data = {}  # (num_servers, beamwidth) -> [(recall, qps), ...]
-            
-            # Plot each server config and method/beamwidth combination
             for num_servers in server_configs:
                 methods_data = dataset_data[num_servers]
                 
-                # Sort by method first, then by beamwidth
-                method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+                method_order = ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN', 'SINGLE_SERVER']
                 sorted_keys = sorted(methods_data.keys(),
                                    key=lambda x: (method_order.index(x[0]) if x[0] in method_order else 999, x[1]))
                 
-                # Plot each method/beamwidth combination
                 for (method, beamwidth) in sorted_keys:
                     data_points = methods_data[(method, beamwidth)]
                     
-                    # Extract recall (x) and QPS (y) values
                     x_values = [point[2] for point in data_points if len(point) >= 3]
                     y_values = [point[0] for point in data_points if len(point) >= 3]
                     
                     if x_values:
-                        # Sort by recall
                         sorted_points = sorted(zip(x_values, y_values))
                         x_values_sorted, y_values_sorted = zip(*sorted_points)
                         
-                        # Store for speedup calculation
                         if method == 'STATE_SEND':
                             state_send_data[(num_servers, beamwidth)] = list(zip(x_values_sorted, y_values_sorted))
                         elif method == 'SCATTER_GATHER':
                             scatter_gather_data[(num_servers, beamwidth)] = list(zip(x_values_sorted, y_values_sorted))
+                        elif method == 'DISTRIBUTED_ANN':
+                            distributed_ann_data[(num_servers, beamwidth)] = list(zip(x_values_sorted, y_values_sorted))
                         
-                        # Get consistent color for method
-                        color = METHOD_COLORS.get(method, '#000000')
-                        
-                        # Get line style and marker for this server config
+                        color = get_color_for_method(method)
                         linestyle = SERVER_LINE_STYLES.get(num_servers, '-')
                         marker = SERVER_MARKERS.get(num_servers, 'o')
                         fillstyle = 'none' if num_servers in HOLLOW_MARKERS else 'full'
                         
-                        # Plot
                         ax.plot(x_values_sorted, y_values_sorted,
                                marker=marker, linestyle=linestyle,
                                linewidth=2, markersize=8, markeredgewidth=2,
                                fillstyle=fillstyle,
                                color=color,
                                label=f"{method} ({num_servers} srv)")
+            
+            # --- DYNAMIC TARGET RECALL LOGIC ---
+            if base_name in ['text2image1B', 'text2image']:
+                target_recalls = [0.7]
+            else:
+                target_recalls = [0.95]
+            
+            def interpolate_qps(sorted_points, target_recall):
+                if not sorted_points: return None
+                if len(sorted_points) == 1: return sorted_points[0][1]
+                
+                for i in range(len(sorted_points) - 1):
+                    r1, q1 = sorted_points[i]
+                    r2, q2 = sorted_points[i + 1]
+                    if r1 <= target_recall <= r2:
+                        if r2 != r1:
+                            weight = (target_recall - r1) / (r2 - r1)
+                            return q1 + weight * (q2 - q1)
+                        return q1
+                
+                if target_recall < sorted_points[0][0]: return sorted_points[0][1]
+                if target_recall > sorted_points[-1][0]: return sorted_points[-1][1]
+                return None
+
+            for (ss_num_servers, ss_beamwidth), state_send_points in state_send_data.items():
+                
+                ss_sorted = sorted(state_send_points, key=lambda p: p[0])
+                
+                sg_match_points, sg_beamwidth = None, None
+                for (sg_num_servers, sg_bw), points in scatter_gather_data.items():
+                    if sg_num_servers == ss_num_servers:
+                        sg_match_points, sg_beamwidth = points, sg_bw
+                        break
+                
+                da_match_points, da_beamwidth = None, None
+                for (da_num_servers, da_bw), points in distributed_ann_data.items():
+                    if da_num_servers == ss_num_servers:
+                        da_match_points, da_beamwidth = points, da_bw
+                        break
+                
+                sg_sorted = sorted(sg_match_points, key=lambda p: p[0]) if sg_match_points else []
+                da_sorted = sorted(da_match_points, key=lambda p: p[0]) if da_match_points else []
+
+                for target_recall in target_recalls:
+                    ss_qps = interpolate_qps(ss_sorted, target_recall)
+                    if ss_qps is None:
+                        continue
                         
-                        # Track plotted methods and servers
-                        if method not in plotted_methods:
-                            plotted_methods[method] = []
-                        if num_servers not in plotted_methods[method]:
-                            plotted_methods[method].append(num_servers)
-            
-            # Add speedup annotations for STATE_SEND vs SCATTER_GATHER
-            # Only for specific recall values: 0.9, 0.95, 0.975
-            target_recalls = [0.9, 0.95, 0.975]
-            
-            for (num_servers, beamwidth) in state_send_data.keys():
-                if (num_servers, beamwidth) in scatter_gather_data:
-                    state_send_points = state_send_data[(num_servers, beamwidth)]
-                    scatter_gather_points = scatter_gather_data[(num_servers, beamwidth)]
+                    if sg_match_points:
+                        sg_qps = interpolate_qps(sg_sorted, target_recall)
+                        if sg_qps is not None and sg_qps > 0:
+                            speedup_sg = ss_qps / sg_qps
+                            # Store in dicts mapping by target_recall
+                            global_speedup_summary['SCATTER_GATHER'][target_recall][ss_num_servers].append(speedup_sg)
+                            dataset_speedup_summary[base_name]['SCATTER_GATHER'][target_recall][ss_num_servers].append(speedup_sg)
+                            
+                            print(f"  {base_name} ({dataset_size}) - {ss_num_servers} server(s) - Recall@{target_recall}: "
+                                  f"{speedup_sg:.3f}x speedup vs SCATTER_GATHER (SS bw={ss_beamwidth}: {ss_qps:.2f} QPS, SG bw={sg_beamwidth}: {sg_qps:.2f} QPS)")
                     
-                    # Sort points by recall for interpolation
-                    ss_sorted = sorted(state_send_points, key=lambda p: p[0])
-                    sg_sorted = sorted(scatter_gather_points, key=lambda p: p[0])
-                    
-                    # For each target recall value, interpolate both STATE_SEND and SCATTER_GATHER
-                    for target_recall in target_recalls:
-                        ss_qps = None
-                        sg_qps = None
-                        
-                        # Interpolate STATE_SEND QPS at target_recall
-                        if len(ss_sorted) >= 2:
-                            for i in range(len(ss_sorted) - 1):
-                                r1, q1 = ss_sorted[i]
-                                r2, q2 = ss_sorted[i + 1]
-                                
-                                if r1 <= target_recall <= r2:
-                                    if r2 != r1:
-                                        weight = (target_recall - r1) / (r2 - r1)
-                                        ss_qps = q1 + weight * (q2 - q1)
-                                    else:
-                                        ss_qps = q1
-                                    break
+                    if da_match_points:
+                        da_qps = interpolate_qps(da_sorted, target_recall)
+                        if da_qps is not None and da_qps > 0:
+                            speedup_da = ss_qps / da_qps
+                            # Store in dicts mapping by target_recall
+                            global_speedup_summary['DISTRIBUTED_ANN'][target_recall][ss_num_servers].append(speedup_da)
+                            dataset_speedup_summary[base_name]['DISTRIBUTED_ANN'][target_recall][ss_num_servers].append(speedup_da)
                             
-                            # Handle edge cases
-                            if ss_qps is None:
-                                if target_recall < ss_sorted[0][0]:
-                                    ss_qps = ss_sorted[0][1]
-                                elif target_recall > ss_sorted[-1][0]:
-                                    ss_qps = ss_sorted[-1][1]
-                        elif len(ss_sorted) == 1:
-                            ss_qps = ss_sorted[0][1]
-                        
-                        # Interpolate SCATTER_GATHER QPS at target_recall
-                        if len(sg_sorted) >= 2:
-                            for i in range(len(sg_sorted) - 1):
-                                r1, q1 = sg_sorted[i]
-                                r2, q2 = sg_sorted[i + 1]
-                                
-                                if r1 <= target_recall <= r2:
-                                    if r2 != r1:
-                                        weight = (target_recall - r1) / (r2 - r1)
-                                        sg_qps = q1 + weight * (q2 - q1)
-                                    else:
-                                        sg_qps = q1
-                                    break
-                            
-                            # Handle edge cases
-                            if sg_qps is None:
-                                if target_recall < sg_sorted[0][0]:
-                                    sg_qps = sg_sorted[0][1]
-                                elif target_recall > sg_sorted[-1][0]:
-                                    sg_qps = sg_sorted[-1][1]
-                        elif len(sg_sorted) == 1:
-                            sg_qps = sg_sorted[0][1]
-                        
-                        # Calculate and annotate speedup
-                        if ss_qps is not None and sg_qps is not None and sg_qps > 0:
-                            speedup = ss_qps / sg_qps
-                            
-                            # Print speedup to console
-                            print(f"  {base_name} ({dataset_size}) - {num_servers} server(s) - beamwidth {beamwidth} - Recall@{target_recall}: {speedup:.3f}× speedup (SS: {ss_qps:.2f} QPS, SG: {sg_qps:.2f} QPS)")
+                            print(f"  {base_name} ({dataset_size}) - {ss_num_servers} server(s) - Recall@{target_recall}: "
+                                  f"{speedup_da:.3f}x speedup vs DISTRIBUTED_ANN (SS bw={ss_beamwidth}: {ss_qps:.2f} QPS, DA bw={da_beamwidth}: {da_qps:.2f} QPS)")
             
-            # Set title with dataset name (on top row only)
             if row_idx == 0:
                 display_name = get_display_name(base_name)
                 ax.set_title(display_name, fontsize=14, fontweight='bold')
             
-            # Add dataset size label on the left
             if col_idx == 0:
-                ax.set_ylabel(f"{dataset_size}\nQPS", fontsize=13, fontweight='bold')
+                ax.set_ylabel('QPS', fontsize=13, fontweight='bold')
             else:
                 ax.set_ylabel('QPS', fontsize=12)
             
-            ax.set_xlim(min_recall, 1.01)
+            ax.set_xlim(current_min_recall, 1.01)
             
-            # Set consistent x-axis ticks across all plots
             import numpy as np
-            if min_recall <= 0.8:
+            if current_min_recall <= 0.2:
+                x_ticks = [0.2, 0.4, 0.6, 0.8, 1.0]
+            elif current_min_recall <= 0.8:
                 x_ticks = [0.80, 0.85, 0.90, 0.95, 1.00]
-            elif min_recall <= 0.85:
+            elif current_min_recall <= 0.85:
                 x_ticks = [0.85, 0.90, 0.95, 1.00]
-            elif min_recall <= 0.90:
+            elif current_min_recall <= 0.90:
                 x_ticks = [0.90, 0.95, 1.00]
             else:
                 x_ticks = [0.95, 1.00]
             ax.set_xticks(x_ticks)
             
-            # Set y-axis limits based on the dataset and size
             if y_min is not None and y_max is not None:
                 ax.set_ylim(y_min, y_max)
             
             ax.grid(True, alpha=0.3)
-            
-            # Increase tick label size
             ax.tick_params(axis='both', which='major', labelsize=11)
             
-            # Add legend - show on first plot of each row
             if col_idx == 0:
-                # Create custom legend with better organization
                 from matplotlib.lines import Line2D
                 legend_elements = []
+                method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']
                 
-                # First section: Methods (colors)
-                method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+                for m in global_methods:
+                    if m not in method_display_order:
+                        method_display_order.append(m)
+                
                 methods_shown = set()
                 for method in method_display_order:
-                    if method in plotted_methods:
-                        color = METHOD_COLORS.get(method)
-                        display_name = LEGEND_NAME_MAPPING.get(method, method)  # Use mapping
+                    if method in global_methods:
+                        color = get_color_for_method(method)
+                        display_name = LEGEND_NAME_MAPPING.get(method, method)
                         legend_elements.append(
                             Line2D([0], [0], color=color, linewidth=2, 
                                   linestyle='-', marker='',
-                                  label=display_name)  # Use display_name instead of method
+                                  label=display_name)
                         )
                         methods_shown.add(method)
                 
-                # Add separator (empty line)
                 if methods_shown:
-                    legend_elements.append(
-                        Line2D([0], [0], color='none', linewidth=0,
-                              label='')
-                    )
+                    legend_elements.append(Line2D([0], [0], color='none', linewidth=0, label=''))
                 
-                # Second section: Server configurations (line styles and markers)
-                all_servers = set()
-                for method in plotted_methods:
-                    all_servers.update(plotted_methods[method])
-                
-                for num_servers in sorted(all_servers):
+                for num_servers in sorted(global_servers):
                     linestyle = SERVER_LINE_STYLES.get(num_servers, '-')
                     marker = SERVER_MARKERS.get(num_servers, 'o')
                     fillstyle = 'none' if num_servers in HOLLOW_MARKERS else 'full'
@@ -635,10 +590,72 @@ def plot_comparison_grid(data, min_recall, dataset_sizes):
                 
                 ax.legend(handles=legend_elements, fontsize=14, loc='best')
             
-            # X-axis label only on bottom row
             if row_idx == num_rows - 1:
-                ax.set_xlabel('Recall@10', fontsize=12)
+                ax.set_xlabel('Recall', fontsize=12)
+
+    # =========================================================================
+    # PRINT SUMMARY BLOCK
+    # =========================================================================
+    print("\n" + "="*70)
+    print("SPEEDUP RANGE SUMMARY (STATE_SEND vs Baselines)")
+    print("="*70)
     
+    # Extract all distinct target recalls globally
+    all_global_recalls = set()
+    for method in ['SCATTER_GATHER', 'DISTRIBUTED_ANN']:
+        all_global_recalls.update(global_speedup_summary[method].keys())
+
+    # 1. Global summary (Aggregated across datasets, separated by recall)
+    print("\nOVERALL RANGES (Grouped by Target Recall and Server Configuration):")
+    for tr in sorted(all_global_recalls):
+        print(f"\n  TARGET RECALL @ {tr}:")
+        
+        # Get all servers that have data for this recall
+        servers_for_tr = set()
+        for method in ['SCATTER_GATHER', 'DISTRIBUTED_ANN']:
+            servers_for_tr.update(global_speedup_summary[method][tr].keys())
+            
+        for num_servers in sorted(servers_for_tr):
+            print(f"    {num_servers} Server Configuration:")
+            
+            sg_s = global_speedup_summary['SCATTER_GATHER'][tr].get(num_servers, [])
+            if sg_s:
+                print(f"      vs SCATTER_GATHER:  {min(sg_s):.2f}x - {max(sg_s):.2f}x")
+                
+            da_s = global_speedup_summary['DISTRIBUTED_ANN'][tr].get(num_servers, [])
+            if da_s:
+                print(f"      vs DISTRIBUTED_ANN: {min(da_s):.2f}x - {max(da_s):.2f}x")
+            
+    # 2. Per-Dataset Summary (Separated by recall)
+    print("\n" + "-"*70)
+    print("RANGES PER DATASET:")
+    for dataset_name in sorted(dataset_speedup_summary.keys()):
+        print(f"\n  Dataset: {dataset_name}")
+        ds_summary = dataset_speedup_summary[dataset_name]
+        
+        all_ds_recalls = set()
+        for method in ['SCATTER_GATHER', 'DISTRIBUTED_ANN']:
+            all_ds_recalls.update(ds_summary[method].keys())
+            
+        for tr in sorted(all_ds_recalls):
+            print(f"    Target Recall @ {tr}:")
+            
+            ds_servers = set()
+            for method in ['SCATTER_GATHER', 'DISTRIBUTED_ANN']:
+                ds_servers.update(ds_summary[method][tr].keys())
+                
+            for num_servers in sorted(ds_servers):
+                print(f"      {num_servers} Server Configuration:")
+                
+                sg_s = ds_summary['SCATTER_GATHER'][tr].get(num_servers, [])
+                if sg_s:
+                    print(f"        vs SCATTER_GATHER:  {min(sg_s):.2f}x - {max(sg_s):.2f}x")
+                    
+                da_s = ds_summary['DISTRIBUTED_ANN'][tr].get(num_servers, [])
+                if da_s:
+                    print(f"        vs DISTRIBUTED_ANN: {min(da_s):.2f}x - {max(da_s):.2f}x")
+    print("="*70 + "\n")
+
     plt.tight_layout()
     return fig
 
@@ -674,18 +691,14 @@ def main():
         print("No data collected. Please check your log folder structure.")
         return
     
-    # Extract dataset sizes for titles
     dataset_sizes = {}
     for dataset_key in data.keys():
-        # Extract size from dataset_key (format: "name_size")
         match = re.match(r'(.+)_(\d+[BKMG])$', dataset_key)
         if match:
             dataset_sizes[dataset_key] = match.group(2)
         else:
-            # Fallback: look in folder metadata
             for num_servers in data[dataset_key].keys():
                 for (method, beamwidth), _ in data[dataset_key][num_servers].items():
-                    # Find any folder with this dataset to get its size
                     logs_root = Path(args.logs_folder)
                     for folder in logs_root.iterdir():
                         if not folder.is_dir():
@@ -700,12 +713,6 @@ def main():
                         break
                 if dataset_key in dataset_sizes:
                     break
-    
-    print(f"\nFound data for:")
-    for dataset_key in sorted(data.keys()):
-        print(f"  Dataset: {dataset_key} ({dataset_sizes.get(dataset_key, 'unknown size')})")
-        for num_servers in sorted(data[dataset_key].keys()):
-            print(f"    {num_servers} server(s): {len(data[dataset_key][num_servers])} configurations")
     
     print(f"\nGenerating plot...")
     fig = plot_comparison_grid(data, args.min_recall, dataset_sizes)

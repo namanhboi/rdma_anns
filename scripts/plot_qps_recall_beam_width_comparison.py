@@ -21,12 +21,14 @@ BEAMWIDTH_COLORS = {
     8: '#d62728',   # Red
     16: '#9467bd',  # Purple
     32: '#8c564b',  # Brown
+    64: 'pink',  # Brown
 }
 
 # Define line styles for different methods
 METHOD_STYLES = {
     'STATE_SEND': '-',        # Solid line
     'SCATTER_GATHER': '--',   # Dashed line
+    'DISTRIBUTED_ANN': 'dashdot',   # Dashed line    
     'SINGLE_SERVER': ':',     # Dotted line
 }
 
@@ -52,6 +54,8 @@ def parse_folder_name(folder_name):
         method = 'SCATTER_GATHER'
     elif folder_name.startswith('logs_SINGLE_SERVER'):
         method = 'SINGLE_SERVER'
+    elif folder_name.startswith('logs_DISTRIBUTED_ANN'):
+        method = 'DISTRIBUTED_ANN' 
     else:
         return None
     
@@ -64,7 +68,7 @@ def parse_folder_name(folder_name):
     # Extract dataset name and size
     # For distributed modes: distributed_DATASET_SIZE
     # For single server: logs_SINGLE_SERVER_DATASET_SIZE
-    if method in ['STATE_SEND', 'SCATTER_GATHER']:
+    if method in ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']:
         dataset_match = re.search(r'distributed_(\w+)_(\d+[BKMG])', folder_name)
         if not dataset_match:
             return None
@@ -339,7 +343,7 @@ def plot_tput_acc(data, dataset_info, min_recall):
         
         # Section 2: Methods (line styles)
         if plotted_methods:
-            method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+            method_display_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']
             for method in method_display_order:
                 if method in plotted_methods:
                     linestyle = METHOD_STYLES.get(method)

@@ -426,7 +426,9 @@ sudo chown -R namanh:ece6960-sp26-PG0 /mydata
 sudo mkdir -p /mydata/local/anngraphs/bigann/100M
 sudo mkdir -p /mydata/local/anngraphs/bigann/1B
 sudo mkdir -p /mydata/local/anngraphs/deep1b/100M
-sudo mkdir -p /mydata/local/anngraphs/deep1b/1B
+sudo mkdir -p /mydata/local/anngraphs/text2image1B/100M
+sudo mkdir -p /mydata/local/anngraphs/MSSPACEV1B/100M
+sudo mkdir -p /mydata/local/anngraphs/MSSPACEV1B/1B
 
 #+END_SRC
 

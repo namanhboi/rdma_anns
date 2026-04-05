@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 METHOD_COLORS = {
     'STATE_SEND': '#1f77b4',      # Blue
     'SCATTER_GATHER': '#ff7f0e',   # Orange
+    'DISTRIBUTED_ANN': 'red',   # Orange
 }
 
 
@@ -42,7 +43,7 @@ def parse_folder_name(folder_name):
         dist_search_mode = f"{parts[1]}_{parts[2]}"  # STATE_SEND or SCATTER_GATHER
         
         # Validate it's one of the expected modes
-        if dist_search_mode not in ['STATE_SEND', 'SCATTER_GATHER']:
+        if dist_search_mode not in ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']:
             return None
         
         # Extract remaining fields
@@ -217,7 +218,7 @@ def plot_tput_acc(data, dataset_info, min_recall):
     
     # Second pass: plot with aligned y-axis
     # Plot in specific order to control legend order: STATE_SEND first, then SCATTER_GATHER
-    method_order = ['STATE_SEND', 'SCATTER_GATHER']
+    method_order = ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']
     
     for i, (num_servers, methods_data) in enumerate(sorted_configs):
         ax = axes_flat[i]

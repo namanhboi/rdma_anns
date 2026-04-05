@@ -387,9 +387,9 @@ def plot_both_metrics(data, dataset_info, min_recall, num_servers_filter):
         ax1.legend(fontsize=8, loc='best')
     
     # Configure right subplot (I/O)
-    ax2.set_title('Mean I/O vs Recall', fontsize=11, fontweight='bold')
+    ax2.set_title('Mean Total I/O vs Recall', fontsize=11, fontweight='bold')
     ax2.set_xlabel('Recall@10', fontsize=10)
-    ax2.set_ylabel('Mean I/O Operations', fontsize=10)
+    ax2.set_ylabel('Mean Total I/O Operations', fontsize=10)
     ax2.set_xlim(min_recall, 1.01)
     ax2.grid(True, alpha=0.3)
     if plotted_beamwidths:

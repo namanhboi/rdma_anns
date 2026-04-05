@@ -21,6 +21,7 @@ BEAMWIDTH_COLORS = {
     8: '#d62728',   # Red
     16: '#9467bd',  # Purple
     32: '#8c564b',  # Brown
+    64: 'orange',  # Brown
 }
 
 

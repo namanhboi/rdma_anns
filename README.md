@@ -17,6 +17,7 @@ Then to build the indices for scatter gather and statesend (batann), you use `sc
 for mips, You need to do normaliztion on the base dataset, do this with `create_normalized_base_file_mips.cpp`
 
 Calculate groundtruth with diskann (important for dataset using mips)
+- use cpp_main branch and follow instructions to build diskann
 
 # How to run experiments
 
@@ -86,7 +87,7 @@ sudo cmake --build build/ -j --target install
 
 
 cd ~/workspace
-git clone git@github.com:namanhboi/rdma_anns.git
+git clone https://github.com/namanhboi/rdma_anns
 cd ~/workspace/rdma_anns
 git submodule update --init --recursive --remote
 

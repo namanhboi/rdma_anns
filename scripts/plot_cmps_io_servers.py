@@ -19,13 +19,15 @@ METHOD_COLORS = {
     'STATE_SEND': '#1f77b4',      # Blue
     'SCATTER_GATHER': '#ff7f0e',  # Orange
     'SINGLE_SERVER': '#2ca02c',   # Green
+    'DISTRIBUTED_ANN': 'red',   # Green
 }
 
 # Define legend name mapping
 LEGEND_NAME_MAPPING = {
     'STATE_SEND': 'BatANN',
     'SCATTER_GATHER': 'ScatterGather',
-    'SINGLE_SERVER': 'SingleServer'
+    'SINGLE_SERVER': 'SingleServer',
+    'DISTRIBUTED_ANN' : 'DistributedANN'
 }
 
 # Define markers for different methods
@@ -33,6 +35,7 @@ METHOD_MARKERS = {
     'STATE_SEND': 'x',           # X marker
     'SCATTER_GATHER': '.',       # Point marker
     'SINGLE_SERVER': '+',        # Plus marker
+    'DISTRIBUTED_ANN': 'D',        # Plus marker
 }
 
 # Define line styles for different server counts
@@ -59,6 +62,8 @@ def parse_folder_name(folder_name):
         method = 'SCATTER_GATHER'
     elif folder_name.startswith('logs_SINGLE_SERVER'):
         method = 'SINGLE_SERVER'
+    elif folder_name.startswith('logs_DISTRIBUTED_ANN'):
+        method = 'DISTRIBUTED_ANN'    
     else:
         return None
     
@@ -69,7 +74,7 @@ def parse_folder_name(folder_name):
     beamwidth = int(beamwidth_match.group(1))
     
     # Extract dataset name and size
-    if method in ['STATE_SEND', 'SCATTER_GATHER']:
+    if method in ['STATE_SEND', 'SCATTER_GATHER', 'DISTRIBUTED_ANN']:
         dataset_match = re.search(r'distributed_(\w+)_(\d+[BKMG])', folder_name)
         if not dataset_match:
             return None
@@ -301,7 +306,7 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
         print("\n" + "="*80 + "\n")
     
     # Create a figure with two subplots stacked vertically
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3))
     
     # Sort by number of servers
     sorted_configs = sorted(data.items())
@@ -309,7 +314,7 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
     # Plot both metrics
     for metric_idx, ax, ylabel, metric_title in [
         (3, ax1, 'Distance Comparisons', 'Distance Comparisons vs Recall'),
-        (4, ax2, 'Mean I/O Operations', 'Mean I/O vs Recall')
+        (4, ax2, 'Mean Total I/O Operations', 'Mean Total I/O vs Recall')
     ]:
         plotted_items = []
         
@@ -324,7 +329,7 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
                 methods_to_plot = methods_data
             
             # Sort by method for consistent ordering
-            method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER']
+            method_order = ['STATE_SEND', 'SCATTER_GATHER', 'SINGLE_SERVER', 'DISTRIBUTED_ANN']
             sorted_keys = sorted(methods_to_plot.keys(),
                                key=lambda x: (method_order.index(x[0]) if x[0] in method_order else 999, x[1]))
             
@@ -364,10 +369,10 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
                     else:
                         label = f"{display_name} ({num_servers}s)"
                     
-                    # Plot metric
+                    # Plot metric (Reduced alpha to 0.6, added markerfacecolor='none')
                     ax.plot(recalls_sorted, metric_sorted, 
                            marker=marker, linestyle=linestyle, 
-                           linewidth=2, markersize=markersize, color=color, alpha=0.8)
+                           linewidth=1, markersize=markersize, color=color, alpha=0.6, markerfacecolor='none')
                     
                     # Track for legend
                     plotted_items.append((method, num_servers, color, marker, linestyle, markersize, label))
@@ -380,7 +385,7 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
         ax.grid(True, alpha=0.3)
         
         # Create custom legend
-        if plotted_items:
+        if plotted_items and ax == ax1:
             from matplotlib.lines import Line2D
             legend_handles = []
             
@@ -393,7 +398,7 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
                 else:
                     label = f'{num_servers} servers'
                 legend_handles.append(Line2D([0], [0], color='black', linestyle=linestyle, 
-                                            linewidth=2, label=label))
+                                            linewidth=2, alpha=0.6, label=label))
             
             # Add method legend (colors and markers) with display names
             unique_methods = []
@@ -408,8 +413,9 @@ def plot_combined_metrics(data, dataset_info, min_recall, beamwidth_filter):
                 marker = METHOD_MARKERS.get(method, 'o')
                 markersize = 8 if marker == '.' else (8 if marker in ['x', '+'] else 4)
                 display_name = LEGEND_NAME_MAPPING.get(method, method)
+                # Ensure the legend matches the unfilled marker style
                 legend_handles.append(Line2D([0], [0], color=color, marker=marker,
-                                            linestyle='None', markersize=markersize, label=display_name))
+                                            linestyle='None', markersize=markersize, label=display_name, markerfacecolor='none'))
             
             ax.legend(handles=legend_handles, fontsize=8, loc='best', framealpha=0.9)
     
