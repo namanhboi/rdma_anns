@@ -71,6 +71,11 @@ EOF
     fi
 }
 
+LD_PRELOAD="true"
+if [[ $USE_VMA == true ]]; then
+    LD_PRELOAD="export LD_PRELOAD=libvma.so"
+fi
+
 
 
 # Client is always the last peer
@@ -147,7 +152,8 @@ if [[ $DIST_SEARCH_MODE != "DISTRIBUTED_ANN" ]]; then
 	COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
 	LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
 	# Build server command with all arguments
-	SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
+	
+	SERVER_CMD="$LD_PRELOAD && $WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
     --address_list $ADDRESS_LIST_STR \
     --data_type=$DATA_TYPE \
@@ -306,7 +312,8 @@ echo "  Client address: tcp://$CLIENT_IP"
 
 
 # Build client command with all arguments
-CLIENT_CMD="$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
+
+CLIENT_CMD="$LD_PRELOAD && $WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --num_client_thread=$NUM_CLIENT_THREADS \
   --dim=$DIMENSION \
   --query_bin=$QUERY_BIN \

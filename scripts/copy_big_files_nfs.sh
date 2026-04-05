@@ -2,10 +2,13 @@
 
 # --- Configuration ---
 FILES=(
-    "spacev1b_base.i8bin"
-    "pipeann_1B_pq_compressed.bin"
-    "pipeann_1B_pq_pivots.bin"
-    "vamana_64_128_1.2"
+    "base.1B.u8bin.crop_nb_100000000"
+    "pipeann_100M_pq_compressed.bin"
+    "pipeann_100M_pq_pivots.bin"
+    "pipeann_100M_graph"
+    "pipeann_100M_mem.index"
+    "pipeann_100M_mem.index.data"
+    "pipeann_100M_mem.index.tags"
 )
 
 SOURCE_DIR="/nfs/anngraphs/MSSPACEV1B/1B"
@@ -15,7 +18,7 @@ DEST_DIR="/mydata/local/anngraphs/MSSPACEV1B/1B"
 SSH_OPT="-o StrictHostKeyChecking=no"
 
 # The nodes in exact order of the daisy chain
-NODES=("nfs" "node1" "node2" "node3" "node4" "node5" "node6" "node7" "node8" "node9")
+NODES=("nfs" "node1" "node2" "node3" "node4")
 
 # --- Execution ---
 
@@ -36,7 +39,7 @@ echo ""
 echo ">>> Phase 0 Complete. Starting Daisy Chain..."
 
 # 2. Phase 1: Daisy Chain to the rest of the nodes
-for i in {1..9}; do
+for i in {1..4}; do
     PREV_NODE="${NODES[$((i-1))]}"
     CURR_NODE="${NODES[$i]}"
     

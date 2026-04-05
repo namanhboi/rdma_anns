@@ -13,7 +13,7 @@ SERVER_STARTING_ADDRESS="10.10.1.1"
 BASE_PORT=8000
 
 
-if [ $# -lt 24 ]; then
+if [ $# -lt 25 ]; then
     echo "Usage: ${BASH_SOURCE[0]} <master_log_folder_name> <num_servers> <dataset_name> <dataset_size> <dist_search_mode> <mode> <num_search_thread> <max_batch_size> <overlap>"
     echo "  master_log_folder_name: example : testing"
     echo "  num_servers: number of scoring/search servers. One addition process will be launched for client (making it num_servers + 1), and if mode is distributedann then one additional process will be launched for orchestration server (num_server + 2 in total). The orhcestration and client processes will live in the same physical server"
@@ -60,9 +60,12 @@ NUM_ORCHESTRATION_THREADS=${21}
 NUM_SCORING_THREADS=${22}
 SEARCH_THREAD_MODE=${23}
 IS_RANDOM_PARTITION=${24}
-shift 24
+USE_VMA=${25}
+shift 25
 LVEC=$(printf " %s" "$@")
 LVEC=${LVEC:-1}
+
+
 
 # --- Input validation ---
 [[ "$DATASET_NAME" != "bigann" && "$DATASET_NAME" != "deep1b" && "$DATASET_NAME" != "MSSPACEV1B" && "$DATASET_NAME" != "text2image1B" && "$DATASET_NAME" != "OpenAIArXiv" ]] && { echo "Error: dataset_name must be 'bigann', deep1b, 'MSSPACEV1B', 'text2image1B', 'OpenAIArxiv'"; [ $SOURCED -eq 1 ] && return 1 || exit 1; }
@@ -289,6 +292,8 @@ export USER
 export EXPERIMENT_NAME
 export USE_LOGGING
 export MASTER_LOG_FOLDER_NAME
+export USE_VMA
+
 
 if [[ "$MODE" == "distributed" ]]; then
     export CLOUDLAB_HOSTS
