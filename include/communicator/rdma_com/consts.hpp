@@ -1,0 +1,4 @@
+#pragma once
+#define RING_BUFFER_SIZE 134217728
+#define MAX_SEND_LEN 80000 * 4
+#define OUTSTANDING 16

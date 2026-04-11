@@ -86,7 +86,7 @@ using recv_handler_t = std::function<void(const char *, size_t)>;
 
    This class may parse a json file to get the list of all server ids + their
    address/(rdma equivalent). This is unecessary for cascade wrapper.
-*/
+ */
 class P2PCommunicator {
 protected:
 public:
@@ -99,10 +99,12 @@ public:
   virtual uint64_t get_my_id() = 0; 
   /** including our own */
   virtual uint64_t get_num_peers() =0;
-
   /** doesn't include your own */
   virtual std::vector<uint64_t> get_other_peer_ids() = 0;
-  
+  virtual ~P2PCommunicator() = default;
+  static std::unique_ptr<P2PCommunicator>
+  create_communicator(bool rdma, uint64_t my_id,
+                      const std::vector<std::string> &peer_ips);
 };
 
 
@@ -111,7 +113,7 @@ public:
    zmq_connect_peer to all others. Included in the json file is also the id of
    its partition of the graph + the ids of all other partitions.
    Used for both client<->server and server<->server communication
-*/
+ */
 class ZMQP2PCommunicator : virtual public P2PCommunicator {
 private:
   uint64_t my_id;
@@ -149,12 +151,24 @@ public:
   /**
      includes ip addreeses of all clients and servers.
      client peer id should correspond to the last ip address
-  */
+   */
   ZMQP2PCommunicator(uint64_t my_id, const std::vector<std::string> &peer_ips);
   
   ~ZMQP2PCommunicator();
 };
 
 
+#ifdef RDMA
+#include <infiniband/verbs.h>
+#include <rdma/rdma_cma.h>
+#include <rdma/rdma_verbs.h>
 
+class RDMARingBufferP2PCommunicator : virtual public P2PCommunicator {
+private:
+  uint64_t my_id;
+public:
+  RDMARingBufferP2PCommunicator() { _pd = nullptr; }
+  RDMARingBufferP2PCommunicator(uint64_t my_id, std::vector<std::string> &peer_ips);
+};
 
+#endif

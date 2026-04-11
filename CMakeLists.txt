@@ -82,49 +82,30 @@ option(IN_MEM "Search udl 2 with in memory kv store based global search" OFF)
 option(DISK_FS_DISKANN_WRAPPER "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_FS_DISTRIBUTED "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_KV "Search udl 2 with ssd based search where data is loaded from kv store" OFF)
+option(RDMA "whether to use rdma or not" OFF)
+
+set(USER_DEFINITIONS 
+  TEST_UDL1 
+  TEST_UDL2 
+  IN_MEM 
+  DISK_FS_DISKANN_WRAPPER 
+  DISK_FS_DISTRIBUTED 
+  DISK_KV
+  PQ_KV
+  PQ_FS
+  RDMA
+)
+
+foreach(_def ${USER_DEFINITIONS})
+    if(${_def})
+        add_compile_definitions(${_def})
+    endif()
+endforeach()
 
 
-
-if(TEST_UDL1)
-  add_compile_definitions(TEST_UDL1)
+if(RDMA)
+  add_compiler_definitions(RDMA)
 endif()
-
-if(TEST_UDL2)
-  add_compile_definitions(TEST_UDL2)
-endif()
-
-if(IN_MEM)
-  add_compile_definitions(IN_MEM)
-endif()
-
-if(DISK_FS_DISKANN_WRAPPER)
-  add_compile_definitions(DISK_FS_DISKANN_WRAPPER)
-endif()
-
-if(DISK_FS_DISTRIBUTED)
-  add_compile_definitions(DISK_FS_DISTRIBUTED)
-endif()
-
-if(PQ_KV)
-  add_compile_definitions(PQ_KV)
-endif()
-if(PQ_FS)
-  add_compile_definitions(PQ_FS)
-endif()
-
-if(DISK_KV)
-  add_compile_definitions(DISK_KV)
-endif()
-
-
-if(TEST_COMPUTE_PIPELINE)
-  add_compile_definitions(TEST_COMPUTE_PIPELINE)
-endif()
-
-if(TEST_GLOBAL_UDL_HANDLER)
-  add_compile_definitions(TEST_GLOBAL_UDL_HANDLER)
-endif()
-
 
 # Allow DATA_TYPE to be set from command line
 if(NOT DEFINED DATA_TYPE)

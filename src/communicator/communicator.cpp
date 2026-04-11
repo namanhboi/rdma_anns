@@ -1,5 +1,6 @@
 #include "communicator.h"
 #include <cstring>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -170,6 +171,20 @@ ZMQP2PCommunicator::ZMQP2PCommunicator(
   std::cout << my_address << std::endl;
   bind_and_connect_peers();
 }
+
+std::unique_ptr<P2PCommunicator>
+P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
+                                     const std::vector<std::string> &peer_ips) {
+  if (rdma) {
+#ifdef RDMA
+    std::make_unique<RDMARingBufferP2PCommunicator>(my_id, peer_ips);
+#else
+    throw std::runtime_error("The RDMA flag is not set, can't create RDMARingBufferP2PCommunicator");
+#endif
+  }
+  return std::make_unique<ZMQP2PCommunicator>(my_id, peer_ips);
+}
+
 
 
 
