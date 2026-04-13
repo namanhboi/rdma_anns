@@ -67,6 +67,8 @@ class RDMAManager {
     std::vector<std::unique_ptr<CircularConnectionReverse>>
     senders; // for each client, we need a ring buffer for sending data
 
+  std::vector<struct ibv_mr *> local_mrs; // used for misc stuff, tracked because we need to free it
+  std::vector<char*> local_mems;
 
     // ip address and ports of all servers
     std::vector<std::pair<std::string, std::string>> address_list;
