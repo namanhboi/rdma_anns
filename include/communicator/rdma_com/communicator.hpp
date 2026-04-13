@@ -1,13 +1,6 @@
 #pragma once
-
-
-
-struct Region {
-  uint64_t    context;
-  char *      addr;
-  uint32_t    length;
-  uint32_t    lkey; 
-};
+#include <cstdint>
+#include "../region.h"
 
 class SendCommunicator {
 public:
@@ -39,7 +32,6 @@ public:
   virtual uint32_t GetFreedReceiveBytes() = 0;
   virtual void PrintInfo() = 0;
 };
-
 
 
 class ReadCommunicator {

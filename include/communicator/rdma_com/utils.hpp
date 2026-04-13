@@ -65,4 +65,5 @@ void FreeMagicBuffer(void *buf_addr, size_t buf_size) {
   if (shmdt((char *)buf_addr + buf_size)) {
     printf("Failled to umapping second half of buffer\n");
   }
+
 }

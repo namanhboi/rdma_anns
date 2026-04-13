@@ -44,7 +44,7 @@ void ZMQP2PCommunicator::bind_and_connect_peers() {
   // Set 1-second timeout
   int timeout = 1000;
   zmq_setsockopt(sock, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
-  
+
   std::cout << "my address is " << my_address << std::endl;
   int ret = zmq_bind(sock, my_address.c_str());
   if (ret != 0) {
@@ -184,7 +184,3 @@ P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
   }
   return std::make_unique<ZMQP2PCommunicator>(my_id, peer_ips);
 }
-
-
-
-
