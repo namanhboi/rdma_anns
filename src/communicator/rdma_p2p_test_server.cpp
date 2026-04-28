@@ -59,16 +59,16 @@ int main(int argc, char **argv) {
   prealloc_region_queue.assign_additional_block_mr(
                                                    region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
 
-  for (size_t i = 0; i < num_msg; i++) {
-    for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
-      if (peer_id != communicator.get_my_id()) {
-        char * arr = new char[msg_size];
-        Region r; r.addr = arr; r.length = msg_size; r.context = 0;r.lkey = 0;
-	// std::cout << "Sending to peer id " << peer_id << std::endl;
-        communicator.send_to_peer(peer_id, &r);
-      }
-    }
-  }
+  // for (size_t i = 0; i < num_msg; i++) {
+  //   for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
+  //     if (peer_id != communicator.get_my_id()) {
+  //       char * arr = new char[msg_size];
+  //       Region r; r.addr = arr; r.length = msg_size; r.context = 0;r.lkey = 0;
+  //       // std::cout << "Sending to peer id " << peer_id << std::endl;
+  //       communicator.send_to_peer(peer_id, &r);
+  //     }
+  //   }
+  // }
 
 
   return 0;
