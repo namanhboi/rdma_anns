@@ -13,6 +13,10 @@
 #include <limits>
 #include <stdexcept>
 #include <variant>
+
+
+
+
 #define MAX_N_CMPS 16384
 #define MAX_N_EDGES 512
 #define MAX_PQ_CHUNKS 128
@@ -185,6 +189,8 @@ private:
   moodycamel::BlockingConcurrentQueue<T *> queue;
   T *elements = nullptr;
   char *additional_data_block = nullptr;
+
+  char * external_mr_data = nullptr;
   uint64_t num_elements;
   std::function<void(T *)> reset_element;
 
@@ -202,11 +208,23 @@ public:
   // used to support Region
   void allocate_and_assign_additional_block(
       size_t block_size_per_element,
-      std::function<void(T *, char *, void *)> assign_block) {
+                                            std::function<void(T *, char *, void *, uint32_t)> assign_block) {
     additional_data_block = new char[block_size_per_element * num_elements];
     for (size_t i = 0; i < num_elements; i++) {
       assign_block(elements + i,
-                   additional_data_block + block_size_per_element * i, this);
+                   additional_data_block + block_size_per_element * i, this,
+                   std::numeric_limits<uint32_t>::max());
+    }
+  }
+
+
+  void assign_additional_block_mr(
+      char *external_mr_data, uint32_t lkey, size_t block_size_per_element,
+                                  std::function<void(T *, char *, void *, uint32_t)> assign_block) {
+    this->external_mr_data = external_mr_data;
+    for (size_t i = 0; i < num_elements; i++) {
+      assign_block(elements + i, external_mr_data + block_size_per_element * i,
+                   this, lkey);
     }
   }
 
@@ -247,11 +265,13 @@ public:
       : queue(std::move(other.queue)), elements(other.elements),
         num_elements(other.num_elements),
         reset_element(std::move(other.reset_element)),
-        additional_data_block(other.additional_data_block) {
+        additional_data_block(other.additional_data_block),
+        external_mr_data(other.external_mr_data) {
     other.elements = nullptr;
     other.num_elements = 0;
     other.reset_element = nullptr;
     other.additional_data_block = nullptr;
+    other.external_mr_data = nullptr;
   }
   PreallocatedQueue &operator=(PreallocatedQueue &&other) noexcept {
     if (this != &other) {
@@ -262,11 +282,13 @@ public:
       additional_data_block = other.additional_data_block;
       num_elements = other.num_elements;
       reset_element = std::move(other.reset_element);
+      external_mr_data = other.external_mr_data;
 
       other.elements = nullptr;
       other.num_elements = 0;
       other.reset_element = nullptr;
       other.additional_data_block = nullptr;
+      other.external_mr_data = nullptr;
     }
     return *this;
   }
@@ -396,13 +418,13 @@ struct search_result_t {
 
   bool is_distributedann_scoring_result = false;
   std::vector<pipeann::Neighbor> full_retset;
-  size_t orchestration_thread_id = std::numeric_limits<size_t>::max(); 
+  size_t orchestration_thread_id = std::numeric_limits<size_t>::max();
   void *hint = nullptr; // currently only used by distributedann, stores pointer to an
   // io_request which has a pointer to the state used by
   // orchestration thread. If we have multiple orchestration thread, how to you
   // place it into the correct thread then?
-  // 
-  
+  //
+
 
   // used for state_send_client_gather, the number of results to expect = size
   // of partition history?
@@ -443,7 +465,7 @@ struct client_gather_result_t {
   : combined_result(combined_res) {
     combine_result(result);
     _all_results_arrived = all_results_arrived();
-  }  
+  }
 
   void combine_result(search_result_t *result) {
     if (result->is_final_result) {
@@ -462,7 +484,7 @@ struct client_gather_result_t {
       throw std::runtime_error("query id different");
     }
     std::vector<std::pair<uint32_t, float>> node_id_dist;
-				
+
 
     for (size_t i = 0; i < combined_result->num_res + result->num_res; i++) {
       if (i < combined_result->num_res) {
@@ -480,12 +502,12 @@ struct client_gather_result_t {
         node_id_dist.begin(), node_id_dist.begin() + combined_result->num_res,
         node_id_dist.end(),
 		      [](auto &left, auto &right) { return left.second < right.second; });
-    
+
     for (size_t i = 0; i < combined_result->num_res; i++) {
       combined_result->node_id[i] = node_id_dist[i].first;
       combined_result->distance[i] = node_id_dist[i].second;
     }
-    
+
   }
   inline bool all_results_arrived() {
     return num_results_expect == num_results_received;
@@ -567,7 +589,7 @@ struct alignas(SECTOR_LEN) SearchState {
   std::vector<fnhood_t> frontier_nhoods;
   std::vector<IORequest> frontier_read_reqs;
 
-  
+
 
   unsigned cur_list_size = 0, cmps = 0, k = 0;
   uint64_t mem_l = 0, mem_k = 0, l_search = 0, k_search = 0, beam_width = 0;
@@ -608,7 +630,7 @@ struct alignas(SECTOR_LEN) SearchState {
   // each scoring state is associated with a IOREQUEST, need to serialize for
   // both state and result
   void* scoring_io_request;
-  
+
   // if is_distributedann_scoring_state then we need to send frontier
 
 

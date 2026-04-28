@@ -3,7 +3,7 @@
 #include <sys/mman.h>
 #include <sys/shm.h>
 
-void *GetMagicBuffer(size_t buf_size) {
+inline void *GetMagicBuffer(size_t buf_size) {
   // (fischi) We reserve virtual memory two times the size of the buffer. This
   // mapping is not actually used, but we make sure that we have enough reserved
   // space. I stole this hack from https://github.com/smcho-kr/magic-ring-buffer
@@ -58,7 +58,7 @@ void *GetMagicBuffer(size_t buf_size) {
   return buf_addr;
 }
 
-void FreeMagicBuffer(void *buf_addr, size_t buf_size) {
+inline void FreeMagicBuffer(void *buf_addr, size_t buf_size) {
   if (shmdt(buf_addr)) {
     printf("Failled to umapping first half of buffer\n");
   }

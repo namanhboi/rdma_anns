@@ -6,6 +6,7 @@
 #include "types.h"
 #include "utils.h"
 #include <chrono>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -289,7 +290,7 @@ void SSDPartitionIndex<T, TagT>::load_disk_index(
   if (dist_search_mode == DistributedSearchMode::SCATTER_GATHER_TOP_N) {
     std::string medoid_file = disk_index_file + "_medoids.bin";
     if (file_exists(medoid_file)) {
-      LOG(INFO) << "Using medoid file"; 
+      LOG(INFO) << "Using medoid file";
       size_t medoid_pts, medoid_dim;
       uint32_t *medoid_id;
       pipeann::load_bin<uint32_t>(medoid_file, medoid_id, medoid_pts, medoid_dim);
@@ -302,14 +303,14 @@ void SSDPartitionIndex<T, TagT>::load_disk_index(
 				 std::to_string(medoid_dim));
       }
       medoid_id_on_file = *medoid_id;
-      LOG(INFO) << "MEDOID ID ON FILE" << medoid_id_on_file;      
+      LOG(INFO) << "MEDOID ID ON FILE" << medoid_id_on_file;
       // throw std::runtime_error("TOP_N but medoid file doesn't exist " +
       // medoid_file);
     } else {
-      LOG(INFO) << "medoid file " << medoid_file << " doesn't exist, use 0 as default"; 
+      LOG(INFO) << "medoid file " << medoid_file << " doesn't exist, use 0 as default";
     }
   }
-  
+
   std::cout << "max_degree is " << max_degree << std::endl;
   this->num_points = this->init_num_pts = disk_nnodes;
   size_per_io =
@@ -1133,6 +1134,7 @@ void SSDPartitionIndex<T, TagT>::BatchingThread::main_loop() {
         num_sent += batch_size;
       }
       states_used.insert(states->begin(), states->end());
+
     }
     SingletonLogger::get_logger().info("[{}]: Num batched elements {}",
                                        SingletonLogger::get_timestamp_ns(),
@@ -1314,8 +1316,8 @@ SSDPartitionIndex<T, TagT>::state_write_result(SearchState<T, TagT> *state,
   bool is_final_result = state_search_ends(state);
 
   bool record_stats = (state->stats != nullptr);
-  
-  
+
+
   write_data(buffer, reinterpret_cast<const char *>(&record_stats),
              sizeof(record_stats), offset);
   if (record_stats) {

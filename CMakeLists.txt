@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_C_COMPILER_LAUNCHER ccache)
 # set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release") 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
   include(CheckCXXCompilerFlag)
   check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
   check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
@@ -82,18 +82,18 @@ option(IN_MEM "Search udl 2 with in memory kv store based global search" OFF)
 option(DISK_FS_DISKANN_WRAPPER "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_FS_DISTRIBUTED "Search udl 2 with ssd based search where data is loaded from file system" OFF)
 option(DISK_KV "Search udl 2 with ssd based search where data is loaded from kv store" OFF)
-option(RDMA "whether to use rdma or not" OFF)
+option(USE_RDMA "whether to use rdma or not" OFF)
 
-set(USER_DEFINITIONS 
-  TEST_UDL1 
-  TEST_UDL2 
-  IN_MEM 
-  DISK_FS_DISKANN_WRAPPER 
-  DISK_FS_DISTRIBUTED 
+set(USER_DEFINITIONS
+  TEST_UDL1
+  TEST_UDL2
+  IN_MEM
+  DISK_FS_DISKANN_WRAPPER
+  DISK_FS_DISTRIBUTED
   DISK_KV
   PQ_KV
   PQ_FS
-  RDMA
+  USE_RDMA
 )
 
 foreach(_def ${USER_DEFINITIONS})
@@ -103,8 +103,8 @@ foreach(_def ${USER_DEFINITIONS})
 endforeach()
 
 
-if(RDMA)
-  add_compiler_definitions(RDMA)
+if(USE_RDMA)
+  add_compile_definitions(USE_RDMA)
 endif()
 
 # Allow DATA_TYPE to be set from command line

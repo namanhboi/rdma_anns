@@ -8,7 +8,7 @@ find_package(ZeroMQ QUIET)
 if(NOT ZeroMQ_FOUND)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(ZeroMQ REQUIRED libzmq)
-    
+
     # Create an imported target for compatibility
     if(NOT TARGET libzmq)
         add_library(libzmq INTERFACE IMPORTED)
@@ -20,15 +20,22 @@ if(NOT ZeroMQ_FOUND)
 endif()
 
 
+
+
 find_package(nlohmann_json REQUIRED)
+
+
+
+
 
 add_library(communicator communicator.cpp)
 target_include_directories(communicator PUBLIC ${COMMON_INCLUDE_DIR})
-target_link_libraries(communicator nlohmann_json::nlohmann_json ${ZeroMQ_LIBRARIES})
+target_link_libraries(communicator PUBLIC nlohmann_json::nlohmann_json ${ZeroMQ_LIBRARIES})
 target_compile_definitions(communicator PUBLIC ZMQ_BUILD_DRAFT_API=1)
-if(RDMA)
+if(USE_RDMA)
+  target_sources(communicator PRIVATE rdma_com/rdma_manager.cpp)
   target_link_libraries(communicator PRIVATE ibverbs rdmacm)
-  target_compile_definitions(communicator PRIVATE RDMA)
+  target_compile_definitions(communicator PRIVATE USE_RDMA)
 endif()
 
 
@@ -41,3 +48,8 @@ target_compile_definitions(zmq_p2p_server PRIVATE ZMQ_BUILD_DRAFT_API=1)
 add_executable(get_version get_version.cpp)
 target_include_directories(get_version PUBLIC ${COMMON_INCLUDE_DIR})
 target_link_libraries(get_version ${ZeroMQ_LIBRARIES})
+
+
+add_executable(rdma_p2p_test_server rdma_p2p_test_server.cpp)
+target_include_directories(rdma_p2p_test_server PUBLIC ${COMMON_INCLUDE_DIR})
+target_link_libraries(rdma_p2p_test_server communicator ${ZeroMQ_LIBRARIES} Boost::program_options)

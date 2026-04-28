@@ -676,4 +676,3 @@ struct PivotContainer {
   size_t piv_id;
   float piv_dist;
 };
-

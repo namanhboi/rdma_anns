@@ -11,6 +11,7 @@
 #include <atomic>
 #include <thread>
 #include "region.h"
+
 // for convenience
 
 using json = nlohmann::json;
@@ -35,7 +36,6 @@ class P2PCommunicator {
 protected:
 public:
   virtual void send_to_peer(uint64_t peer_id, Region *r) =0;
-  virtual void recv_loop() = 0;
   virtual void register_receive_handler(recv_handler_t handler) = 0;
   // starts running recv loop on a different thread
   virtual void start_recv_thread() = 0;
@@ -45,10 +45,14 @@ public:
   virtual uint64_t get_num_peers() =0;
   /** doesn't include your own */
   virtual std::vector<uint64_t> get_other_peer_ids() = 0;
+  virtual std::pair<char *, uint32_t>
+  get_preallocated_region_ptr_lkey(size_t block_size_per_element,
+                                   size_t num_elements) = 0;
   virtual ~P2PCommunicator() = default;
   static std::unique_ptr<P2PCommunicator>
   create_communicator(bool rdma, uint64_t my_id,
                       const std::vector<std::string> &peer_ips);
+
 };
 
 
@@ -79,13 +83,20 @@ protected:
   void bind_and_connect_peers();
 public:
   void send_to_peer(uint64_t peer_id, Region *r) override;
-  void recv_loop() override;
+  void recv_loop();
   void register_receive_handler(recv_handler_t handler) override;
   void start_recv_thread() override;
   void stop_recv_thread() override;
   uint64_t get_my_id() override;
   /** including our own */
   uint64_t get_num_peers() override;
+  std::pair<char *, uint32_t>
+  get_preallocated_region_ptr_lkey(size_t block_size_per_element,
+                                   size_t num_elements) override {
+    throw std::runtime_error("Not supposed to call this function in zmq");
+  }
+
+
 
   /** doesn't include your own */
   std::vector<uint64_t> get_other_peer_ids() override;
@@ -102,19 +113,29 @@ public:
 };
 
 
-#ifdef RDMA
-#include <infiniband/verbs.h>
-#include <rdma/rdma_cma.h>
-#include <rdma/rdma_verbs.h>
-
+#ifdef USE_RDMA
+#include "rdma_com/rdma_manager.hpp"
 class RDMARingBufferP2PCommunicator : virtual public P2PCommunicator {
 private:
   uint64_t my_id;
-  // RDMARDMAManager manager;
-public:
-  RDMARingBufferP2PCommunicator() { _pd = nullptr; }
-  RDMARingBufferP2PCommunicator(uint64_t my_id, std::vector<std::string> &peer_ips);
+  RDMAManager manager;
+  recv_handler_t handler;
+  std::vector<std::string> peer_ips;
 
+public:
+  RDMARingBufferP2PCommunicator(uint64_t my_id,
+                                const std::vector<std::string> &peer_ips);
+  void send_to_peer(uint64_t peer_id, Region *r) override;
+  void register_receive_handler(recv_handler_t handler) override;
+  void start_recv_thread() override;
+  void stop_recv_thread() override;
+  uint64_t get_my_id() override;
+  uint64_t get_num_peers() override;
+  std::vector<uint64_t> get_other_peer_ids() override;
+  std::pair<char *, uint32_t>
+  get_preallocated_region_ptr_lkey(size_t block_size_per_element,
+                                   size_t num_elements) override;
+  ~RDMARingBufferP2PCommunicator();
 };
 
 #endif

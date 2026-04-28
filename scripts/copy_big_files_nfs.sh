@@ -11,8 +11,8 @@ FILES=(
     "pipeann_100M_mem.index.tags"
 )
 
-SOURCE_DIR="/nfs/anngraphs/bigann/100M"
-DEST_DIR="/mydata/local/anngraphs/bigann/100M"
+SOURCE_DIR="/nfs/anngraphs/bigann/100M/"
+DEST_DIR="/mydata/local/anngraphs/bigann/100M/"
 
 # Bypasses the "Host key verification failed" prompts
 SSH_OPT="-o StrictHostKeyChecking=no"

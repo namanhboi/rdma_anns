@@ -41,7 +41,7 @@ sshCommandAsync() {
 nohup /bin/bash -c '$command' > '$outfile' 2>&1 &
 echo \$!
 EOF
-	  )
+      )
     
     # Extract only the PID (last number in output)
     echo "$output" | grep -o '[0-9]\+' | tail -1
@@ -71,12 +71,18 @@ EOF
     fi
 }
 
-LD_PRELOAD="true"
-if [[ $USE_VMA == true ]]; then
-    LD_PRELOAD="export LD_PRELOAD=libvma.so"
+# --- VMA Wrapper Logic ---
+# This safely wraps your binary in a privileged bash session to retain LD_PRELOAD
+# --- VMA Wrapper Logic ---
+WRAP_START=""
+WRAP_END=""
+if [[ "$USE_VMA" == "true" || "$USE_VMA" == true ]]; then
+    # 1. Set sysctls
+    # 2. Open a privileged bash session with double quotes
+    # 3. Remove memlock limits, then run env + preload
+    WRAP_START="sudo sysctl -w vm.nr_hugepages=2048 && sudo sysctl -w kernel.shmmax=1000000000 && sudo bash -c \"ulimit -l unlimited && env VMA_TRACELEVEL=info LD_PRELOAD=libvma.so "
+    WRAP_END="\""
 fi
-
-
 
 # Client is always the last peer
 CLIENT_ID=$((NUM_PROCESSES - 1))
@@ -139,21 +145,21 @@ declare -A SERVER_HOSTS
 if [[ $DIST_SEARCH_MODE != "DISTRIBUTED_ANN" ]]; then 
 
     for i in $(seq 0 $((NUM_PROCESSES - 2))); do
-	SERVER_IP="${PEER_IPS[$i]}"
-	
-	# Determine which host to SSH to
-	if [[ "$MODE" == "local" ]]; then
-	    SSH_HOST="$USER@127.0.0.1"
-	else
-	    SSH_HOST="${CLOUDLAB_HOSTS[$i]}"
-	fi
-	
-	echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
-	COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
-	LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
-	# Build server command with all arguments
-	
-	SERVER_CMD="$LD_PRELOAD && $WORKDIR/build/src/state_send/state_send_server \
+        SERVER_IP="${PEER_IPS[$i]}"
+        
+        # Determine which host to SSH to
+        if [[ "$MODE" == "local" ]]; then
+            SSH_HOST="$USER@127.0.0.1"
+        else
+            SSH_HOST="${CLOUDLAB_HOSTS[$i]}"
+        fi
+        
+        echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
+        COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
+        LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
+        # Build server command with all arguments
+        
+        SERVER_CMD="${WRAP_START}$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
     --address_list $ADDRESS_LIST_STR \
     --data_type=$DATA_TYPE \
@@ -172,36 +178,36 @@ if [[ $DIST_SEARCH_MODE != "DISTRIBUTED_ANN" ]]; then
     --log_file=$LOG_FILE \
     --num_orchestration_threads=$NUM_ORCHESTRATION_THREADS \
     --num_scoring_threads=$NUM_SCORING_THREADS \
-    --search_thread_mode=$SEARCH_THREAD_MODE"
-	echo ${SERVER_CMD}
-	
-	# Launch server via SSH
-	REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
-				     "cd ${WORKDIR} && $SERVER_CMD" \
-				     "${REMOTE_LOG_DIR}/server_${i}.log")
-	
-	SERVER_PIDS[$i]=$REMOTE_PID
-	SERVER_HOSTS[$i]=$SSH_HOST
-	echo "    PID: $REMOTE_PID"
-	echo
+    --search_thread_mode=$SEARCH_THREAD_MODE${WRAP_END}"
+        echo ${SERVER_CMD}
+        
+        # Launch server via SSH
+        REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
+                     "cd ${WORKDIR} && $SERVER_CMD" \
+                     "${REMOTE_LOG_DIR}/server_${i}.log")
+        
+        SERVER_PIDS[$i]=$REMOTE_PID
+        SERVER_HOSTS[$i]=$SSH_HOST
+        echo "    PID: $REMOTE_PID"
+        echo
     done
 else
     # run the scoring servers first
     for i in $(seq 0 $((NUM_PROCESSES - 3))); do
-	SERVER_IP="${PEER_IPS[$i]}"
-	
-	# Determine which host to SSH to
-	if [[ "$MODE" == "local" ]]; then
-	    SSH_HOST="$USER@127.0.0.1"
-	else
-	    SSH_HOST="${CLOUDLAB_HOSTS[$i]}"
-	fi
-	
-	echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
-	COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
-	LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
-	# Build server command with all arguments
-	SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
+        SERVER_IP="${PEER_IPS[$i]}"
+        
+        # Determine which host to SSH to
+        if [[ "$MODE" == "local" ]]; then
+            SSH_HOST="$USER@127.0.0.1"
+        else
+            SSH_HOST="${CLOUDLAB_HOSTS[$i]}"
+        fi
+        
+        echo "  Server $i via $SSH_HOST (internal: tcp://$SERVER_IP)"
+        COUNTER_CSV=${REMOTE_LOG_DIR}/counter_${i}.csv
+        LOG_FILE=${REMOTE_LOG_DIR}/log_${i}.txt
+        # Build server command with all arguments
+        SERVER_CMD="${WRAP_START}$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$i \
     --address_list $ADDRESS_LIST_STR \
     --data_type=$DATA_TYPE \
@@ -220,29 +226,29 @@ else
     --log_file=$LOG_FILE \
     --num_orchestration_threads=0 \
     --num_scoring_threads=$NUM_SCORING_THREADS \
-    --search_thread_mode=$SEARCH_THREAD_MODE"
-	echo ${SERVER_CMD}
-	
-	# Launch server via SSH
-	REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
-				     "cd ${WORKDIR} && $SERVER_CMD" \
-				     "${REMOTE_LOG_DIR}/server_${i}.log")
-	
-	SERVER_PIDS[$i]=$REMOTE_PID
-	SERVER_HOSTS[$i]=$SSH_HOST
-	echo "    PID: $REMOTE_PID"
-	echo
+    --search_thread_mode=$SEARCH_THREAD_MODE${WRAP_END}"
+        echo ${SERVER_CMD}
+        
+        # Launch server via SSH
+        REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
+                     "cd ${WORKDIR} && $SERVER_CMD" \
+                     "${REMOTE_LOG_DIR}/server_${i}.log")
+        
+        SERVER_PIDS[$i]=$REMOTE_PID
+        SERVER_HOSTS[$i]=$SSH_HOST
+        echo "    PID: $REMOTE_PID"
+        echo
     done
 
     ORCHESTRATION_SERVER_ID=$((NUM_PROCESSES - 2))
     if [[ "$MODE" == "local" ]]; then
-	SSH_HOST="$USER@127.0.0.1"
+        SSH_HOST="$USER@127.0.0.1"
     else
-	SSH_HOST="${CLOUDLAB_HOSTS[$NUM_SERVERS]}"
+        SSH_HOST="${CLOUDLAB_HOSTS[$NUM_SERVERS]}"
     fi
 
 
-    ORCHESTRATION_SERVER_CMD="$WORKDIR/build/src/state_send/state_send_server \
+    ORCHESTRATION_SERVER_CMD="${WRAP_START}$WORKDIR/build/src/state_send/state_send_server \
     --server_peer_id=$ORCHESTRATION_SERVER_ID \
     --address_list $ADDRESS_LIST_STR \
     --data_type=$DATA_TYPE \
@@ -260,11 +266,11 @@ else
     --use_logging=$USE_LOGGING \
     --log_file=$LOG_FILE \
     --num_orchestration_threads=$NUM_ORCHESTRATION_THREADS \
-    --num_scoring_threads=0"
+    --num_scoring_threads=0${WRAP_END}"
     echo ${ORCHESTRATION_SERVER_CMD}
     REMOTE_PID=$(sshCommandAsync "$SSH_HOST" \
-				 "cd ${WORKDIR} && $ORCHESTRATION_SERVER_CMD" \
-				 "${REMOTE_LOG_DIR}/server_${ORCHESTRATION_SERVER_ID}.log")
+                 "cd ${WORKDIR} && $ORCHESTRATION_SERVER_CMD" \
+                 "${REMOTE_LOG_DIR}/server_${ORCHESTRATION_SERVER_ID}.log")
     
     SERVER_PIDS[$ORCHESTRATION_SERVER_ID]=$REMOTE_PID
     SERVER_HOSTS[$ORCHESTRATION_SERVER_ID]=$SSH_HOST
@@ -279,15 +285,15 @@ if [[ "$MODE" == "local" ]]; then
     sleep 5
 else
     if [[ "$DATASET_SIZE" == "1B" ]]; then
-	sleep 120
+        sleep 120
     else
-	if [[ $DATASET_NAME != "text2image1B" ]]; then
-	    sleep 30
-	else
-	    sleep 120
-	fi
-	
-	
+        if [[ $DATASET_NAME != "text2image1B" ]]; then
+            sleep 30
+        else
+            sleep 120
+        fi
+        
+        
     fi
 fi
 
@@ -313,7 +319,7 @@ echo "  Client address: tcp://$CLIENT_IP"
 
 # Build client command with all arguments
 
-CLIENT_CMD="$LD_PRELOAD && $WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
+CLIENT_CMD="${WRAP_START}$WORKDIR/build/benchmark/state_send/run_benchmark_state_send_tcp \
   --num_client_thread=$NUM_CLIENT_THREADS \
   --dim=$DIMENSION \
   --query_bin=$QUERY_BIN \
@@ -333,13 +339,13 @@ CLIENT_CMD="$LD_PRELOAD && $WORKDIR/build/benchmark/state_send/run_benchmark_sta
   --result_output_folder=$REMOTE_LOG_DIR \
   --write_query_csv=${WRITE_QUERY_CSV} \
   --top_n=$TOP_N \
-  --medoid_file=$MEDOID_FILE"
+  --medoid_file=$MEDOID_FILE${WRAP_END}"
 
 echo ${CLIENT_CMD}
 # Launch client via SSH
 CLIENT_REMOTE_PID=$(sshCommandAsync "$CLIENT_SSH_HOST" \
-				    "cd ${WORKDIR} && $CLIENT_CMD" \
-				    "${REMOTE_LOG_DIR}/client.log")
+                    "cd ${WORKDIR} && $CLIENT_CMD" \
+                    "${REMOTE_LOG_DIR}/client.log")
 
 echo "  PID: $CLIENT_REMOTE_PID"
 
@@ -365,9 +371,9 @@ cleanup() {
     echo "Interrupted! Shutting down gracefully..."
     
     if [[ "$MODE" == "local" ]]; then
-	# Kill everything on localhost
-	echo "  Stopping all processes on localhost..."
-	ssh $SSH_OPTS "$USER@127.0.0.1" /bin/bash <<'EOF' || true
+        # Kill everything on localhost
+        echo "  Stopping all processes on localhost..."
+        ssh $SSH_OPTS "$USER@127.0.0.1" /bin/bash <<'EOF' || true
 # Send SIGINT to all processes
 pkill -2 -f 'state_send_server' 2>/dev/null
 pkill -2 -f 'run_benchmark_state_send_tcp' 2>/dev/null
@@ -377,8 +383,8 @@ pkill -9 -f 'state_send_server' 2>/dev/null
 pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
 EOF
     else
-	# Kill everything on all CloudLab hosts
-	for CLOUDLAB_HOST in "${CLOUDLAB_HOSTS[@]}"; do
+        # Kill everything on all CloudLab hosts
+        for CLOUDLAB_HOST in "${CLOUDLAB_HOSTS[@]}"; do
             echo "  Stopping all processes on $CLOUDLAB_HOST..."
             ssh $SSH_OPTS "$CLOUDLAB_HOST" /bin/bash <<'EOF' || true
 # Send SIGINT to all processes
@@ -389,7 +395,7 @@ sleep 1
 pkill -9 -f 'state_send_server' 2>/dev/null
 pkill -9 -f 'run_benchmark_state_send_tcp' 2>/dev/null
 EOF
-	done
+        done
     fi
     
     echo "All processes stopped."
@@ -498,4 +504,3 @@ echo "Done!"
 # python3.10 "$HOME/workspace/rdma_anns/scripts/plot_counter_data.py" -i ${LOCAL_LOG_DIR}  -o "${LOCAL_LOG_DIR}/figures"
 # python3.10 "$HOME/workspace/rdma_anns/scripts/plot_query_data.py" -i ${LOCAL_LOG_DIR} -o "${LOCAL_LOG_DIR}/figures"
 # python3.10 "$HOME/workspace/rdma_anns/scripts/analyze_log.py" ${LOCAL_LOG_DIR} "${LOCAL_LOG_DIR}/figures"
-

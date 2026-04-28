@@ -33,10 +33,9 @@ int main(int argc, char **argv) {
     }
   }
   std::string shutdown;
-  
+
   while (shutdown != "q") {
     std::cin >> shutdown;
   }
   server.stop_recv_thread();
 }
-
