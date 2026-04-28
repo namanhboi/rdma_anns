@@ -42,7 +42,7 @@ RDMAManager::RDMAManager(uint64_t my_id, const std::vector<std::string> &address
 void RDMAManager::bind_server(const char *ip, const char *port) {
   this->_ec = rdma_create_event_channel();
   if (!this->_ec) {
-    printf("failed to create event channel\n");
+    perror("failed to create event channel\n");
     exit(1);
   }
 
@@ -709,4 +709,9 @@ std::pair<char *, uint32_t> RDMAManager::get_preallocated_region_ptr_lkey(size_t
                                    _pd, mem, alloc_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
   preallocated_region_addr = mem;
   return {preallocated_region_addr, preallocated_region_mr->lkey};
+}
+
+
+RDMAManager::~RDMAManager() {
+  cleanup();
 }

@@ -118,10 +118,9 @@ public:
 class RDMARingBufferP2PCommunicator : virtual public P2PCommunicator {
 private:
   uint64_t my_id;
-  RDMAManager manager;
+  std::vector<std::string> peer_ips; // MOVE THIS ABOVE MANAGER
+  RDMAManager manager;               // Now manager can safely use peer_ips
   recv_handler_t handler;
-  std::vector<std::string> peer_ips;
-
 public:
   RDMARingBufferP2PCommunicator(uint64_t my_id,
                                 const std::vector<std::string> &peer_ips);

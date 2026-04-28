@@ -29,6 +29,10 @@ int main(int argc, char **argv) {
     return 0;
   }
   po::notify(vm);
+  if (msg_size > Region::MAX_BYTES_REGION) {
+    std::cerr << "Error: msg_size exceeds MAX_BYTES_REGION!" << std::endl;
+    return 1;
+  }
   std::cout << "server_peer_id:" << server_peer_id << std::endl;
   std::cout << "address list of " << address_list.size() << " servers"
             << std::endl;
@@ -59,17 +63,25 @@ int main(int argc, char **argv) {
   prealloc_region_queue.assign_additional_block_mr(
                                                    region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
 
-  // for (size_t i = 0; i < num_msg; i++) {
-  //   for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
-  //     if (peer_id != communicator.get_my_id()) {
-  //       char * arr = new char[msg_size];
-  //       Region r; r.addr = arr; r.length = msg_size; r.context = 0;r.lkey = 0;
-  //       // std::cout << "Sending to peer id " << peer_id << std::endl;
-  //       communicator.send_to_peer(peer_id, &r);
-  //     }
-  //   }
-  // }
+  communicator.start_recv_thread();
+  for (size_t i = 0; i < num_msg; i++) {
+    for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
+      if (peer_id != communicator.get_my_id()) {
+        // char * arr = new char[msg_size];
+        Region *r;
+        prealloc_region_queue.dequeue_exact(1, &r);
+        r->length = msg_size;
+        communicator.send_to_peer(peer_id, r);
+      }
+    }
+  }
 
+  std::string shutdown;
 
+  while (shutdown != "q") {
+    std::cin >> shutdown;
+  }
+
+  communicator.stop_recv_thread();
   return 0;
 }

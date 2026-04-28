@@ -81,13 +81,17 @@ private:
 private:
   std::pair<std::string, std::string> parse_ip_port(const std::string& ip_port);
   std::vector<std::vector<Region *>> in_flight_regions;
+
 public:
+
   RDMAManager(){ // fake server
     _pd = NULL;
   }
 
   // setup local variables and call bind_server
   RDMAManager(uint64_t my_id, const std::vector<std::string> &addresses);
+
+  ~RDMAManager();
   void register_receive_handler(recv_handler_t handler) {
     this->handler = handler;
   }

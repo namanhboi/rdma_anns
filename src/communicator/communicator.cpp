@@ -233,9 +233,8 @@ std::pair<char *, uint32_t> RDMARingBufferP2PCommunicator::get_preallocated_regi
                                                   num_elements);
 }
 
-RDMARingBufferP2PCommunicator::~RDMARingBufferP2PCommunicator() {
-  manager.cleanup();
-}
+RDMARingBufferP2PCommunicator::~RDMARingBufferP2PCommunicator() {}
+
 
 
 
