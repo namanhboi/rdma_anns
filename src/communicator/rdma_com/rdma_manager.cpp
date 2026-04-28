@@ -652,7 +652,8 @@ void RDMAManager::recv_loop() {
 
                     // Route based on Opcode
                     if (opcode == msg_opcode_t::USER_DATA) {
-                        // User Data
+                      // User Data
+                      std::cout << "received data " <<std::endl;
                         this->handler(payload_ptr, recv.length);
                     }
                     else if (opcode == msg_opcode_t::FREED_BYTES) {
