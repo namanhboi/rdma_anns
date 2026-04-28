@@ -634,7 +634,7 @@ void RDMAManager::recv_loop() {
     std::vector<Region> recvs;
 
     while (this->running) {
-      std::cout << "Running recv loop" << std::endl;
+      // std::cout << "Running recv loop" << std::endl;
         for (int i = 0; i < num_servers; i++) {
             if (!receivers[i]) continue;
 
@@ -694,7 +694,7 @@ void RDMAManager::send_loop() {
     const uint32_t ACK_THRESHOLD = 1024;
 
     while (this->running) {
-      std::cout << "running send loop" << std::endl;
+      // std::cout << "running send loop" << std::endl;
         for (int i = 0; i < num_servers; i++) {
             if (!senders[i]) continue;
 
@@ -735,6 +735,7 @@ void RDMAManager::send_loop() {
                 }
 
                 // Try to send it to the network
+                std::cout << "sending data " << std::endl;
                 uint64_t msg_id = senders[i]->SendDataAsync(target_region);
 
                 if (msg_id == (uint64_t)-1) {
