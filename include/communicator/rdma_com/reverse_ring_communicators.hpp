@@ -107,6 +107,8 @@ public:
     // THE OVERLAP HACK: Only allocate (L + 6) from the Ring Buffer!
     uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
+    std::cout << "Sender targeting remote address: " << std::hex << rem_addr
+    << std::dec << std::endl;
 
     if (rem_addr == 0) {
       // Return -1 to indicate memory is full right now
