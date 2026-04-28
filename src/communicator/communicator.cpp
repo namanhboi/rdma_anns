@@ -187,7 +187,9 @@ P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
 
 #ifdef USE_RDMA
 RDMARingBufferP2PCommunicator::RDMARingBufferP2PCommunicator(uint64_t my_id, const std::vector<std::string> &peer_ips): my_id(my_id), peer_ips(peer_ips),manager(my_id, peer_ips) {
+  std::cout << "Start connection to all other servers" << std::endl;
   manager.connect_to_all_servers();
+  std::cout << "Done connecting to all other servers" << std::endl;
 }
 
 void RDMARingBufferP2PCommunicator::register_receive_handler(recv_handler_t handler) {

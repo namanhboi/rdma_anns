@@ -27,6 +27,7 @@ RDMAManager::parse_ip_port(const std::string &ip_port) {
 RDMAManager::RDMAManager(uint64_t my_id, const std::vector<std::string> &addresses)
 : my_id(my_id), num_servers(addresses.size()) {
   // throw std::runtime_error("Need to address how to handle threads and such");
+  std::cout << "Binding to " << addresses[my_id] << std::endl;
   for (const std::string &ip_port : addresses) {
     address_list.push_back(parse_ip_port(ip_port));
   }
@@ -35,6 +36,7 @@ RDMAManager::RDMAManager(uint64_t my_id, const std::vector<std::string> &address
   std::string my_port = address_list[my_id].second;
   bind_server(my_ip.c_str(), my_port.c_str());
   outgoing_queues.resize(num_servers);
+  std::cout << "Done binding to " << addresses[my_id] << std::endl;
 }
 
 void RDMAManager::bind_server(const char *ip, const char *port) {
