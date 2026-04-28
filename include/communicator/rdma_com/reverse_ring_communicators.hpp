@@ -108,11 +108,13 @@ public:
     uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
 
-    if (rem_addr == 0) {
-      printf("Failed to get mem\n");
-      exit(1);
+    while ((rem_addr = remote_buffer->GetWriteAddr(ring_allocation)) == 0) {
+      // The remote buffer is full. We must wait for an incoming ACK
+      // to free up space.
+      //
+      // Optional: Yield the thread so we don't burn 100% CPU while waiting
+      std::this_thread::yield();
     }
-
     // 3. Write Metadata into local pinned RAM
     // --- PREFIX ---
     *(volatile MAGIC_BYTE_T *)(void *)(slot_base_addr) =
