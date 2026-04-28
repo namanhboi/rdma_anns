@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
   communicator.register_receive_handler(
       [&num_received](const char *data, size_t len) {
         num_received++;
-        if (num_received % 10 == 0) {
+        if (num_received % 1 == 0) {
           std::cout << "received: " << num_received << std::endl;
         }
       });
