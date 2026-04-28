@@ -684,7 +684,9 @@ void RDMAManager::recv_loop() {
 void RDMAManager::send_loop() {
     // 120 tokens per connection. Leaves 8 hardware slots permanently reserved for ACKs.
     std::vector<int32_t> can_send(num_servers, 120);
-    Region* outgoing_region_ptr = nullptr;
+
+    // ADDED: Track messages that were dequeued but couldn't be sent because the remote buffer is full
+    std::vector<Region*> stalled_regions(num_servers, nullptr);
 
     // Threshold to prevent ACK ping-pong.
     const uint32_t ACK_THRESHOLD = 1024;
@@ -710,30 +712,44 @@ void RDMAManager::send_loop() {
             while (senders[i]->TestSend(pending_ack_ids[i])) {
                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
                 if (completed_region != nullptr) {
-                  Region::delete_addr(completed_region->addr,
-                                      (void *)completed_region);
+                  Region::delete_addr(completed_region->addr, (void *)completed_region);
                 }
                 pending_ack_ids[i]++;
                 can_send[i]++;
             }
+
             // =================================================================
-            // 3. TRANSMIT USER DATA (CAPPED ONLY BY HARDWARE)
+            // 3. TRANSMIT USER DATA (NON-BLOCKING BACKPRESSURE)
             // =================================================================
-            // Notice: sent_this_loop and BATCH_SIZE are completely gone!
-            // It just drains the queue until the NIC is full (can_send hits 0)
-            while (can_send[i] > 0 &&
-                   outgoing_queues[i].try_dequeue(outgoing_region_ptr)) {
+            while (can_send[i] > 0) {
+                Region* target_region = stalled_regions[i];
 
-                uint64_t msg_id = senders[i]->SendDataAsync(outgoing_region_ptr);
+                // If we don't have a stalled region waiting, try to grab a new one
+                if (target_region == nullptr) {
+                    if (!outgoing_queues[i].try_dequeue(target_region)) {
+                        break; // Queue is empty, nothing to send right now
+                    }
+                }
 
-                in_flight_regions[i][msg_id % 128] = outgoing_region_ptr;
+                // Try to send it to the network
+                uint64_t msg_id = senders[i]->SendDataAsync(target_region);
 
+                if (msg_id == (uint64_t)-1) {
+                    // THE REMOTE BUFFER IS FULL! (Avoid Deadlock)
+                    // Save this region so we don't lose it, and break out of Phase 3.
+                    // This allows the loop to go back to Phase 1 and send ACKs!
+                    stalled_regions[i] = target_region;
+                    break;
+                }
+
+                // Success! Clear the stalled state and record the flight
+                stalled_regions[i] = nullptr;
+                in_flight_regions[i][msg_id % 128] = target_region;
                 can_send[i]--;
             }
         }
     }
 }
-
 
 void RDMAManager::start_send_recv_threads() {
   running = true;
