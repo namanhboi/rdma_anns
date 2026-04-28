@@ -715,6 +715,8 @@ void RDMAManager::send_loop() {
             while (senders[i]->TestSend(pending_ack_ids[i])) {
                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
                 if (completed_region != nullptr) {
+                  std::cout << "Hardware confirmed message " << pending_ack_ids[i]
+                  << " was delivered to remote RAM!" << std::endl;
                   Region::delete_addr(completed_region->addr, (void *)completed_region);
                 }
                 pending_ack_ids[i]++;
