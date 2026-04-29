@@ -139,49 +139,77 @@ void RDMAManager::connect_to_all_servers() {
 
 void RDMAManager::receive_connections(int starting_client_id, int num_clients,
                                       int max_send_size, int max_recv_size) {
-  struct ibv_qp_init_attr attr = prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
-  attr.cap.max_send_sge = 1; // Only need 1 now!
-  attr.cap.max_recv_sge = 1;
+  for (uint32_t i = 0; i < static_cast<uint32_t>(num_clients); i++) {
+    // prepare_qp() allocates CQs. Keep it inside this loop so each QP has
+    // private send/recv CQs; the per-peer SendConnection/ReceiveReceiver code
+    // assumes completions cannot be mixed with another peer's QP.
+    struct ibv_qp_init_attr attr =
+        prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+    attr.cap.max_send_sge = 1;
+    attr.cap.max_recv_sge = 1;
 
-  for (uint32_t i = 0; i < num_clients; i++) {
-    // 1. Setup Connection
     connect_info info = {};
     info.code = 4;
     info.server_id = my_id;
 
     VerbsEP *ep;
     connect_info *connect_buffer;
-    std::tie(ep, connect_buffer) = get_client_ep_and_info(attr, &info, 16, true);
+    std::tie(ep, connect_buffer) =
+        get_client_ep_and_info(attr, &info, 16, true);
     uint64_t client_id = connect_buffer->server_id;
 
     size_t buffer_size = 2048;
     size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
-    char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    char *recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    if (!recv_mem) {
+      perror("aligned_alloc recv_mem");
+      exit(1);
+    }
     memset(recv_mem, 0, local_recv_size);
 
-    struct ibv_mr* recv_mr = ibv_reg_mr(this->getPD(), recv_mem, local_recv_size, IBV_ACCESS_LOCAL_WRITE);
+    struct ibv_mr *recv_mr =
+        ibv_reg_mr(this->getPD(), recv_mem, local_recv_size,
+                   IBV_ACCESS_LOCAL_WRITE);
+    if (!recv_mr) {
+      perror("ibv_reg_mr recv_mr");
+      free(recv_mem);
+      exit(1);
+    }
+
     local_mrs.push_back(recv_mr);
     local_mems.push_back(recv_mem);
 
-    // Pass the active_recv_slots (112) instead of the hardcoded 128!
     receivers[client_id] = std::make_unique<ReceiveReceiver>(
-                                                             ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
+        ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
     senders[client_id] = std::make_unique<SendConnection>(ep);
     eps[client_id] = ep;
     connect_buffers[client_id] = connect_buffer;
 
-    in_flight_regions[client_id] = std::vector<Region*>(128, nullptr);
+    in_flight_regions[client_id] = std::vector<Region *>(MAX_SEND_RECV_WR, nullptr);
     pending_ack_ids[client_id] = 1;
+
+    printf("RDMA passive peer=%lu qp=%p qp_num=%u send_cq=%p recv_cq=%p recv_mem=%p lkey=0x%x\n",
+           client_id,
+           ep->qp,
+           ep->qp->qp_num,
+           ep->qp->send_cq,
+           ep->qp->recv_cq,
+           recv_mem,
+           recv_mr->lkey);
   }
 }
 
 void RDMAManager::send_connections(int starting_server_id, int num_servers,
                                    int max_send_size, int max_recv_size) {
-  struct ibv_qp_init_attr attr = prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
-  attr.cap.max_send_sge = 1;
-  attr.cap.max_recv_sge = 1;
+  for (uint32_t i = 0; i < static_cast<uint32_t>(num_servers); i++) {
+    // prepare_qp() allocates CQs. Keep it inside this loop so each QP has
+    // private send/recv CQs; otherwise different peers' completions can be
+    // consumed by the wrong SendConnection/ReceiveReceiver.
+    struct ibv_qp_init_attr attr =
+        prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+    attr.cap.max_send_sge = 1;
+    attr.cap.max_recv_sge = 1;
 
-  for (uint32_t i = 0; i < num_servers; i++) {
     int server_id = starting_server_id + i;
 
     connect_info info = {};
@@ -190,26 +218,47 @@ void RDMAManager::send_connections(int starting_server_id, int num_servers,
 
     VerbsEP *ep;
     connect_info *connect_buffer;
-    std::tie(ep, connect_buffer) = get_server_ep_and_info(server_id, attr, &info, 16, true);
-
+    std::tie(ep, connect_buffer) =
+        get_server_ep_and_info(server_id, attr, &info, 16, true);
 
     size_t buffer_size = 2048;
     size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
-    char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    char *recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    if (!recv_mem) {
+      perror("aligned_alloc recv_mem");
+      exit(1);
+    }
     memset(recv_mem, 0, local_recv_size);
 
-    struct ibv_mr* recv_mr = ibv_reg_mr(this->getPD(), recv_mem, local_recv_size, IBV_ACCESS_LOCAL_WRITE);
+    struct ibv_mr *recv_mr =
+        ibv_reg_mr(this->getPD(), recv_mem, local_recv_size,
+                   IBV_ACCESS_LOCAL_WRITE);
+    if (!recv_mr) {
+      perror("ibv_reg_mr recv_mr");
+      free(recv_mem);
+      exit(1);
+    }
+
     local_mrs.push_back(recv_mr);
     local_mems.push_back(recv_mem);
 
-    // Pass the active_recv_slots (112) instead of the hardcoded 128!
-    receivers[server_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
+    receivers[server_id] = std::make_unique<ReceiveReceiver>(
+        ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
     senders[server_id] = std::make_unique<SendConnection>(ep);
     eps[server_id] = ep;
     connect_buffers[server_id] = connect_buffer;
 
-    in_flight_regions[server_id] = std::vector<Region*>(128, nullptr);
+    in_flight_regions[server_id] = std::vector<Region *>(MAX_SEND_RECV_WR, nullptr);
     pending_ack_ids[server_id] = 1;
+
+    printf("RDMA active peer=%d qp=%p qp_num=%u send_cq=%p recv_cq=%p recv_mem=%p lkey=0x%x\n",
+           server_id,
+           ep->qp,
+           ep->qp->qp_num,
+           ep->qp->send_cq,
+           ep->qp->recv_cq,
+           recv_mem,
+           recv_mr->lkey);
   }
 }
 
@@ -486,7 +535,19 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
       continue;
     }
 
-    struct ibv_pd *pd = client_cm_id->pd;
+    // Use the same PD that owns this manager's MRs. The send buffers and
+    // receive buffers below are registered against this->getPD(), so the QP
+    // must be created against the same PD/lkey namespace.
+    struct ibv_pd *pd = this->getPD();
+    if (client_cm_id->verbs != pd->context) {
+      fprintf(stderr,
+              "resolved RDMA device context does not match manager PD context\n");
+      struct rdma_event_channel *bad_channel = client_cm_id->channel;
+      rdma_destroy_id(client_cm_id);
+      if (bad_channel) rdma_destroy_event_channel(bad_channel);
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      continue;
+    }
     uint32_t max_recv_size = attr.cap.max_recv_wr;
     if (attr.srq) attr.cap.max_recv_wr = 0;
 
@@ -634,46 +695,54 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
 // }
 
 void RDMAManager::cleanup() {
-  // based on https://github.com/animeshtrivedi/rdma-example
   int ret = -1;
+
   // =================================================================
-  // 1. DISCONNECT PEERS & DESTROY QUEUE PAIRS
+  // 1. DISCONNECT PEERS, DESTROY QPs, THEN DESTROY THEIR PRIVATE CQs
   // =================================================================
   for (int i = 0; i < num_servers; i++) {
     if (eps[i] == nullptr) continue;
 
     struct rdma_cm_id *client_cm_id = eps[i]->id;
-
     struct rdma_event_channel *temp_channel = client_cm_id->channel;
-    // struct ibv_cq *client_send_cq = eps[i]->qp->send_cq;
-    // struct ibv_cq *client_recv_cq = eps[i]->qp->recv_cq;
 
-    // Disconnect safely before destroying
+    // Save CQ pointers before destroying the QP. After the per-peer-CQ fix,
+    // each QP owns private CQs created by prepare_qp().
+    struct ibv_cq *client_send_cq = eps[i]->qp ? eps[i]->qp->send_cq : nullptr;
+    struct ibv_cq *client_recv_cq = eps[i]->qp ? eps[i]->qp->recv_cq : nullptr;
+
     rdma_disconnect(client_cm_id);
-    rdma_destroy_qp(client_cm_id);
+
+    if (client_cm_id->qp) {
+      rdma_destroy_qp(client_cm_id);
+    }
 
     ret = rdma_destroy_id(client_cm_id);
     if (ret) {
       printf("Failed to destroy client id cleanly, %d \n", -errno);
     }
+
+    if (client_send_cq) {
+      ret = ibv_destroy_cq(client_send_cq);
+      if (ret) {
+        printf("Failed to destroy client send cq cleanly, %d \n", -errno);
+      }
+    }
+
+    if (client_recv_cq && client_recv_cq != client_send_cq) {
+      ret = ibv_destroy_cq(client_recv_cq);
+      if (ret) {
+        printf("Failed to destroy client recv cq cleanly, %d \n", -errno);
+      }
+    }
+
+    // Passive-side IDs use the manager's shared listening event channel.
+    // Active-side IDs got one temporary event channel per outgoing connection.
     if (i > my_id && temp_channel) {
       rdma_destroy_event_channel(temp_channel);
     }
 
-    // ret = ibv_destroy_cq(client_send_cq);
-    // if (ret) {
-    //   printf("Failed to destroy client send cq cleanly, %d \n", -errno);
-    // }
-
-    // ret = ibv_destroy_cq(client_recv_cq);
-    // if (ret) {
-    //   printf("Failed to destroy client rev cq cleanly, %d \n", -errno);
-    // }
-
     free(connect_buffers[i]);
-
-    // We don't have a completion channel and just poll from the ring buffer
-    // so we don't need to destroy it.
     delete eps[i];
     eps[i] = nullptr;
   }
@@ -681,7 +750,7 @@ void RDMAManager::cleanup() {
   senders.clear();
 
   // =================================================================
-  // 2. DEREGISTER MEMORY REGIONS (Sliding Window Metadata)
+  // 2. DEREGISTER MEMORY REGIONS
   // =================================================================
   for (size_t i = 0; i < local_mrs.size(); i++) {
     if (local_mrs[i]) {
@@ -697,38 +766,32 @@ void RDMAManager::cleanup() {
   // =================================================================
   // 3. TEARDOWN GLOBAL LISTENING INFRASTRUCTURE
   // =================================================================
-
-  // Destroy the global listener to free the TCP port
   if (this->_listen_id) {
     rdma_destroy_id(this->_listen_id);
     this->_listen_id = nullptr;
   }
+
   if (preallocated_region_mr != nullptr) {
     ibv_dereg_mr(preallocated_region_mr);
     preallocated_region_mr = nullptr;
   }
 
   if (preallocated_region_addr != nullptr) {
-    // MUST use free() for aligned_alloc, not delete
     ::free(preallocated_region_addr);
     preallocated_region_addr = nullptr;
   }
 
-
-  // Free the Protection Domain if we manually allocated it
-  // (In bind_server, we only allocated it if _listen_id->pd was null)
   if (this->_pd) {
     ibv_dealloc_pd(this->_pd);
     this->_pd = nullptr;
   }
 
-  // Finally, destroy the Event Channel
   if (this->_ec) {
     rdma_destroy_event_channel(this->_ec);
     this->_ec = nullptr;
   }
-
 }
+
 void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
   outgoing_queues[peer_id].enqueue(r);
 }
@@ -813,7 +876,7 @@ void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
 //                 pending_freed_bytes[i].fetch_add(bytes_to_ack, std::memory_order_relaxed);
 //               } else {
 //                 std::cout << "sending bytes to ack " << bytes_to_ack << std::endl;
-//                 in_flight_regions[i][ack_id % 128] = nullptr;
+//                 in_flight_regions[i][ack_id % MAX_SEND_RECV_WR] = nullptr;
 //                 acks_in_flight[i]++;
 //               }
 //             }
@@ -822,7 +885,7 @@ void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
 //             // 2. RECYCLE HARDWARE SLOTS & GARBAGE COLLECTION
 //             // =================================================================
 //             while (senders[i]->TestSend(pending_ack_ids[i])) {
-//                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
+//                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR];
 
 //                 if (completed_region != nullptr) {
 //                     // It was a Data Message
@@ -856,7 +919,7 @@ void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
 //                 }
 
 //                 stalled_regions[i] = nullptr;
-//                 in_flight_regions[i][msg_id % 128] = target_region;
+//                 in_flight_regions[i][msg_id % MAX_SEND_RECV_WR] = target_region;
 //                 can_send[i]--;
 //             }
 //         }
@@ -912,13 +975,21 @@ void RDMAManager::recv_loop() {
 }
 
 void RDMAManager::send_loop() {
-  // 128 slots - 16 VerbsEP - 8 for ACKs = 104 safe tokens
-    std::vector<int32_t> can_send(num_servers, 120);
+    // Keep the data window safely below the receive queue depth because ACKs
+    // also consume receive WQEs. This also prevents wr_id % MAX_SEND_RECV_WR slot reuse while
+    // older sends are still in flight.
+    constexpr int32_t ACK_SEND_RESERVE = 8;
+    constexpr int32_t RECV_CONTROL_RESERVE = 24;
+    constexpr int32_t DATA_CREDIT_LIMIT =
+        MAX_SEND_RECV_WR - ACK_SEND_RESERVE - RECV_CONTROL_RESERVE;
+
+    std::vector<int32_t> can_send(num_servers, DATA_CREDIT_LIMIT);
     std::vector<int32_t> acks_in_flight(num_servers, 0);
     std::vector<Region*> stalled_regions(num_servers, nullptr);
 
-    // We send an ACK every 32 messages processed
-    const uint32_t ACK_THRESHOLD = 4;
+    // ACK less aggressively than every 4 messages so ACK traffic does not eat
+    // too many remote receive WQEs under full-duplex traffic.
+    const uint32_t ACK_THRESHOLD = 16;
 
     while (this->running) {
         for (int i = 0; i < num_servers; i++) {
@@ -929,7 +1000,10 @@ void RDMAManager::send_loop() {
             // =================================================================
             uint32_t new_credits = incoming_credits[i].exchange(0, std::memory_order_relaxed);
             if (new_credits > 0) {
-                can_send[i] += new_credits;
+                can_send[i] += static_cast<int32_t>(new_credits);
+                if (can_send[i] > DATA_CREDIT_LIMIT) {
+                    can_send[i] = DATA_CREDIT_LIMIT;
+                }
             }
 
             // =================================================================
@@ -937,14 +1011,14 @@ void RDMAManager::send_loop() {
             // =================================================================
             uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
 
-            if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < 8) {
+            if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < ACK_SEND_RESERVE) {
               uint32_t credits_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
               uint64_t ack_id = senders[i]->SendAckAsync(credits_to_ack);
 
               if (ack_id == (uint64_t)-1) {
                 pending_freed_bytes[i].fetch_add(credits_to_ack, std::memory_order_relaxed);
               } else {
-                in_flight_regions[i][ack_id % 128] = nullptr;
+                in_flight_regions[i][ack_id % MAX_SEND_RECV_WR] = nullptr;
                 acks_in_flight[i]++;
               }
             }
@@ -953,17 +1027,22 @@ void RDMAManager::send_loop() {
             // 2. RECYCLE HARDWARE SLOTS & GARBAGE COLLECTION
             // =================================================================
             while (senders[i]->TestSend(pending_ack_ids[i])) {
-                Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
+                Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR];
 
                 if (completed_region != nullptr) {
-                    // NOTE: We do NOT increment can_send here anymore!
-                    // can_send is now strictly controlled by remote incoming_credits!
+                    // Data credits are returned only by remote ACKs, not by local
+                    // send completion. Local completion only means DMA from this
+                    // host's memory is done, so the Region can be recycled.
                     Region::delete_addr(completed_region->addr, (void *)completed_region);
+                    in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR] = nullptr;
                 } else {
-                    acks_in_flight[i]--;
+                    if (acks_in_flight[i] > 0) {
+                        acks_in_flight[i]--;
+                    }
                 }
                 pending_ack_ids[i]++;
             }
+
             // =================================================================
             // 3. TRANSMIT USER DATA
             // =================================================================
@@ -984,7 +1063,7 @@ void RDMAManager::send_loop() {
                 }
 
                 stalled_regions[i] = nullptr;
-                in_flight_regions[i][msg_id % 128] = target_region;
+                in_flight_regions[i][msg_id % MAX_SEND_RECV_WR] = target_region;
                 can_send[i]--;
             }
         }
