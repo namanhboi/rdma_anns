@@ -654,8 +654,8 @@ void RDMAManager::recv_loop() {
                     // Route based on Opcode
                     if (opcode == msg_opcode_t::USER_DATA) {
                       // User Data
-                      std::cout << "received data " <<std::endl;
-                        this->handler(payload_ptr, recv.length);
+                      // std::cout << "received data " <<std::endl;
+                      this->handler(payload_ptr, recv.length);
                     }
                     else if (opcode == msg_opcode_t::FREED_BYTES) {
                         // Flow Control ACK
@@ -715,8 +715,8 @@ void RDMAManager::send_loop() {
             while (senders[i]->TestSend(pending_ack_ids[i])) {
                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
                 if (completed_region != nullptr) {
-                  std::cout << "Hardware confirmed message " << pending_ack_ids[i]
-                  << " was delivered to remote RAM!" << std::endl;
+                  // std::cout << "Hardware confirmed message " << pending_ack_ids[i]
+                  // << " was delivered to remote RAM!" << std::endl;
                   Region::delete_addr(completed_region->addr, (void *)completed_region);
                 }
                 pending_ack_ids[i]++;
@@ -737,7 +737,7 @@ void RDMAManager::send_loop() {
                 }
 
                 // Try to send it to the network
-                std::cout << "sending data " << std::endl;
+                // std::cout << "sending data " << std::endl;
                 uint64_t msg_id = senders[i]->SendDataAsync(target_region);
 
                 if (msg_id == (uint64_t)-1) {
