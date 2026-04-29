@@ -8,6 +8,7 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <thread>
 
 void write_results_csv(const std::vector<search_result_t *> &results,
                        const std::vector<double> &send_timestamp,
@@ -119,6 +120,12 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   // client.start_result_thread();
   // client.start_client_threads();
   client.start();
+
+  if (use_rdma) {
+    std::cout << "start initializing rdma connection" << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(100));
+    std::cout << "done initializing rdma connection" << std::endl;
+  }
 
   // std::ifstream communincator_ifstream(communicator_json);
   // json communicator_data = json::parse(communincator_ifstream);
