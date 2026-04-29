@@ -60,7 +60,7 @@ uint64_t SendAsync(Region* region) {
             return (uint64_t)-1;
         }
 
-        printf("Fired an ACK for %u credits back to Sender!\n", freed_credits);
+        // printf("Fired an ACK for %u credits back to Sender!\n", freed_credits);
         return next_id_++;
     }
     bool TestSend(uint64_t id) {
