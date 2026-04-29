@@ -69,6 +69,7 @@ void RDMAManager::bind_server(const char *ip, const char *port) {
 
   if (rdma_getaddrinfo(ip, port, &hints, &addrinfo)) {
     printf("failed to get addr info\n");
+    std::cout << std::string(ip) << ":" << std::string(port) << std::endl;
     exit(1);
   }
 
