@@ -918,7 +918,7 @@ void RDMAManager::send_loop() {
     std::vector<Region*> stalled_regions(num_servers, nullptr);
 
     // We send an ACK every 32 messages processed
-    const uint32_t ACK_THRESHOLD = 32;
+    const uint32_t ACK_THRESHOLD = 4;
 
     while (this->running) {
         for (int i = 0; i < num_servers; i++) {
