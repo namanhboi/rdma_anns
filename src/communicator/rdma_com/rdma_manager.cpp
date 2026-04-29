@@ -656,10 +656,11 @@ void RDMAManager::recv_loop() {
                       // User Data
                       // std::cout << "received data " <<std::endl;
                       this->handler(payload_ptr, recv.length);
-                    }
-                    else if (opcode == msg_opcode_t::FREED_BYTES) {
+                    } else if (opcode == msg_opcode_t::FREED_BYTES) {
+
                         // Flow Control ACK
-                        uint32_t freed_ack = *(uint32_t*)payload_ptr;
+                        uint32_t freed_ack = *(uint32_t *)payload_ptr;
+                        std::cout << "received ack, num freed " << freed_ack << std::endl;
 
                         // Tell our Sender that the REMOTE buffer has cleared space!
                         senders[i]->AckSentBytes(freed_ack);
