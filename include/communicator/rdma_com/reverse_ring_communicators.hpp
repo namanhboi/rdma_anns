@@ -144,7 +144,7 @@ public:
 
     sges[2].addr = suffix_addr;
     sges[2].length = suffix_len;
-
+    wr.num_sge = 3;
     // 5. Hardware Handoff
     wr.wr_id = next_id_;
     wr.wr.rdma.remote_addr = rem_addr + 1;
