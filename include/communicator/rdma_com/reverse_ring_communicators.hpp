@@ -187,6 +187,7 @@ public:
     // 4. Setup SGEs
     sges[0].addr   = slot_base_addr;
     sges[0].length = prefix_len;
+    sges[0].lkey   = local_mem_lkey; // <--- 1. ADD THIS MISSING KEY
 
     // SGE 1 points to our embedded integer
     sges[1].addr   = slot_base_addr + 2;
@@ -195,6 +196,7 @@ public:
 
     sges[2].addr   = suffix_addr;
     sges[2].length = suffix_len;
+    sges[0].lkey   = local_mem_lkey; // <--- 1. ADD THIS MISSING KEY
 
     // 5. Calculate total wire footprint and apply the OVERLAP HACK
     uint32_t wire_length = prefix_len + 4 + suffix_len;
