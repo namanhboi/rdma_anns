@@ -177,7 +177,7 @@ P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
                                      const std::vector<std::string> &peer_ips) {
   if (rdma) {
 #ifdef USE_RDMA
-    std::make_unique<RDMARingBufferP2PCommunicator>(my_id, peer_ips);
+    std::make_unique<RDMAP2PCommunicator>(my_id, peer_ips);
 #else
     throw std::runtime_error("The RDMA flag is not set, can't create RDMARingBufferP2PCommunicator");
 #endif
@@ -186,39 +186,39 @@ P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
 }
 
 #ifdef USE_RDMA
-RDMARingBufferP2PCommunicator::RDMARingBufferP2PCommunicator(uint64_t my_id, const std::vector<std::string> &peer_ips): my_id(my_id), peer_ips(peer_ips),manager(my_id, peer_ips) {
+RDMAP2PCommunicator::RDMAP2PCommunicator(uint64_t my_id, const std::vector<std::string> &peer_ips): my_id(my_id), peer_ips(peer_ips),manager(my_id, peer_ips) {
   std::cout << "Start connection to all other servers" << std::endl;
   manager.connect_to_all_servers();
   std::cout << "Done connecting to all other servers" << std::endl;
 }
 
-void RDMARingBufferP2PCommunicator::register_receive_handler(recv_handler_t handler) {
+void RDMAP2PCommunicator::register_receive_handler(recv_handler_t handler) {
   manager.register_receive_handler(handler);
 }
 
-void RDMARingBufferP2PCommunicator::start_recv_thread() {
+void RDMAP2PCommunicator::start_recv_thread() {
   manager.start_send_recv_threads();
 }
 
-void RDMARingBufferP2PCommunicator::stop_recv_thread() {
+void RDMAP2PCommunicator::stop_recv_thread() {
   manager.shutdown_threads();
 }
 
-void RDMARingBufferP2PCommunicator::send_to_peer(uint64_t peer_id, Region *r) {
+void RDMAP2PCommunicator::send_to_peer(uint64_t peer_id, Region *r) {
   manager.enqueue_region_to_send(peer_id, r);
 }
 
 
 
-uint64_t RDMARingBufferP2PCommunicator::get_my_id() {
+uint64_t RDMAP2PCommunicator::get_my_id() {
   return my_id;
 }
 
-uint64_t RDMARingBufferP2PCommunicator::get_num_peers() {
+uint64_t RDMAP2PCommunicator::get_num_peers() {
   return peer_ips.size();
 }
 
-std::vector<uint64_t> RDMARingBufferP2PCommunicator::get_other_peer_ids() {
+std::vector<uint64_t> RDMAP2PCommunicator::get_other_peer_ids() {
   std::vector<uint64_t> peer_ids;
   uint64_t num_peers = get_num_peers();
   for (uint64_t i = 0; i < num_peers; i++) {
@@ -228,12 +228,12 @@ std::vector<uint64_t> RDMARingBufferP2PCommunicator::get_other_peer_ids() {
 }
 
 
-std::pair<char *, uint32_t> RDMARingBufferP2PCommunicator::get_preallocated_region_ptr_lkey(size_t block_size_per_element, size_t num_elements) {
+std::pair<char *, uint32_t> RDMAP2PCommunicator::get_preallocated_region_ptr_lkey(size_t block_size_per_element, size_t num_elements) {
   return manager.get_preallocated_region_ptr_lkey(block_size_per_element,
                                                   num_elements);
 }
 
-RDMARingBufferP2PCommunicator::~RDMARingBufferP2PCommunicator() {}
+RDMAP2PCommunicator::~RDMAP2PCommunicator() {}
 
 
 

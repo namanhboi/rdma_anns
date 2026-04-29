@@ -119,10 +119,13 @@ int main(int argc, char **argv) {
   }
   std::cout << std::endl;
 
-  RDMARingBufferP2PCommunicator communicator(server_peer_id, address_list);
+  // RDMAP2PCommunicator communicator(server_peer_id, address_list);
+  std::unique_ptr<P2PCommunicator> communicator =
+    P2PCommunicator::create_communicator(true, server_peer_id, address_list);
 
-  const uint64_t num_peers = communicator.get_num_peers();
-  const uint64_t my_id = communicator.get_my_id();
+
+  const uint64_t num_peers = communicator->get_num_peers();
+  const uint64_t my_id = communicator->get_my_id();
 
   std::atomic<uint64_t> num_received{0};
   std::atomic<uint64_t> num_errors{0};
@@ -131,7 +134,7 @@ int main(int argc, char **argv) {
   // Messages from different peers can interleave, so this must be per source.
   std::vector<uint64_t> expected_next_from_peer(num_peers, 0);
 
-  communicator.register_receive_handler(
+  communicator->register_receive_handler(
       [&num_received,
        &num_errors,
        &expected_next_from_peer,
@@ -207,7 +210,7 @@ int main(int argc, char **argv) {
   PreallocatedQueue<Region> prealloc_region_queue(12000, Region::reset);
 
   std::pair<char *, uint32_t> ptr_lkey =
-      communicator.get_preallocated_region_ptr_lkey(Region::MAX_BYTES_REGION,
+      communicator->get_preallocated_region_ptr_lkey(Region::MAX_BYTES_REGION,
                                                     12000);
 
   char *region_addr = ptr_lkey.first;
@@ -218,7 +221,7 @@ int main(int argc, char **argv) {
                                                    Region::MAX_BYTES_REGION,
                                                    Region::assign_addr);
 
-  communicator.start_recv_thread();
+  communicator->start_recv_thread();
 
   std::cout << "Starting all-to-all send. num_msg per peer="
             << num_msg
@@ -239,7 +242,7 @@ int main(int argc, char **argv) {
                         peer_id,
                         msg_id);
 
-      communicator.send_to_peer(peer_id, r);
+      communicator->send_to_peer(peer_id, r);
     }
   }
 

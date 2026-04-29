@@ -115,14 +115,14 @@ public:
 
 #ifdef USE_RDMA
 #include "rdma_com/rdma_manager.hpp"
-class RDMARingBufferP2PCommunicator : virtual public P2PCommunicator {
+class RDMAP2PCommunicator : virtual public P2PCommunicator {
 private:
   uint64_t my_id;
   std::vector<std::string> peer_ips; // MOVE THIS ABOVE MANAGER
   RDMAManager manager;               // Now manager can safely use peer_ips
   recv_handler_t handler;
 public:
-  RDMARingBufferP2PCommunicator(uint64_t my_id,
+  RDMAP2PCommunicator(uint64_t my_id,
                                 const std::vector<std::string> &peer_ips);
   void send_to_peer(uint64_t peer_id, Region *r) override;
   void register_receive_handler(recv_handler_t handler) override;
@@ -134,7 +134,7 @@ public:
   std::pair<char *, uint32_t>
   get_preallocated_region_ptr_lkey(size_t block_size_per_element,
                                    size_t num_elements) override;
-  ~RDMARingBufferP2PCommunicator();
+  ~RDMAP2PCommunicator();
 };
 
 #endif
