@@ -716,14 +716,17 @@ void RDMAManager::send_loop() {
             // 2. RECYCLE HARDWARE SLOTS & GARBAGE COLLECTION
             // =================================================================
             while (senders[i]->TestSend(pending_ack_ids[i])) {
-                Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
-                if (completed_region != nullptr) {
-                  // std::cout << "Hardware confirmed message " << pending_ack_ids[i]
-                  // << " was delivered to remote RAM!" << std::endl;
-                  Region::delete_addr(completed_region->addr, (void *)completed_region);
-                }
-                pending_ack_ids[i]++;
+              Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
+
+              if (completed_region != nullptr) {
+                // This was a Data Message!
+                // Delete the memory AND refund the token.
+                Region::delete_addr(completed_region->addr, (void *)completed_region);
                 can_send[i]++;
+              }
+              // If it was nullptr, it was an ACK. Do NOT refund a token!
+
+              pending_ack_ids[i]++;
             }
 
             // =================================================================
