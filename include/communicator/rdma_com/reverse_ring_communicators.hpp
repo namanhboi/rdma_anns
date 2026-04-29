@@ -263,10 +263,11 @@ public:
       << std::endl;
       printed_once = true;
     }
-    MAGIC_BYTE_T completion = *(volatile MAGIC_BYTE_T *)local_buffer->GetReadPtr();
+    volatile MAGIC_BYTE_T* comp_ptr = (volatile MAGIC_BYTE_T *)local_buffer->GetReadPtr();
+    MAGIC_BYTE_T completion = *comp_ptr;
     int c = 0;
-
     while (completion) {
+      *comp_ptr = 0;
       // 1. Read the payload length
       LEN_BYTE_T length = *(volatile LEN_BYTE_T *)local_buffer->Read(sizeof(LEN_BYTE_T));
 
