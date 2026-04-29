@@ -232,8 +232,10 @@ uint64_t SendAckAsync(uint32_t freed_bytes) {
     int ret = ibv_poll_cq(ep->qp->send_cq, 16, wcs);
     for (int i = 0; i < ret; i++) {
       if (wcs[i].status != IBV_WC_SUCCESS) {
-        printf("Failed request %d \n", wcs[i].status);
-        exit(1);
+        std::cerr << "\n[FATAL HARDWARE ERROR] The NIC killed the connection!" << std::endl;
+        std::cerr << "Error Code: " << wcs[i].status << " (" << ibv_wc_status_str(wcs[i].status) << ")" << std::endl;
+        std::cerr << "Message ID that failed: " << wcs[i].wr_id << std::endl;
+        exit(1); // Force the program to crash so you can see it!
       }
       last_wrid = wcs[i].wr_id;
     }
