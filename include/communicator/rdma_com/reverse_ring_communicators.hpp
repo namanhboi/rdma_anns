@@ -147,7 +147,7 @@ public:
 
     // 5. Hardware Handoff
     wr.wr_id = next_id_;
-    wr.wr.rdma.remote_addr = rem_addr;
+    wr.wr.rdma.remote_addr = rem_addr + 1;
 
     if (ibv_post_send(ep->qp, &wr, &bad_wr)) {
       printf("Failed to send %d\n", errno);
@@ -198,8 +198,12 @@ public:
     // 5. Calculate total wire footprint and apply the OVERLAP HACK
     uint32_t wire_length = prefix_len + 4 + suffix_len;
     uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
+    uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
+    if (rem_addr == 0) {
+      throw std::runtime_error("sendack rem_addr = 0");
+    }
 
-    wr.wr.rdma.remote_addr = remote_buffer->GetWriteAddr(ring_allocation);
+    wr.wr.rdma.remote_addr = rem_addr + 1;
     wr.wr_id = next_id_;
 
     if(ibv_post_send(ep->qp, &wr, &bad_wr)) {
