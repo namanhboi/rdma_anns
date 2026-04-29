@@ -702,15 +702,21 @@ void RDMAManager::send_loop() {
             // =================================================================
             uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
 
-            // THE FIX: Only send an ACK if we have less than 8 ACKs in flight!
             if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < 8) {
-                uint32_t bytes_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+              uint32_t bytes_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+
+              uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
+
+              if (ack_id == (uint64_t)-1) {
+                // THE FIX: The remote buffer is full!
+                // Put the freed bytes back so we don't lose flow control, and skip the array update!
+                pending_freed_bytes[i].fetch_add(bytes_to_ack, std::memory_order_relaxed);
+              } else {
+                // Success! Record the ACK in flight.
                 std::cout << "sending bytes to ack " << bytes_to_ack << std::endl;
-
-                uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
                 in_flight_regions[i][ack_id % 128] = nullptr;
-
-                acks_in_flight[i]++; // Mark ACK slot as used
+                acks_in_flight[i]++;
+              }
             }
 
             // =================================================================
