@@ -89,6 +89,16 @@ public:
 
   // ADDED: uint8_t opcode parameter
   uint64_t SendAsync(msg_opcode_t opcode, Region *region) {
+    if (opcode == msg_opcode_t::USER_DATA) {
+      if (region == nullptr || region->lkey == 0 || region->length == 0 || region->length > 1024) {
+        std::cout << "\n[FATAL SOFTWARE ERROR] Caught a corrupted Region from the queue!" << std::endl;
+        std::cout << "Message ID: " << next_id_ << std::endl;
+        std::cout << "Region Addr: 0x" << std::hex << region->addr << std::dec << std::endl;
+        std::cout << "Region LKEY: " << region->lkey << std::endl;
+        std::cout << "Region Length: " << region->length << std::endl;
+        exit(1);
+      }
+    }
     struct ibv_send_wr *bad_wr;
 
     // 1. Sliding Window Slot Calculation (Fixes the race condition)
@@ -144,6 +154,7 @@ public:
 
     sges[2].addr = suffix_addr;
     sges[2].length = suffix_len;
+    wr.num_sge = 3;
 
     // 5. Hardware Handoff
     wr.wr_id = next_id_;
@@ -162,58 +173,64 @@ public:
     return SendAsync(msg_opcode_t::USER_DATA, user_region);
   }
 
-  uint64_t SendAckAsync(uint32_t freed_bytes) {
+uint64_t SendAckAsync(uint32_t freed_bytes) {
     struct ibv_send_wr *bad_wr;
 
     uint32_t slot_index = next_id_ % 128;
     uint64_t slot_base_addr = local_mem + (slot_index * 16);
-    uint64_t suffix_addr = slot_base_addr + 8;
 
-    uint32_t prefix_len = sizeof(MAGIC_BYTE_T) + sizeof(msg_opcode_t);
-    uint32_t suffix_len = sizeof(LEN_BYTE_T) + sizeof(MAGIC_BYTE_T);
+    // =================================================================
+    // 1-SGE CONTIGUOUS PACKING (Bypasses the Hardware DMA Bug)
+    // =================================================================
+    char* ptr = (char*)slot_base_addr;
 
-    // 1. Write Prefix (Opcode 0x02)
-    *(volatile MAGIC_BYTE_T*)(void*)(slot_base_addr) = 0;
-    *(volatile msg_opcode_t*)(void*)(slot_base_addr + 1) = msg_opcode_t::FREED_BYTES;
+    *(volatile MAGIC_BYTE_T*)ptr = 0;
+    ptr += sizeof(MAGIC_BYTE_T);
 
-    // 2. Write Suffix (Length is fixed at 4 bytes for an ACK)
-    *(volatile LEN_BYTE_T*)(void*)(suffix_addr) = 4;
-    *(volatile MAGIC_BYTE_T*)(void*)(suffix_addr + sizeof(LEN_BYTE_T)) = 1;
+    *(volatile uint8_t*)ptr = (uint8_t)msg_opcode_t::FREED_BYTES;
+    ptr += sizeof(msg_opcode_t);
 
-    // 3. Write ACK payload directly into the unused metadata space
-    *(volatile uint32_t*)(void*)(slot_base_addr + 2) = freed_bytes;
+    *(volatile uint32_t*)ptr = freed_bytes;
+    ptr += sizeof(uint32_t);
 
-    // 4. Setup SGEs
+    *(volatile LEN_BYTE_T*)ptr = 4;
+    ptr += sizeof(LEN_BYTE_T);
+
+    *(volatile MAGIC_BYTE_T*)ptr = 1;
+    ptr += sizeof(MAGIC_BYTE_T);
+
+    // Exact footprint is exactly 11 bytes (1 + 1 + 4 + 4 + 1)
+    uint32_t wire_length = ptr - (char*)slot_base_addr;
+
+    // =================================================================
+    // SETUP SINGLE SGE
+    // =================================================================
     sges[0].addr   = slot_base_addr;
-    sges[0].length = prefix_len;
+    sges[0].length = wire_length;
+    sges[0].lkey   = local_mem_lkey;
 
-    // SGE 1 points to our embedded integer
-    sges[1].addr   = slot_base_addr + 2;
-    sges[1].length = 4;
-    sges[1].lkey   = local_mem_lkey;
+    wr.num_sge = 1; // <--- The lifesaver
 
-    sges[2].addr   = suffix_addr;
-    sges[2].length = suffix_len;
-
-    // 5. Calculate total wire footprint and apply the OVERLAP HACK
-    uint32_t wire_length = prefix_len + 4 + suffix_len;
+    // =================================================================
+    // HARDWARE HANDOFF
+    // =================================================================
     uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
+
     if (rem_addr == 0) {
-      throw std::runtime_error("sendack rem_addr = 0");
+        return (uint64_t)-1;
     }
 
-    wr.wr.rdma.remote_addr = rem_addr + 1;
+    wr.wr.rdma.remote_addr = rem_addr + 1; // Overlap hack!
     wr.wr_id = next_id_;
 
     if(ibv_post_send(ep->qp, &wr, &bad_wr)) {
-      printf("Failed to send ACK %d\n", errno);
+      printf("Failed to send ACK. Error code: %d\n", errno);
       exit(1);
     }
 
     return next_id_++;
   }
-
   bool AckSentBytes(uint32_t bytes) { return remote_buffer->FreeBytes(bytes); }
 
   void WaitSend(uint64_t id) {
@@ -230,8 +247,10 @@ public:
     int ret = ibv_poll_cq(ep->qp->send_cq, 16, wcs);
     for (int i = 0; i < ret; i++) {
       if (wcs[i].status != IBV_WC_SUCCESS) {
-        printf("Failed request %d \n", wcs[i].status);
-        exit(1);
+        std::cerr << "\n[FATAL HARDWARE ERROR] The NIC killed the connection!" << std::endl;
+        std::cerr << "Error Code: " << wcs[i].status << " (" << ibv_wc_status_str(wcs[i].status) << ")" << std::endl;
+        std::cerr << "Message ID that failed: " << wcs[i].wr_id << std::endl;
+        exit(1); // Force the program to crash so you can see it!
       }
       last_wrid = wcs[i].wr_id;
     }
