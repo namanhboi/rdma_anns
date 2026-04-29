@@ -177,7 +177,7 @@ P2PCommunicator::create_communicator(bool rdma, uint64_t my_id,
                                      const std::vector<std::string> &peer_ips) {
   if (rdma) {
 #ifdef USE_RDMA
-    std::make_unique<RDMAP2PCommunicator>(my_id, peer_ips);
+    return std::make_unique<RDMAP2PCommunicator>(my_id, peer_ips);
 #else
     throw std::runtime_error("The RDMA flag is not set, can't create RDMARingBufferP2PCommunicator");
 #endif
