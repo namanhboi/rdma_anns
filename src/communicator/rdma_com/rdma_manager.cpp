@@ -25,14 +25,25 @@ inline uint32_t local_log2(const uint32_t x) {
 
 std::pair<std::string, std::string>
 RDMAManager::parse_ip_port(const std::string &ip_port) {
-  std::string ip, port;
+  std::string addr = ip_port;
 
-  size_t colon_id = ip_port.find(":");
-  ip = ip_port.substr(0, colon_id);
-  port = ip_port.substr(colon_id + 1);
-  return std::make_pair(ip, port);
+  // Strip protocol prefix if present (e.g., "tcp://")
+  size_t proto_pos = addr.find("://");
+  if (proto_pos != std::string::npos) {
+    addr = addr.substr(proto_pos + 3);
+  }
+
+  // Split on the LAST ':' to avoid issues
+  size_t colon_pos = addr.rfind(':');
+  if (colon_pos == std::string::npos) {
+    throw std::runtime_error("Invalid address format: " + ip_port);
+  }
+
+  std::string ip = addr.substr(0, colon_pos);
+  std::string port = addr.substr(colon_pos + 1);
+
+  return {ip, port};
 }
-
 RDMAManager::RDMAManager(uint64_t my_id, const std::vector<std::string> &addresses)
 : my_id(my_id), num_servers(addresses.size()) {
   // throw std::runtime_error("Need to address how to handle threads and such");
