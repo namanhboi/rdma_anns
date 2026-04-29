@@ -114,6 +114,13 @@ public:
       // Return -1 to indicate memory is full right now
       return (uint64_t)-1;
     }
+    static bool printed_once = false;
+    if (!printed_once) {
+      std::cout << "Sender targeting remote address: 0x"
+      << std::hex << rem_addr << std::dec
+      << std::endl;
+      printed_once = true;
+    }
     // 3. Write Metadata into local pinned RAM
     // --- PREFIX ---
     *(volatile MAGIC_BYTE_T *)(void *)(slot_base_addr) =
@@ -260,6 +267,13 @@ public:
      of message.
    */
   int Receive(std::vector<Region> &v) {
+    static bool printed_once = false;
+    if (!printed_once) {
+      std::cout << "Receiver polling local address: 0x"
+      << std::hex << (uint64_t)local_buffer->GetReadPtr() << std::dec
+      << std::endl;
+      printed_once = true;
+    }
     MAGIC_BYTE_T completion = *(volatile MAGIC_BYTE_T *)local_buffer->GetReadPtr();
     int c = 0;
 
