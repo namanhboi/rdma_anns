@@ -177,9 +177,12 @@ public:
 
 
   std::pair<VerbsEP *, connect_info *>
-    get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
-                           void *my_info, uint32_t recv_batch,
-                           bool recv_with_data);
+  get_server_ep_and_info(int server_id,
+                         int max_send_size,
+                         int max_recv_size,
+                         void *my_info,
+                         uint32_t recv_batch,
+                         bool recv_with_data);
 
   // return the newly created id and the connect_buffer pointer for the client connection
   struct rdma_cm_id *send_connect_request(const char *ip, const char *port);

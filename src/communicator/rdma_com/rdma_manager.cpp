@@ -7,7 +7,6 @@ static void drain_cq(struct ibv_cq *cq) {
   if (!cq) return;
 
   struct ibv_wc wc[32];
-
   while (true) {
     int n = ibv_poll_cq(cq, 32, wc);
     if (n <= 0) break;
@@ -209,40 +208,45 @@ void RDMAManager::receive_connections(int starting_client_id, int num_clients,
   }
 }
 
-void RDMAManager::send_connections(int starting_server_id, int num_servers,
-                                   int max_send_size, int max_recv_size) {
-  for (uint32_t i = 0; i < static_cast<uint32_t>(num_servers); i++) {
-    // prepare_qp() allocates CQs. Keep it inside this loop so each QP has
-    // private send/recv CQs; otherwise different peers' completions can be
-    // consumed by the wrong SendConnection/ReceiveReceiver.
-    struct ibv_qp_init_attr attr =
-        prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
-    attr.cap.max_send_sge = 1;
-    attr.cap.max_recv_sge = 1;
-
+void RDMAManager::send_connections(int starting_server_id,
+                                   int num_servers,
+                                   int max_send_size,
+                                   int max_recv_size) {
+  for (uint32_t i = 0; i < num_servers; i++) {
     int server_id = starting_server_id + i;
 
     connect_info info = {};
     info.code = 4;
     info.server_id = my_id;
 
-    VerbsEP *ep;
-    connect_info *connect_buffer;
+    VerbsEP *ep = nullptr;
+    connect_info *connect_buffer = nullptr;
+
     std::tie(ep, connect_buffer) =
-        get_server_ep_and_info(server_id, attr, &info, 16, true);
+        get_server_ep_and_info(server_id,
+                               max_send_size,
+                               max_recv_size,
+                               &info,
+                               16,
+                               true);
 
     size_t buffer_size = 2048;
     size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
+
     char *recv_mem = (char *)aligned_alloc(4096, local_recv_size);
     if (!recv_mem) {
       perror("aligned_alloc recv_mem");
       exit(1);
     }
+
     memset(recv_mem, 0, local_recv_size);
 
     struct ibv_mr *recv_mr =
-        ibv_reg_mr(this->getPD(), recv_mem, local_recv_size,
+        ibv_reg_mr(this->getPD(),
+                   recv_mem,
+                   local_recv_size,
                    IBV_ACCESS_LOCAL_WRITE);
+
     if (!recv_mr) {
       perror("ibv_reg_mr recv_mr");
       free(recv_mem);
@@ -253,12 +257,19 @@ void RDMAManager::send_connections(int starting_server_id, int num_servers,
     local_mems.push_back(recv_mem);
 
     receivers[server_id] = std::make_unique<ReceiveReceiver>(
-        ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
+        ep,
+        recv_mem,
+        buffer_size,
+        MAX_SEND_RECV_WR,
+        recv_mr->lkey);
+
     senders[server_id] = std::make_unique<SendConnection>(ep);
     eps[server_id] = ep;
     connect_buffers[server_id] = connect_buffer;
 
-    in_flight_regions[server_id] = std::vector<Region *>(MAX_SEND_RECV_WR, nullptr);
+    in_flight_regions[server_id] =
+        std::vector<Region *>(MAX_SEND_RECV_WR, nullptr);
+
     pending_ack_ids[server_id] = 1;
 
     printf("RDMA active peer=%d qp=%p qp_num=%u send_cq=%p recv_cq=%p recv_mem=%p lkey=0x%x\n",
@@ -271,7 +282,6 @@ void RDMAManager::send_connections(int starting_server_id, int num_servers,
            recv_mr->lkey);
   }
 }
-
 struct rdma_cm_id *RDMAManager::send_connect_request(const char *ip,
                                                      const char *port) {
   struct rdma_cm_id *id = nullptr;
@@ -528,57 +538,125 @@ RDMAManager::get_client_ep_and_info(struct ibv_qp_init_attr attr, void *my_info,
 // }
 
 std::pair<VerbsEP *, connect_info *>
-RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
-                                    void *my_info, uint32_t recv_batch,
+RDMAManager::get_server_ep_and_info(int server_id,
+                                    int max_send_size,
+                                    int max_recv_size,
+                                    void *my_info,
+                                    uint32_t recv_batch,
                                     bool recv_with_data) {
   std::string server_ip = address_list[server_id].first;
   std::string server_port = address_list[server_id].second;
 
   while (true) {
-    // 1. Attempt to resolve route and get an ID
     struct rdma_cm_id *client_cm_id =
         send_connect_request(server_ip.c_str(), server_port.c_str());
 
-    // If address resolution failed, sleep and retry
     if (!client_cm_id) {
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       continue;
     }
 
-    // Use the same PD that owns this manager's MRs. The send buffers and
-    // receive buffers below are registered against this->getPD(), so the QP
-    // must be created against the same PD/lkey namespace.
+    struct rdma_event_channel *temp_channel = client_cm_id->channel;
     struct ibv_pd *pd = this->getPD();
-    if (client_cm_id->verbs != pd->context) {
-      fprintf(stderr,
-              "resolved RDMA device context does not match manager PD context\n");
-      struct rdma_event_channel *bad_channel = client_cm_id->channel;
+
+    if (!pd) {
+      fprintf(stderr, "getPD() returned null\n");
       rdma_destroy_id(client_cm_id);
-      if (bad_channel) rdma_destroy_event_channel(bad_channel);
+      if (temp_channel) {
+        rdma_destroy_event_channel(temp_channel);
+      }
+      exit(1);
+    }
+
+    if (client_cm_id->verbs && client_cm_id->verbs != pd->context) {
+      fprintf(stderr,
+              "RDMA device context mismatch for peer %d\n",
+              server_id);
+
+      rdma_destroy_id(client_cm_id);
+      if (temp_channel) {
+        rdma_destroy_event_channel(temp_channel);
+      }
+
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       continue;
     }
-    uint32_t max_recv_size = attr.cap.max_recv_wr;
-    if (attr.srq) attr.cap.max_recv_wr = 0;
 
-    struct rdma_event_channel *temp_channel = client_cm_id->channel;
+    struct ibv_qp_init_attr attr =
+        prepare_qp(pd, max_send_size, max_recv_size, false);
 
-    // 2. Create the Queue Pair
+    attr.cap.max_send_sge = 1;
+    attr.cap.max_recv_sge = 1;
+
+    struct ibv_cq *send_cq = attr.send_cq;
+    struct ibv_cq *recv_cq = attr.recv_cq;
+
+    auto cleanup_failed_attempt = [&]() {
+      if (client_cm_id) {
+        if (client_cm_id->qp) {
+          rdma_destroy_qp(client_cm_id);
+        }
+
+        rdma_destroy_id(client_cm_id);
+        client_cm_id = nullptr;
+      }
+
+      drain_cq(send_cq);
+      if (recv_cq != send_cq) {
+        drain_cq(recv_cq);
+      }
+
+      if (send_cq) {
+        int ret = ibv_destroy_cq(send_cq);
+        if (ret) {
+          printf("WARNING: failed to destroy failed-attempt send CQ for peer %d: ret=%d errno=%d\n",
+                 server_id,
+                 ret,
+                 errno);
+        }
+        send_cq = nullptr;
+      }
+
+      if (recv_cq && recv_cq != send_cq) {
+        int ret = ibv_destroy_cq(recv_cq);
+        if (ret) {
+          printf("WARNING: failed to destroy failed-attempt recv CQ for peer %d: ret=%d errno=%d\n",
+                 server_id,
+                 ret,
+                 errno);
+        }
+        recv_cq = nullptr;
+      }
+
+      if (temp_channel) {
+        rdma_destroy_event_channel(temp_channel);
+        temp_channel = nullptr;
+      }
+    };
+
+    uint32_t saved_max_recv_size = attr.cap.max_recv_wr;
+    if (attr.srq) {
+      attr.cap.max_recv_wr = 0;
+    }
+
     if (rdma_create_qp(client_cm_id, pd, &attr)) {
-      rdma_destroy_id(client_cm_id);
-      if (temp_channel)rdma_destroy_event_channel(temp_channel);
+      perror("rdma_create_qp active");
+      attr.cap.max_recv_wr = saved_max_recv_size;
+
+      cleanup_failed_attempt();
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       continue;
     }
 
     client_cm_id->context = (void *)(uintptr_t)server_id;
-    attr.cap.max_recv_wr = max_recv_size;
+    attr.cap.max_recv_wr = saved_max_recv_size;
 
-    VerbsEP *ep = new VerbsEP(client_cm_id, attr, recv_batch, recv_with_data);
+    VerbsEP *ep =
+        new VerbsEP(client_cm_id, attr, recv_batch, recv_with_data);
 
-    // 3. Prepare connection parameters
     struct rdma_conn_param conn_param;
     memset(&conn_param, 0, sizeof(conn_param));
+
     conn_param.responder_resources = 16;
     conn_param.initiator_depth = 16;
     conn_param.retry_count = 3;
@@ -586,49 +664,69 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
     conn_param.private_data = my_info;
     conn_param.private_data_len = sizeof(connect_info);
 
-    // 4. Initiate the connection
     if (rdma_connect(client_cm_id, &conn_param)) {
-      // Failed to send the connect request packet
-      delete ep; // Clean up the wrapper and QP
-      rdma_destroy_id(client_cm_id);
-      if (temp_channel)rdma_destroy_event_channel(temp_channel);
+      perror("rdma_connect active");
+
+      delete ep;
+      cleanup_failed_attempt();
+
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       continue;
     }
 
-    // 5. Block until the target responds
-    struct rdma_cm_event *event;
+    struct rdma_cm_event *event = nullptr;
     if (rdma_get_cm_event(client_cm_id->channel, &event)) {
-      perror("rdma_get_cm_event");
-      exit(1); // Genuine OS failure (e.g., file descriptor broken)
-    }
+      perror("rdma_get_cm_event active");
 
-    // 6. THE MAGIC CHECK: Did they accept or reject?
-    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
-      // The target node is not listening yet! (REJECTED or TIMEOUT)
+      delete ep;
+      cleanup_failed_attempt();
 
-      struct rdma_event_channel *temp_channel = client_cm_id->channel;
-      rdma_ack_cm_event(event); // Acknowledge the rejection
-      delete ep;                // Destroy the EP/QP
-
-      rdma_destroy_id(client_cm_id); // Destroy the dead CM ID
-      if (temp_channel) rdma_destroy_event_channel(temp_channel);
-      std::cout << "Waiting for Node " << server_id << " to boot..." << std::endl;
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      continue; // Loop back to the top and try again!
+      continue;
     }
 
-    // 7. SUCCESS! We are connected.
+    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+      enum rdma_cm_event_type ev = event->event;
+      rdma_ack_cm_event(event);
+
+      delete ep;
+      cleanup_failed_attempt();
+
+      std::cout << "Waiting for Node " << server_id
+                << " to boot... event=" << ev << std::endl;
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      continue;
+    }
+
     if (!event->param.conn.private_data_len) {
-      printf("Error did not get data on connect \n");
+      rdma_ack_cm_event(event);
+
+      delete ep;
+      cleanup_failed_attempt();
+
+      fprintf(stderr, "Error: did not get private data on connect to peer %d\n",
+              server_id);
       exit(1);
     }
 
     void *connect_buffer = malloc(event->param.conn.private_data_len);
-    memcpy(connect_buffer, event->param.conn.private_data,
+    if (!connect_buffer) {
+      rdma_ack_cm_event(event);
+
+      delete ep;
+      cleanup_failed_attempt();
+
+      perror("malloc connect_buffer");
+      exit(1);
+    }
+
+    memcpy(connect_buffer,
+           event->param.conn.private_data,
            event->param.conn.private_data_len);
 
     rdma_ack_cm_event(event);
+
     return std::make_pair(ep, (connect_info *)connect_buffer);
   }
 }
@@ -705,11 +803,11 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
 // }
 
 void RDMAManager::cleanup() {
-  int ret = -1;
+  int ret = 0;
 
-  // Software wrappers should not outlive the QPs/CQs they point at.
-  // Their destructors are currently empty, but clearing them first avoids
-  // accidental future use-after-free.
+  // Threads should already be stopped by shutdown_threads().
+  // These wrappers have empty destructors, but clearing them prevents accidental
+  // future use while we tear down QPs/CQs/MRs.
   receivers.clear();
   senders.clear();
 
@@ -717,22 +815,23 @@ void RDMAManager::cleanup() {
     if (eps[i] == nullptr) continue;
 
     struct rdma_cm_id *cm_id = eps[i]->id;
-    struct rdma_event_channel *temp_channel = cm_id->channel;
+    struct rdma_event_channel *channel = cm_id ? cm_id->channel : nullptr;
 
-    struct ibv_qp *qp = eps[i]->qp;
+    struct ibv_qp *qp = cm_id ? cm_id->qp : nullptr;
     struct ibv_cq *send_cq = qp ? qp->send_cq : nullptr;
     struct ibv_cq *recv_cq = qp ? qp->recv_cq : nullptr;
 
-    // Start disconnect. This is asynchronous; do not rely on it to have
-    // fully completed before local object teardown.
-    rdma_disconnect(cm_id);
+    bool active_side = (i > my_id);
 
-    // Destroying the QP may generate flushed completions into the CQs.
-    if (cm_id->qp) {
-      rdma_destroy_qp(cm_id);
+    if (cm_id) {
+      rdma_disconnect(cm_id);
+
+      // Required before rdma_destroy_id().
+      if (cm_id->qp) {
+        rdma_destroy_qp(cm_id);  // returns void
+      }
     }
 
-    // Drain any normal or flushed completions before destroying CQs.
     drain_cq(send_cq);
     if (recv_cq != send_cq) {
       drain_cq(recv_cq);
@@ -741,33 +840,40 @@ void RDMAManager::cleanup() {
     if (send_cq) {
       ret = ibv_destroy_cq(send_cq);
       if (ret) {
-        printf("WARNING: failed to destroy send CQ for peer %d: errno=%d\n",
-               i, errno);
+        printf("WARNING: failed to destroy send CQ for peer %d: ret=%d errno=%d\n",
+               i,
+               ret,
+               errno);
       }
     }
 
     if (recv_cq && recv_cq != send_cq) {
       ret = ibv_destroy_cq(recv_cq);
       if (ret) {
-        printf("WARNING: failed to destroy recv CQ for peer %d: errno=%d\n",
-               i, errno);
+        printf("WARNING: failed to destroy recv CQ for peer %d: ret=%d errno=%d\n",
+               i,
+               ret,
+               errno);
       }
     }
 
-    ret = rdma_destroy_id(cm_id);
-    if (ret) {
-      printf("Failed to destroy client id cleanly for peer %d, errno=%d\n",
-             i, errno);
+    if (cm_id) {
+      ret = rdma_destroy_id(cm_id);
+      if (ret) {
+        printf("Failed to destroy client id cleanly for peer %d: errno=%d\n",
+               i,
+               errno);
+      }
     }
 
-    // Only active outgoing connections created their own event channel.
-    // Passive accepted connections share the manager listener channel.
-    if (i > my_id && temp_channel) {
-      rdma_destroy_event_channel(temp_channel);
+    if (active_side && channel) {
+      rdma_destroy_event_channel(channel);
     }
 
-    free(connect_buffers[i]);
-    connect_buffers[i] = nullptr;
+    if (connect_buffers[i]) {
+      free(connect_buffers[i]);
+      connect_buffers[i] = nullptr;
+    }
 
     delete eps[i];
     eps[i] = nullptr;
@@ -777,10 +883,12 @@ void RDMAManager::cleanup() {
     if (local_mrs[i]) {
       ibv_dereg_mr(local_mrs[i]);
     }
+
     if (local_mems[i]) {
       free(local_mems[i]);
     }
   }
+
   local_mrs.clear();
   local_mems.clear();
 
