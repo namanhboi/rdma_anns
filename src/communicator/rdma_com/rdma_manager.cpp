@@ -151,12 +151,11 @@ void RDMAManager::receive_connections(int starting_client_id, int num_clients,
 
     VerbsEP *ep;
     connect_info *connect_buffer;
-    std::tie(ep, connect_buffer) = get_client_ep_and_info(attr, &info, 16, false);
+    std::tie(ep, connect_buffer) = get_client_ep_and_info(attr, &info, 16, true);
     uint64_t client_id = connect_buffer->server_id;
 
-    // 2. Allocate strictly aligned memory for RECEIVE buffers (No magic rings!)
-    size_t buffer_size = 2048; // Max size per message
-    size_t local_recv_size = buffer_size * 128; // 128 slots
+    size_t buffer_size = 2048;
+    size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
     char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
     memset(recv_mem, 0, local_recv_size);
 
@@ -164,8 +163,9 @@ void RDMAManager::receive_connections(int starting_client_id, int num_clients,
     local_mrs.push_back(recv_mr);
     local_mems.push_back(recv_mem);
 
-    // 3. Bind new classes
-    receivers[client_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, 128, recv_mr->lkey);
+    // Pass the active_recv_slots (112) instead of the hardcoded 128!
+    receivers[client_id] = std::make_unique<ReceiveReceiver>(
+                                                             ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
     senders[client_id] = std::make_unique<SendConnection>(ep);
     eps[client_id] = ep;
     connect_buffers[client_id] = connect_buffer;
@@ -190,11 +190,11 @@ void RDMAManager::send_connections(int starting_server_id, int num_servers,
 
     VerbsEP *ep;
     connect_info *connect_buffer;
-    std::tie(ep, connect_buffer) = get_server_ep_and_info(server_id, attr, &info, 16, false);
+    std::tie(ep, connect_buffer) = get_server_ep_and_info(server_id, attr, &info, 16, true);
 
-    // Allocate memory for RECEIVE buffers (Even senders receive ACKs!)
+
     size_t buffer_size = 2048;
-    size_t local_recv_size = buffer_size * 128;
+    size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
     char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
     memset(recv_mem, 0, local_recv_size);
 
@@ -202,7 +202,8 @@ void RDMAManager::send_connections(int starting_server_id, int num_servers,
     local_mrs.push_back(recv_mr);
     local_mems.push_back(recv_mem);
 
-    receivers[server_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, 128, recv_mr->lkey);
+    // Pass the active_recv_slots (112) instead of the hardcoded 128!
+    receivers[server_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, MAX_SEND_RECV_WR, recv_mr->lkey);
     senders[server_id] = std::make_unique<SendConnection>(ep);
     eps[server_id] = ep;
     connect_buffers[server_id] = connect_buffer;
@@ -911,7 +912,7 @@ void RDMAManager::recv_loop() {
 }
 
 void RDMAManager::send_loop() {
-    // 120 Tokens. Matches the 128 queue depth, leaving 8 slots for ACKs.
+  // 128 slots - 16 VerbsEP - 8 for ACKs = 104 safe tokens
     std::vector<int32_t> can_send(num_servers, 120);
     std::vector<int32_t> acks_in_flight(num_servers, 0);
     std::vector<Region*> stalled_regions(num_servers, nullptr);
