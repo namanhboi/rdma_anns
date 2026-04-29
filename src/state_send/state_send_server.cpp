@@ -43,8 +43,8 @@ public:
                   std::string log_file) {
     communicator = std::make_unique<ZMQP2PCommunicator>(
 							static_cast<uint64_t>(my_partition_id), address_list);
-    communicator = P2PCommunicator::create_communicator(false, my_partition_id, address_list);
-    
+    // communicator = P2PCommunicator::create_communicator(false, my_partition_id, address_list);
+
     reader = std::make_shared<LinuxAlignedFileReader>();
 
     ssd_partition_index = std::make_unique<SSDPartitionIndex<T>>(
