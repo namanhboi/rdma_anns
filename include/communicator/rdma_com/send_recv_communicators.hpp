@@ -130,9 +130,11 @@ public:
         wr.sg_list = &sge;
         wr.num_sge = 1;
 
-        if (ibv_post_recv(ep->qp, &wr, &bad_wr)) {
-            printf("Failed to post recv!\n");
-            exit(1);
+        int ret = ibv_post_recv(ep->qp, &wr, &bad_wr);
+        if (ret) {
+          // THE FIX: Print the exact error code
+          printf("Failed to post recv! Error code: %d\n", ret);
+          exit(1);
         }
     }
 };
