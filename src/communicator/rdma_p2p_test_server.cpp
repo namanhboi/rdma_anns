@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
                                                    region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
 
   communicator.start_recv_thread();
-  int max_in_flight = 512; // Do not allow the app to blast more than 512 messages at once!
+  int max_in_flight = 128; // Do not allow the app to blast more than 512 messages at once!
   std::atomic<int> total_sent{0};
   for (size_t i = 0; i < num_msg; i++) {
     for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
