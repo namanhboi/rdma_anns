@@ -54,10 +54,10 @@ int main(int argc, char **argv) {
 
   // need to make the prealloc queue fuckkkkk mateee
   PreallocatedQueue<Region> prealloc_region_queue(
-                                                  Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset);
+                                                  80000, Region::reset);
   std::pair<char *, uint32_t> ptr_lkey =
       communicator.get_preallocated_region_ptr_lkey(
-                                                    Region::MAX_BYTES_REGION, Region::MAX_PRE_ALLOC_ELEMENTS);
+                                                    Region::MAX_BYTES_REGION, 80000);
   char *region_addr = ptr_lkey.first;
   uint32_t lkey = ptr_lkey.second;
   prealloc_region_queue.assign_additional_block_mr(
