@@ -39,7 +39,7 @@ echo ""
 echo ">>> Phase 0 Complete. Starting Daisy Chain..."
 
 # 2. Phase 1: Daisy Chain to the rest of the nodes
-for i in {1..4}; do
+for i in {1..9}; do
     PREV_NODE="${NODES[$((i-1))]}"
     CURR_NODE="${NODES[$i]}"
 
