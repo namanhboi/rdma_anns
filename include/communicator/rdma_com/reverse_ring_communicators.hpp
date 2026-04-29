@@ -163,7 +163,7 @@ public:
   }
 
   uint64_t SendAckAsync(uint32_t freed_bytes) {
-    std::cout << "sending ack " << std::endl;
+    // std::cout << "sending ack " << std::endl;
     struct ibv_send_wr *bad_wr;
 
     uint32_t slot_index = next_id_ % 128;
