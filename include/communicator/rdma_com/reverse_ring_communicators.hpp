@@ -162,58 +162,59 @@ public:
     return SendAsync(msg_opcode_t::USER_DATA, user_region);
   }
 
-uint64_t SendAckAsync(uint32_t freed_bytes) {
+  uint64_t SendAckAsync(uint32_t freed_bytes) {
+    std::cout << "sending ack " << std::endl;
     struct ibv_send_wr *bad_wr;
 
     uint32_t slot_index = next_id_ % 128;
     uint64_t slot_base_addr = local_mem + (slot_index * 16);
+    uint64_t suffix_addr = slot_base_addr + 8;
 
-    // =================================================================
-    // 1. PACK ALL 11 BYTES CONTIGUOUSLY
-    // =================================================================
-    // Prefix (Magic 0 + Opcode) -> 2 bytes
+    uint32_t prefix_len = sizeof(MAGIC_BYTE_T) + sizeof(msg_opcode_t);
+    uint32_t suffix_len = sizeof(LEN_BYTE_T) + sizeof(MAGIC_BYTE_T);
+
+    // 1. Write Prefix (Opcode 0x02)
     *(volatile MAGIC_BYTE_T*)(void*)(slot_base_addr) = 0;
     *(volatile msg_opcode_t*)(void*)(slot_base_addr + 1) = msg_opcode_t::FREED_BYTES;
 
-    // Payload (Freed Bytes) -> 4 bytes
+    // 2. Write Suffix (Length is fixed at 4 bytes for an ACK)
+    *(volatile LEN_BYTE_T*)(void*)(suffix_addr) = 4;
+    *(volatile MAGIC_BYTE_T*)(void*)(suffix_addr + sizeof(LEN_BYTE_T)) = 1;
+
+    // 3. Write ACK payload directly into the unused metadata space
     *(volatile uint32_t*)(void*)(slot_base_addr + 2) = freed_bytes;
 
-    // Suffix (Length 4 + Magic 1) -> 5 bytes
-    *(volatile LEN_BYTE_T*)(void*)(slot_base_addr + 6) = 4;
-    *(volatile MAGIC_BYTE_T*)(void*)(slot_base_addr + 10) = 1;
-
-    // =================================================================
-    // 2. SETUP A SINGLE SGE
-    // =================================================================
+    // 4. Setup SGEs
     sges[0].addr   = slot_base_addr;
-    sges[0].length = 11; // 2 + 4 + 5 = Exactly 11 bytes footprint
-    sges[0].lkey   = local_mem_lkey; // Safely locked in!
+    sges[0].length = prefix_len;
 
-    wr.num_sge = 1; // THE FIX: Tell the NIC exactly how many SGEs to read
+    // SGE 1 points to our embedded integer
+    sges[1].addr   = slot_base_addr + 2;
+    sges[1].length = 4;
+    sges[1].lkey   = local_mem_lkey;
 
-    // =================================================================
-    // 3. HARDWARE HANDOFF
-    // =================================================================
-    uint32_t ring_allocation = 11 - sizeof(MAGIC_BYTE_T);
+    sges[2].addr   = suffix_addr;
+    sges[2].length = suffix_len;
+
+    // 5. Calculate total wire footprint and apply the OVERLAP HACK
+    uint32_t wire_length = prefix_len + 4 + suffix_len;
+    uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
-
     if (rem_addr == 0) {
-        // Return -1 so send_loop can gracefully try again next time
-        return (uint64_t)-1;
+      throw std::runtime_error("sendack rem_addr = 0");
     }
 
-    wr.wr.rdma.remote_addr = rem_addr + 1; // Keep your brilliant 1-byte shift
+    wr.wr.rdma.remote_addr = rem_addr + 1;
     wr.wr_id = next_id_;
 
-    // Capture the REAL error code just in case!
-    int ret = ibv_post_send(ep->qp, &wr, &bad_wr);
-    if(ret) {
-      printf("CRITICAL: Failed to send ACK. Real error code: %d\n", ret);
+    if(ibv_post_send(ep->qp, &wr, &bad_wr)) {
+      printf("Failed to send ACK %d\n", errno);
       exit(1);
     }
 
     return next_id_++;
   }
+
   bool AckSentBytes(uint32_t bytes) { return remote_buffer->FreeBytes(bytes); }
 
   void WaitSend(uint64_t id) {
