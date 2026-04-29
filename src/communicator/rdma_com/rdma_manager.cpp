@@ -791,5 +791,6 @@ std::pair<char *, uint32_t> RDMAManager::get_preallocated_region_ptr_lkey(size_t
 
 
 RDMAManager::~RDMAManager() {
+  shutdown_threads();
   cleanup();
 }
