@@ -169,34 +169,59 @@ uint64_t SendAckAsync(uint32_t freed_bytes) {
     uint32_t slot_index = next_id_ % 128;
     uint64_t slot_base_addr = local_mem + (slot_index * 16);
 
-    // Pack contiguously to avoid Error 4 hardware alignment fault!
-    char* ptr = (char*)slot_base_addr;
+    // THE FIX: Move the payload to a 4-byte aligned boundary!
+    uint64_t payload_addr   = slot_base_addr + 4;
+    uint64_t suffix_addr    = slot_base_addr + 8;
 
-    *(volatile MAGIC_BYTE_T*)ptr = 0; ptr += 1;
-    *(volatile uint8_t*)ptr = (uint8_t)msg_opcode_t::FREED_BYTES; ptr += 1;
-    *(volatile uint32_t*)ptr = freed_bytes; ptr += 4;
-    *(volatile LEN_BYTE_T*)ptr = 4; ptr += 4;
-    *(volatile MAGIC_BYTE_T*)ptr = 1; ptr += 1;
+    uint32_t prefix_len = sizeof(MAGIC_BYTE_T) + sizeof(msg_opcode_t);
+    uint32_t suffix_len = sizeof(LEN_BYTE_T) + sizeof(MAGIC_BYTE_T);
 
-    uint32_t wire_length = 11;
+    // 1. Write Prefix (at +0)
+    *(volatile MAGIC_BYTE_T*)(void*)(slot_base_addr) = 0;
+    *(volatile msg_opcode_t*)(void*)(slot_base_addr + 1) = msg_opcode_t::FREED_BYTES;
 
+    // 2. Write Payload (at +4, perfectly aligned!)
+    *(volatile uint32_t*)(void*)(payload_addr) = freed_bytes;
+
+    // 3. Write Suffix (at +8)
+    *(volatile LEN_BYTE_T*)(void*)(suffix_addr) = 4;
+    *(volatile MAGIC_BYTE_T*)(void*)(suffix_addr + sizeof(LEN_BYTE_T)) = 1;
+
+    // 4. Setup SGEs
     sges[0].addr   = slot_base_addr;
-    sges[0].length = wire_length;
+    sges[0].length = prefix_len;
     sges[0].lkey   = local_mem_lkey;
-    wr.num_sge = 1;
 
-    uint32_t ring_allocation = wire_length - 1; // Overlap hack!
+    sges[1].addr   = payload_addr; // NIC is happy, no more Error 4!
+    sges[1].length = 4;
+    sges[1].lkey   = local_mem_lkey;
+
+    sges[2].addr   = suffix_addr;
+    sges[2].length = suffix_len;
+    sges[2].lkey   = local_mem_lkey;
+
+    wr.num_sge = 3;
+
+    // 5. Hardware Handoff
+    uint32_t wire_length = prefix_len + 4 + suffix_len;
+    uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
 
-    if (rem_addr == 0) return (uint64_t)-1; // Safe yield
+    if (rem_addr == 0) {
+        return (uint64_t)-1; // Safe yield
+    }
 
     wr.wr.rdma.remote_addr = rem_addr + 1;
     wr.wr_id = next_id_;
 
-    if(ibv_post_send(ep->qp, &wr, &bad_wr)) exit(1);
+    if(ibv_post_send(ep->qp, &wr, &bad_wr)) {
+      printf("Failed to send ACK %d\n", errno);
+      exit(1);
+    }
 
     return next_id_++;
-  }
+}
+
   bool AckSentBytes(uint32_t bytes) { return remote_buffer->FreeBytes(bytes); }
 
   void WaitSend(uint64_t id) {
@@ -263,11 +288,10 @@ public:
       << std::endl;
       printed_once = true;
     }
-    volatile MAGIC_BYTE_T* comp_ptr = (volatile MAGIC_BYTE_T *)local_buffer->GetReadPtr();
-    MAGIC_BYTE_T completion = *comp_ptr;
+    MAGIC_BYTE_T completion = *(volatile MAGIC_BYTE_T *)local_buffer->GetReadPtr();
     int c = 0;
+
     while (completion) {
-      *comp_ptr = 0;
       // 1. Read the payload length
       LEN_BYTE_T length = *(volatile LEN_BYTE_T *)local_buffer->Read(sizeof(LEN_BYTE_T));
 
