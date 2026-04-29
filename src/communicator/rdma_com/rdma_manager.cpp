@@ -2,7 +2,7 @@
 #include "rdma_com/consts.hpp"
 #include "rdma_com/reverse_ring_communicators.hpp"
 #include <infiniband/verbs.h>
-
+#include <chrono>
 static void drain_cq(struct ibv_cq *cq) {
   if (!cq) return;
 
@@ -1110,101 +1110,147 @@ void RDMAManager::recv_loop() {
 }
 
 void RDMAManager::send_loop() {
-    // Keep the data window safely below the receive queue depth because ACKs
-    // also consume receive WQEs. This also prevents wr_id % MAX_SEND_RECV_WR slot reuse while
-    // older sends are still in flight.
-    constexpr int32_t ACK_SEND_RESERVE = 8;
-    constexpr int32_t RECV_CONTROL_RESERVE = 24;
-    constexpr int32_t DATA_CREDIT_LIMIT =
-        MAX_SEND_RECV_WR - ACK_SEND_RESERVE - RECV_CONTROL_RESERVE;
+  constexpr int32_t ACK_SEND_RESERVE = 8;
+  constexpr int32_t RECV_CONTROL_RESERVE = 24;
+  constexpr int32_t DATA_CREDIT_LIMIT =
+      MAX_SEND_RECV_WR - ACK_SEND_RESERVE - RECV_CONTROL_RESERVE;
 
-    std::vector<int32_t> can_send(num_servers, DATA_CREDIT_LIMIT);
-    std::vector<int32_t> acks_in_flight(num_servers, 0);
-    std::vector<Region*> stalled_regions(num_servers, nullptr);
+  static_assert(DATA_CREDIT_LIMIT > 0,
+                "DATA_CREDIT_LIMIT must be positive");
 
-    // ACK less aggressively than every 4 messages so ACK traffic does not eat
-    // too many remote receive WQEs under full-duplex traffic.
-    const uint32_t ACK_THRESHOLD = 16;
+  // ACK less aggressively than every 4 messages so ACK traffic does not eat
+  // too many remote receive WQEs under full-duplex traffic.
+  const uint32_t ACK_THRESHOLD = 16;
 
-    while (this->running) {
-        for (int i = 0; i < num_servers; i++) {
-            if (!senders[i]) continue;
+  // Fallback: do not strand a small number of credits forever at the end of
+  // a burst. If fewer than ACK_THRESHOLD credits are pending, flush them after
+  // this interval.
+  using Clock = std::chrono::steady_clock;
+  const auto ACK_FLUSH_INTERVAL = std::chrono::microseconds(100);
 
-            // =================================================================
-            // 0. READ INCOMING CREDITS
-            // =================================================================
-            uint32_t new_credits = incoming_credits[i].exchange(0, std::memory_order_relaxed);
-            if (new_credits > 0) {
-                can_send[i] += static_cast<int32_t>(new_credits);
-                if (can_send[i] > DATA_CREDIT_LIMIT) {
-                    can_send[i] = DATA_CREDIT_LIMIT;
-                }
-            }
+  std::vector<int32_t> can_send(num_servers, DATA_CREDIT_LIMIT);
+  std::vector<int32_t> acks_in_flight(num_servers, 0);
+  std::vector<Region *> stalled_regions(num_servers, nullptr);
+  std::vector<Clock::time_point> last_ack_flush(num_servers, Clock::now());
 
-            // =================================================================
-            // 1. SEND PENDING FLOW-CONTROL ACKs
-            // =================================================================
-            uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
+  while (this->running) {
+    for (int i = 0; i < num_servers; i++) {
+      if (!senders[i]) continue;
 
-            if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < ACK_SEND_RESERVE) {
-              uint32_t credits_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
-              uint64_t ack_id = senders[i]->SendAckAsync(credits_to_ack);
+      // =================================================================
+      // 0. READ INCOMING CREDITS
+      // =================================================================
+      // These are credits sent by peer i telling us that peer i has freed
+      // receive slots, so we may send more DATA messages to peer i.
+      uint32_t new_credits =
+          incoming_credits[i].exchange(0, std::memory_order_relaxed);
 
-              if (ack_id == (uint64_t)-1) {
-                pending_freed_bytes[i].fetch_add(credits_to_ack, std::memory_order_relaxed);
-              } else {
-                in_flight_regions[i][ack_id % MAX_SEND_RECV_WR] = nullptr;
-                acks_in_flight[i]++;
-              }
-            }
+      if (new_credits > 0) {
+        can_send[i] += static_cast<int32_t>(new_credits);
 
-            // =================================================================
-            // 2. RECYCLE HARDWARE SLOTS & GARBAGE COLLECTION
-            // =================================================================
-            while (senders[i]->TestSend(pending_ack_ids[i])) {
-                Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR];
-
-                if (completed_region != nullptr) {
-                    // Data credits are returned only by remote ACKs, not by local
-                    // send completion. Local completion only means DMA from this
-                    // host's memory is done, so the Region can be recycled.
-                    Region::delete_addr(completed_region->addr, (void *)completed_region);
-                    in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR] = nullptr;
-                } else {
-                    if (acks_in_flight[i] > 0) {
-                        acks_in_flight[i]--;
-                    }
-                }
-                pending_ack_ids[i]++;
-            }
-
-            // =================================================================
-            // 3. TRANSMIT USER DATA
-            // =================================================================
-            while (can_send[i] > 0) {
-                Region* target_region = stalled_regions[i];
-
-                if (target_region == nullptr) {
-                    if (!outgoing_queues[i].try_dequeue(target_region)) {
-                        break;
-                    }
-                }
-
-                uint64_t msg_id = senders[i]->SendAsync(target_region);
-
-                if (msg_id == (uint64_t)-1) {
-                    stalled_regions[i] = target_region;
-                    break;
-                }
-
-                stalled_regions[i] = nullptr;
-                in_flight_regions[i][msg_id % MAX_SEND_RECV_WR] = target_region;
-                can_send[i]--;
-            }
+        // Never allow data sends to consume the peer's entire receive queue.
+        if (can_send[i] > DATA_CREDIT_LIMIT) {
+          can_send[i] = DATA_CREDIT_LIMIT;
         }
-    }
-}
+      }
 
+      // =================================================================
+      // 1. RECYCLE COMPLETED SENDS
+      // =================================================================
+      // This frees local Region buffers after DATA send completion and also
+      // frees ACK in-flight slots after ACK send completion.
+      while (senders[i]->TestSend(pending_ack_ids[i])) {
+        Region *completed_region =
+            in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR];
+
+        if (completed_region != nullptr) {
+          // DATA send completed locally. This only means the NIC is done with
+          // the local buffer; it does NOT mean the remote app processed it.
+          Region::delete_addr(completed_region->addr,
+                              reinterpret_cast<void *>(completed_region));
+
+          in_flight_regions[i][pending_ack_ids[i] % MAX_SEND_RECV_WR] =
+              nullptr;
+        } else {
+          // ACK send completed.
+          if (acks_in_flight[i] > 0) {
+            acks_in_flight[i]--;
+          }
+        }
+
+        pending_ack_ids[i]++;
+      }
+
+      // =================================================================
+      // 2. SEND PENDING FLOW-CONTROL ACKs
+      // =================================================================
+      // These are credits we send to peer i, telling peer i that we processed
+      // messages from it and freed our receive slots.
+      uint32_t current_freed =
+          pending_freed_bytes[i].load(std::memory_order_relaxed);
+
+      auto now = Clock::now();
+
+      bool threshold_ready = current_freed >= ACK_THRESHOLD;
+      bool timeout_ready =
+          current_freed > 0 &&
+          (now - last_ack_flush[i]) >= ACK_FLUSH_INTERVAL;
+
+      if ((threshold_ready || timeout_ready) &&
+          acks_in_flight[i] < ACK_SEND_RESERVE) {
+        uint32_t credits_to_ack =
+            pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+
+        if (credits_to_ack > 0) {
+          uint64_t ack_id = senders[i]->SendAckAsync(credits_to_ack);
+
+          if (ack_id == static_cast<uint64_t>(-1)) {
+            // Could not post the ACK. Put the credits back and retry later.
+            pending_freed_bytes[i].fetch_add(credits_to_ack,
+                                             std::memory_order_relaxed);
+          } else {
+            // nullptr means this WR ID belongs to an ACK, not a DATA Region.
+            in_flight_regions[i][ack_id % MAX_SEND_RECV_WR] = nullptr;
+            acks_in_flight[i]++;
+            last_ack_flush[i] = now;
+
+            // Optional debug:
+            // std::cout << "Fired an ACK for " << credits_to_ack
+            //           << " credits back to Sender!" << std::endl;
+          }
+        }
+      }
+
+      // =================================================================
+      // 3. TRANSMIT USER DATA
+      // =================================================================
+      // DATA sends are controlled only by remote credits. Local send completion
+      // does not replenish can_send[i].
+      while (can_send[i] > 0) {
+        Region *target_region = stalled_regions[i];
+
+        if (target_region == nullptr) {
+          if (!outgoing_queues[i].try_dequeue(target_region)) {
+            break;
+          }
+        }
+
+        uint64_t msg_id = senders[i]->SendAsync(target_region);
+
+        if (msg_id == static_cast<uint64_t>(-1)) {
+          // Send queue is temporarily full. Keep this exact Region and retry
+          // later instead of dequeuing another one.
+          stalled_regions[i] = target_region;
+          break;
+        }
+
+        stalled_regions[i] = nullptr;
+        in_flight_regions[i][msg_id % MAX_SEND_RECV_WR] = target_region;
+        can_send[i]--;
+      }
+    }
+  }
+}
 void RDMAManager::start_send_recv_threads() {
   running = true;
   send_thread = std::thread(&RDMAManager::send_loop, this);
