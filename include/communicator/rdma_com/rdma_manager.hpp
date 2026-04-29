@@ -10,7 +10,7 @@
 #include "VerbsEP.hpp"
 #include "concurrentqueue.h"
 #include "ring.hpp"
-#include "reverse_ring_communicators.hpp"
+#include "send_recv_communicators.hpp"
 #include "consts.hpp"
 #include "utils.hpp"
 #include "reverse_ring.hpp"
@@ -50,10 +50,7 @@ class RDMAManager {
   std::vector<connect_info *>
     connect_buffers; // contain init messages from client when they connect
 
-  std::vector<std::unique_ptr<CircularReverseReceiver>>
-    receivers; // for each client, we need a ring buffer for receiving data
-  std::vector<std::unique_ptr<CircularConnectionReverse>>
-    senders; // for each client, we need a ring buffer for sending data
+
 
   std::vector<struct ibv_mr *> local_mrs; // used for misc stuff, tracked because we need to free it
   std::vector<char*> local_mems;
@@ -64,8 +61,17 @@ class RDMAManager {
   size_t num_servers; // including your own
 
 private:
+  // std::vector<std::unique_ptr<CircularReverseReceiver>>
+  //   receivers; // for each client, we need a ring buffer for receiving data
+  // std::vector<std::unique_ptr<CircularConnectionReverse>>
+  //   senders; // for each client, we need a ring buffer for sending data
+
+
+  std::vector<std::unique_ptr<ReceiveReceiver>> receivers;
+  std::vector<std::unique_ptr<SendConnection>> senders;
   recv_handler_t handler;
   std::unique_ptr<std::atomic<uint32_t>[]> pending_freed_bytes;
+  std::unique_ptr<std::atomic<uint32_t>[]> incoming_credits;
   std::vector<uint64_t> pending_ack_ids;
   std::vector<moodycamel::ConcurrentQueue<Region *>> outgoing_queues;
 

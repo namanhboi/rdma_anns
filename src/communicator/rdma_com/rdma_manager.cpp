@@ -81,33 +81,134 @@ void RDMAManager::bind_server(const char *ip, const char *port) {
   }
 }
 
+// old reverse ring buffer
+// void RDMAManager::connect_to_all_servers() {
+//   eps.resize(num_servers);
+//   eps[my_id] = nullptr;
+
+//   receivers.resize(num_servers);
+//   receivers[my_id] = nullptr;
+
+//   senders.resize(num_servers);
+//   senders[my_id] = nullptr;
+
+//   connect_buffers.resize(num_servers);
+//   connect_buffers[my_id] = nullptr;
+
+//   in_flight_regions.resize(num_servers);
+//   pending_ack_ids.resize(num_servers);
+
+//   // Replace pending_freed_bytes.resize(num_servers) with this:
+//   pending_freed_bytes.reset(new std::atomic<uint32_t>[num_servers]);
+//   for (size_t i = 0; i < num_servers; i++) {
+//     pending_freed_bytes[i].store(0, std::memory_order_relaxed);
+//   }
+//   if (my_id != 0) {
+//     receive_connections(0, my_id, MAX_SEND_RECV_WR, MAX_SEND_RECV_WR);
+//   }
+//   if (my_id != num_servers - 1) {
+//     send_connections(my_id + 1, num_servers - my_id - 1, MAX_SEND_RECV_WR,
+//                      MAX_SEND_RECV_WR);
+//   }
+// }
+
 void RDMAManager::connect_to_all_servers() {
   eps.resize(num_servers);
-  eps[my_id] = nullptr;
-
   receivers.resize(num_servers);
-  receivers[my_id] = nullptr;
-
   senders.resize(num_servers);
-  senders[my_id] = nullptr;
-
   connect_buffers.resize(num_servers);
-  connect_buffers[my_id] = nullptr;
-
   in_flight_regions.resize(num_servers);
   pending_ack_ids.resize(num_servers);
 
-  // Replace pending_freed_bytes.resize(num_servers) with this:
   pending_freed_bytes.reset(new std::atomic<uint32_t>[num_servers]);
+  incoming_credits.reset(new std::atomic<uint32_t>[num_servers]); // ADDED
+
   for (size_t i = 0; i < num_servers; i++) {
     pending_freed_bytes[i].store(0, std::memory_order_relaxed);
+    incoming_credits[i].store(0, std::memory_order_relaxed); // ADDED
   }
+
   if (my_id != 0) {
     receive_connections(0, my_id, MAX_SEND_RECV_WR, MAX_SEND_RECV_WR);
   }
   if (my_id != num_servers - 1) {
     send_connections(my_id + 1, num_servers - my_id - 1, MAX_SEND_RECV_WR,
                      MAX_SEND_RECV_WR);
+  }
+}
+
+void RDMAManager::receive_connections(int starting_client_id, int num_clients,
+                                      int max_send_size, int max_recv_size) {
+  struct ibv_qp_init_attr attr = prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+  attr.cap.max_send_sge = 1; // Only need 1 now!
+  attr.cap.max_recv_sge = 1;
+
+  for (uint32_t i = 0; i < num_clients; i++) {
+    // 1. Setup Connection
+    connect_info info = {};
+    info.code = 4;
+    info.server_id = my_id;
+
+    VerbsEP *ep;
+    connect_info *connect_buffer;
+    std::tie(ep, connect_buffer) = get_client_ep_and_info(attr, &info, 16, false);
+    uint64_t client_id = connect_buffer->server_id;
+
+    // 2. Allocate strictly aligned memory for RECEIVE buffers (No magic rings!)
+    size_t buffer_size = 2048; // Max size per message
+    size_t local_recv_size = buffer_size * 128; // 128 slots
+    char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    memset(recv_mem, 0, local_recv_size);
+
+    struct ibv_mr* recv_mr = ibv_reg_mr(this->getPD(), recv_mem, local_recv_size, IBV_ACCESS_LOCAL_WRITE);
+    local_mrs.push_back(recv_mr);
+    local_mems.push_back(recv_mem);
+
+    // 3. Bind new classes
+    receivers[client_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, 128, recv_mr->lkey);
+    senders[client_id] = std::make_unique<SendConnection>(ep);
+    eps[client_id] = ep;
+    connect_buffers[client_id] = connect_buffer;
+
+    in_flight_regions[client_id] = std::vector<Region*>(128, nullptr);
+    pending_ack_ids[client_id] = 1;
+  }
+}
+
+void RDMAManager::send_connections(int starting_server_id, int num_servers,
+                                   int max_send_size, int max_recv_size) {
+  struct ibv_qp_init_attr attr = prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+  attr.cap.max_send_sge = 1;
+  attr.cap.max_recv_sge = 1;
+
+  for (uint32_t i = 0; i < num_servers; i++) {
+    int server_id = starting_server_id + i;
+
+    connect_info info = {};
+    info.code = 4;
+    info.server_id = my_id;
+
+    VerbsEP *ep;
+    connect_info *connect_buffer;
+    std::tie(ep, connect_buffer) = get_server_ep_and_info(server_id, attr, &info, 16, false);
+
+    // Allocate memory for RECEIVE buffers (Even senders receive ACKs!)
+    size_t buffer_size = 2048;
+    size_t local_recv_size = buffer_size * 128;
+    char* recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    memset(recv_mem, 0, local_recv_size);
+
+    struct ibv_mr* recv_mr = ibv_reg_mr(this->getPD(), recv_mem, local_recv_size, IBV_ACCESS_LOCAL_WRITE);
+    local_mrs.push_back(recv_mr);
+    local_mems.push_back(recv_mem);
+
+    receivers[server_id] = std::make_unique<ReceiveReceiver>(ep, recv_mem, buffer_size, 128, recv_mr->lkey);
+    senders[server_id] = std::make_unique<SendConnection>(ep);
+    eps[server_id] = ep;
+    connect_buffers[server_id] = connect_buffer;
+
+    in_flight_regions[server_id] = std::vector<Region*>(128, nullptr);
+    pending_ack_ids[server_id] = 1;
   }
 }
 
@@ -277,7 +378,7 @@ RDMAManager::get_client_ep_and_info(struct ibv_qp_init_attr attr, void *my_info,
   conn_param.responder_resources = 16;
   conn_param.initiator_depth = 16;
   conn_param.retry_count = 3;
-  conn_param.rnr_retry_count = 3;
+  conn_param.rnr_retry_count = 7;
   conn_param.private_data = my_info;
   conn_param.private_data_len = sizeof(connect_info); // Safe limit
 
@@ -291,80 +392,80 @@ RDMAManager::get_client_ep_and_info(struct ibv_qp_init_attr attr, void *my_info,
                         (connect_info *)buf);
 }
 
-void RDMAManager::receive_connections(int starting_client_id, int num_clients,
-                                      int max_send_size, int max_recv_size) {
-  struct ibv_qp_init_attr attr =
-    prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
-  attr.cap.max_send_sge = 3; // this has to be 3 for the ring buffer impl we are using
+// void RDMAManager::receive_connections(int starting_client_id, int num_clients,
+//                                       int max_send_size, int max_recv_size) {
+//   struct ibv_qp_init_attr attr =
+//     prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+//   attr.cap.max_send_sge = 3; // this has to be 3 for the ring buffer impl we are using
 
-  // 2048 because of the size of each slot for each client (16) * the number of
-  // slows allowed on hw (128)
-  size_t mem2_size = 2048 * num_clients;
+//   // 2048 because of the size of each slot for each client (16) * the number of
+//   // slows allowed on hw (128)
+//   size_t mem2_size = 2048 * num_clients;
 
-  // 2. aligned_alloc strict size constraint
-  size_t alloc_size = ((mem2_size + 4095) / 4096) * 4096;
-  if (alloc_size == 0) alloc_size = 4096;
+//   // 2. aligned_alloc strict size constraint
+//   size_t alloc_size = ((mem2_size + 4095) / 4096) * 4096;
+//   if (alloc_size == 0) alloc_size = 4096;
 
-  char *mem2 = (char *)aligned_alloc(4096, alloc_size);
-  memset(mem2, 0, alloc_size);
+//   char *mem2 = (char *)aligned_alloc(4096, alloc_size);
+//   memset(mem2, 0, alloc_size);
 
-  struct ibv_mr *mr2 =
-      ibv_reg_mr(this->getPD(), mem2, alloc_size,
-                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                 IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+//   struct ibv_mr *mr2 =
+//       ibv_reg_mr(this->getPD(), mem2, alloc_size,
+//                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+//                  IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
 
-  local_mrs.push_back(mr2);
-  local_mems.push_back(mem2);
-  for (uint32_t i = 0; i < num_clients; i++) {
-    char *mem = (char *)GetMagicBuffer(RING_BUFFER_SIZE);
-    struct ibv_mr *mr =
-        ibv_reg_mr(this->getPD(), mem, RING_BUFFER_SIZE * 2,
-                   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                       IBV_ACCESS_REMOTE_READ);
+//   local_mrs.push_back(mr2);
+//   local_mems.push_back(mem2);
+//   for (uint32_t i = 0; i < num_clients; i++) {
+//     char *mem = (char *)GetMagicBuffer(RING_BUFFER_SIZE);
+//     struct ibv_mr *mr =
+//         ibv_reg_mr(this->getPD(), mem, RING_BUFFER_SIZE * 2,
+//                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+//                        IBV_ACCESS_REMOTE_READ);
 
-    printf("MagicBuffer at %p and it repeats at %p\n", mem,
-           mem + RING_BUFFER_SIZE);
+//     printf("MagicBuffer at %p and it repeats at %p\n", mem,
+//            mem + RING_BUFFER_SIZE);
 
-    Buffer *lb = new ReverseRingBuffer(mr, local_log2(RING_BUFFER_SIZE));
-    BufferContext bc = lb->GetContext();
+//     Buffer *lb = new ReverseRingBuffer(mr, local_log2(RING_BUFFER_SIZE));
+//     BufferContext bc = lb->GetContext();
 
-    // 2. Zero-initialize the struct to prevent stack garbage leaks
-    connect_info info = {};
-    info.code = 4;
-    info.ctx = bc;
-    info.rkey_magic = mr2->rkey;
-    info.server_id = my_id;
+//     // 2. Zero-initialize the struct to prevent stack garbage leaks
+//     connect_info info = {};
+//     info.code = 4;
+//     info.ctx = bc;
+//     info.rkey_magic = mr2->rkey;
+//     info.server_id = my_id;
 
-    // 3. Offset the remote doorbell address for this specific client
-    uint64_t base_addr = (uint64_t)mr2->addr;
-    info.addr_magic = base_addr + (i * 2048);
-    info.addr_magic2 = info.addr_magic;
+//     // 3. Offset the remote doorbell address for this specific client
+//     uint64_t base_addr = (uint64_t)mr2->addr;
+//     info.addr_magic = base_addr + (i * 2048);
+//     info.addr_magic2 = info.addr_magic;
 
-    VerbsEP *ep;
-    connect_info *connect_buffer;
-    std::tie(ep, connect_buffer) =
-        get_client_ep_and_info(attr, &info, 16, false);
+//     VerbsEP *ep;
+//     connect_info *connect_buffer;
+//     std::tie(ep, connect_buffer) =
+//         get_client_ep_and_info(attr, &info, 16, false);
 
-    info = *connect_buffer;
-    uint64_t client_id = connect_buffer->server_id;
+//     info = *connect_buffer;
+//     uint64_t client_id = connect_buffer->server_id;
 
-    RemoteBuffer *rb = new ReverseRemoteBuffer(info.ctx);
+//     RemoteBuffer *rb = new ReverseRemoteBuffer(info.ctx);
 
-    // 4. Offset the local staging memory for the SGE metadata
-    uint64_t local_mem = base_addr + (i * 2048);
-    uint32_t local_mem_lkey = mr2->lkey;
+//     // 4. Offset the local staging memory for the SGE metadata
+//     uint64_t local_mem = base_addr + (i * 2048);
+//     uint32_t local_mem_lkey = mr2->lkey;
 
-    receivers[client_id] = std::make_unique<CircularReverseReceiver>(lb);
-    senders[client_id] = std::make_unique<CircularConnectionReverse>(
-        ep, rb, local_mem, local_mem_lkey);
-    eps[client_id] = ep;
-    connect_buffers[client_id] = connect_buffer;
+//     receivers[client_id] = std::make_unique<CircularReverseReceiver>(lb);
+//     senders[client_id] = std::make_unique<CircularConnectionReverse>(
+//         ep, rb, local_mem, local_mem_lkey);
+//     eps[client_id] = ep;
+//     connect_buffers[client_id] = connect_buffer;
 
-    in_flight_regions[client_id] = std::vector<Region*>(128, nullptr); // 128 slots
-    pending_ack_ids[client_id] = 1;                                    // Matches next_id_
-    pending_freed_bytes[client_id].store(0, std::memory_order_relaxed); // Zero out counter
-  }
-}
+//     in_flight_regions[client_id] = std::vector<Region*>(128, nullptr); // 128 slots
+//     pending_ack_ids[client_id] = 1;                                    // Matches next_id_
+//     pending_freed_bytes[client_id].store(0, std::memory_order_relaxed); // Zero out counter
+//   }
+// }
 
 std::pair<VerbsEP *, connect_info *>
 RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
@@ -409,7 +510,7 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
     conn_param.responder_resources = 16;
     conn_param.initiator_depth = 16;
     conn_param.retry_count = 3;
-    conn_param.rnr_retry_count = 3;
+    conn_param.rnr_retry_count = 7;
     conn_param.private_data = my_info;
     conn_param.private_data_len = sizeof(connect_info);
 
@@ -459,77 +560,77 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
     return std::make_pair(ep, (connect_info *)connect_buffer);
   }
 }
-void RDMAManager::send_connections(int starting_server_id, int num_servers,
-                                   int max_send_size, int max_recv_size) {
-  struct ibv_qp_init_attr attr =
-    prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
-  attr.cap.max_send_sge = 3; // has to be 3 for the ring buffer impl
+// void RDMAManager::send_connections(int starting_server_id, int num_servers,
+//                                    int max_send_size, int max_recv_size) {
+//   struct ibv_qp_init_attr attr =
+//     prepare_qp(this->getPD(), max_send_size, max_recv_size, false);
+//   attr.cap.max_send_sge = 3; // has to be 3 for the ring buffer impl
 
-  size_t mem2_size = 2048 * num_servers;
+//   size_t mem2_size = 2048 * num_servers;
 
-  // 2. aligned_alloc strictly requires size to be a multiple of alignment
-  size_t alloc_size = ((mem2_size + 4095) / 4096) * 4096;
-  if (alloc_size == 0) alloc_size = 4096; // Guard against 0 servers
+//   // 2. aligned_alloc strictly requires size to be a multiple of alignment
+//   size_t alloc_size = ((mem2_size + 4095) / 4096) * 4096;
+//   if (alloc_size == 0) alloc_size = 4096; // Guard against 0 servers
 
-  char *mem2 = (char *)aligned_alloc(4096, alloc_size);
-  memset(mem2, 0, alloc_size);
+//   char *mem2 = (char *)aligned_alloc(4096, alloc_size);
+//   memset(mem2, 0, alloc_size);
 
-  struct ibv_mr *mr2 =
-      ibv_reg_mr(this->getPD(), mem2, alloc_size,
-                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                 IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
-  local_mrs.push_back(mr2);
-  local_mems.push_back(mem2);
-  for (uint32_t i = 0; i < num_servers; i++) {
-    int server_id = starting_server_id + i;
-    std::string server_ip = address_list[server_id].first,
-                server_port = address_list[server_id].second;
+//   struct ibv_mr *mr2 =
+//       ibv_reg_mr(this->getPD(), mem2, alloc_size,
+//                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+//                  IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+//   local_mrs.push_back(mr2);
+//   local_mems.push_back(mem2);
+//   for (uint32_t i = 0; i < num_servers; i++) {
+//     int server_id = starting_server_id + i;
+//     std::string server_ip = address_list[server_id].first,
+//                 server_port = address_list[server_id].second;
 
-    // this->send_connect_request(server_ip.c_str(), server_port.c_str());
+//     // this->send_connect_request(server_ip.c_str(), server_port.c_str());
 
-    char *mem = (char *)GetMagicBuffer(RING_BUFFER_SIZE);
-    struct ibv_mr *mr =
-        ibv_reg_mr(this->getPD(), mem, RING_BUFFER_SIZE * 2,
-                   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                       IBV_ACCESS_REMOTE_READ);
-    printf("MagicBuffer at %p and it repeats at %p\n", mem,
-           mem + RING_BUFFER_SIZE);
-    Buffer *lb = new ReverseRingBuffer(mr, local_log2(RING_BUFFER_SIZE));
-    BufferContext bc = lb->GetContext();
+//     char *mem = (char *)GetMagicBuffer(RING_BUFFER_SIZE);
+//     struct ibv_mr *mr =
+//         ibv_reg_mr(this->getPD(), mem, RING_BUFFER_SIZE * 2,
+//                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+//                        IBV_ACCESS_REMOTE_READ);
+//     printf("MagicBuffer at %p and it repeats at %p\n", mem,
+//            mem + RING_BUFFER_SIZE);
+//     Buffer *lb = new ReverseRingBuffer(mr, local_log2(RING_BUFFER_SIZE));
+//     BufferContext bc = lb->GetContext();
 
-    connect_info info = {};
-    info.code = 4;
-    info.ctx = bc;
-    info.rkey_magic = mr2->rkey;
-    info.server_id = my_id;
+//     connect_info info = {};
+//     info.code = 4;
+//     info.ctx = bc;
+//     info.rkey_magic = mr2->rkey;
+//     info.server_id = my_id;
 
-    uint64_t base_addr = (uint64_t)mr2->addr;
-    info.addr_magic = base_addr + (i * 2048);
-    info.addr_magic2 = info.addr_magic;
+//     uint64_t base_addr = (uint64_t)mr2->addr;
+//     info.addr_magic = base_addr + (i * 2048);
+//     info.addr_magic2 = info.addr_magic;
 
-    VerbsEP *ep;
-    connect_info *connect_buffer;
+//     VerbsEP *ep;
+//     connect_info *connect_buffer;
 
-    std::tie(ep, connect_buffer) =
-        get_server_ep_and_info(server_id, attr, &info, 16, false);
+//     std::tie(ep, connect_buffer) =
+//         get_server_ep_and_info(server_id, attr, &info, 16, false);
 
-    info = *(connect_info *)connect_buffer;
+//     info = *(connect_info *)connect_buffer;
 
-    RemoteBuffer *rb = new ReverseRemoteBuffer(info.ctx);
-    uint64_t local_mem = base_addr + (i * 2048);
-    uint32_t local_mem_lkey = mr2->lkey;
+//     RemoteBuffer *rb = new ReverseRemoteBuffer(info.ctx);
+//     uint64_t local_mem = base_addr + (i * 2048);
+//     uint32_t local_mem_lkey = mr2->lkey;
 
-    receivers[server_id] = (std::make_unique<CircularReverseReceiver>(lb));
-    senders[server_id] = std::make_unique<CircularConnectionReverse>(
-        ep, rb, local_mem, local_mem_lkey);
-    eps[server_id] = ep;
-    connect_buffers[server_id] = connect_buffer;
+//     receivers[server_id] = (std::make_unique<CircularReverseReceiver>(lb));
+//     senders[server_id] = std::make_unique<CircularConnectionReverse>(
+//         ep, rb, local_mem, local_mem_lkey);
+//     eps[server_id] = ep;
+//     connect_buffers[server_id] = connect_buffer;
 
-    in_flight_regions[server_id] = std::vector<Region*>(128, nullptr); // 128 slots
-    pending_ack_ids[server_id] = 1;                                    // Matches next_id_
-    pending_freed_bytes[server_id].store(0, std::memory_order_relaxed); // Zero out counter
-  }
-}
+//     in_flight_regions[server_id] = std::vector<Region*>(128, nullptr); // 128 slots
+//     pending_ack_ids[server_id] = 1;                                    // Matches next_id_
+//     pending_freed_bytes[server_id].store(0, std::memory_order_relaxed); // Zero out counter
+//   }
+// }
 
 void RDMAManager::cleanup() {
   // based on https://github.com/animeshtrivedi/rdma-example
@@ -630,90 +731,218 @@ void RDMAManager::cleanup() {
 void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
   outgoing_queues[peer_id].enqueue(r);
 }
+// void RDMAManager::recv_loop() {
+//     std::vector<Region> recvs;
+
+//     while (this->running) {
+//       // std::cout << "Running recv loop" << std::endl;
+//         for (int i = 0; i < num_servers; i++) {
+//             if (!receivers[i]) continue;
+
+//             uint32_t freed_this_batch = 0;
+
+//             // Single argument exactly as requested!
+//             int received_messages = receivers[i]->Receive(recvs);
+
+//             if (received_messages > 0) {
+//                 for (auto& recv : recvs) {
+//                     char* msg_ptr = (char*)recv.addr;
+
+//                     // msg_ptr[0] is the Magic 0 Reset Bell
+//                     msg_opcode_t opcode = (msg_opcode_t)msg_ptr[1]; // Your Application Opcode
+//                     char* payload_ptr = msg_ptr + 2; // Pointer to the pure user data
+
+//                     // Route based on Opcode
+//                     if (opcode == msg_opcode_t::USER_DATA) {
+//                       // User Data
+//                       // std::cout << "received data " <<std::endl;
+//                       this->handler(payload_ptr, recv.length);
+//                     } else if (opcode == msg_opcode_t::FREED_BYTES) {
+
+//                         // Flow Control ACK
+//                         uint32_t freed_ack = *(uint32_t *)payload_ptr;
+//                         std::cout << "received ack, num freed " << freed_ack << std::endl;
+
+//                         // Tell our Sender that the REMOTE buffer has cleared space!
+//                         senders[i]->AckSentBytes(freed_ack);
+//                     }
+
+//                     // THE FIX:
+//                     // Footprint = 1 (Opcode) + payload length + 4 (Length) + 1 (Shared Magic Byte)
+//                     uint32_t message_footprint = 1 + recv.length + 5;
+//                     freed_this_batch += message_footprint;
+
+//                     // Recycle the pointer
+//                     receivers[i]->FreeReceive(recv);
+//                 }
+//                 recvs.clear();
+//             }
+
+//             // Lock-free handoff: Tell the Send Thread to ACK these freed bytes
+//             if (freed_this_batch > 0) {
+//                 pending_freed_bytes[i].fetch_add(freed_this_batch, std::memory_order_relaxed);
+//             }
+//         }
+//     }
+// }
+// void RDMAManager::send_loop() {
+//     std::vector<int32_t> can_send(num_servers, 120);
+
+//     // THE FIX: Track in-flight ACKs to enforce the 8-slot limit
+//     std::vector<int32_t> acks_in_flight(num_servers, 0);
+
+//     std::vector<Region*> stalled_regions(num_servers, nullptr);
+//     const uint32_t ACK_THRESHOLD = 1024;
+
+//     while (this->running) {
+//         for (int i = 0; i < num_servers; i++) {
+//             if (!senders[i]) continue;
+
+//             // =================================================================
+//             // 1. SEND PENDING FLOW-CONTROL ACKs (VIP TRAFFIC)
+//             // =================================================================
+//             uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
+
+//             if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < 8) {
+//               uint32_t bytes_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+//               uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
+
+//               if (ack_id == (uint64_t)-1) {
+//                 // Yield and put the bytes back!
+//                 pending_freed_bytes[i].fetch_add(bytes_to_ack, std::memory_order_relaxed);
+//               } else {
+//                 std::cout << "sending bytes to ack " << bytes_to_ack << std::endl;
+//                 in_flight_regions[i][ack_id % 128] = nullptr;
+//                 acks_in_flight[i]++;
+//               }
+//             }
+
+//             // =================================================================
+//             // 2. RECYCLE HARDWARE SLOTS & GARBAGE COLLECTION
+//             // =================================================================
+//             while (senders[i]->TestSend(pending_ack_ids[i])) {
+//                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
+
+//                 if (completed_region != nullptr) {
+//                     // It was a Data Message
+//                     Region::delete_addr(completed_region->addr, (void *)completed_region);
+//                     can_send[i]++;
+//                 } else {
+//                     // THE FIX: It was an ACK. Refund the ACK slot!
+//                     acks_in_flight[i]--;
+//                 }
+
+//                 pending_ack_ids[i]++;
+//             }
+
+//             // =================================================================
+//             // 3. TRANSMIT USER DATA
+//             // =================================================================
+//             while (can_send[i] > 0) {
+//                 Region* target_region = stalled_regions[i];
+
+//                 if (target_region == nullptr) {
+//                     if (!outgoing_queues[i].try_dequeue(target_region)) {
+//                         break;
+//                     }
+//                 }
+
+//                 uint64_t msg_id = senders[i]->SendDataAsync(target_region);
+
+//                 if (msg_id == (uint64_t)-1) {
+//                     stalled_regions[i] = target_region;
+//                     break;
+//                 }
+
+//                 stalled_regions[i] = nullptr;
+//                 in_flight_regions[i][msg_id % 128] = target_region;
+//                 can_send[i]--;
+//             }
+//         }
+//     }
+// }
+
 void RDMAManager::recv_loop() {
     std::vector<Region> recvs;
+    std::vector<uint32_t> incoming_credits_batch;
 
     while (this->running) {
-      // std::cout << "Running recv loop" << std::endl;
         for (int i = 0; i < num_servers; i++) {
             if (!receivers[i]) continue;
 
             uint32_t freed_this_batch = 0;
 
-            // Single argument exactly as requested!
-            int received_messages = receivers[i]->Receive(recvs);
+            // Poll for both Data AND incoming ACKs
+            int received_messages = receivers[i]->Receive(recvs, incoming_credits_batch);
 
+            // 1. Process received credits (from peers we sent data to)
+            if (!incoming_credits_batch.empty()) {
+                uint32_t total_credits = 0;
+                for (uint32_t c : incoming_credits_batch) total_credits += c;
+
+                // Add credits to sender loop via atomic
+                incoming_credits[i].fetch_add(total_credits, std::memory_order_relaxed);
+                incoming_credits_batch.clear();
+            }
+
+            // 2. Process received user data (from peers sending to us)
             if (received_messages > 0) {
                 for (auto& recv : recvs) {
-                    char* msg_ptr = (char*)recv.addr;
+                    char* payload_ptr = (char*)recv.addr;
 
-                    // msg_ptr[0] is the Magic 0 Reset Bell
-                    msg_opcode_t opcode = (msg_opcode_t)msg_ptr[1]; // Your Application Opcode
-                    char* payload_ptr = msg_ptr + 2; // Pointer to the pure user data
+                    // Route application data
+                    this->handler(payload_ptr, recv.length);
 
-                    // Route based on Opcode
-                    if (opcode == msg_opcode_t::USER_DATA) {
-                      // User Data
-                      // std::cout << "received data " <<std::endl;
-                      this->handler(payload_ptr, recv.length);
-                    } else if (opcode == msg_opcode_t::FREED_BYTES) {
+                    // Free the buffer right back to the NIC!
+                    receivers[i]->FreeReceive(payload_ptr);
 
-                        // Flow Control ACK
-                        uint32_t freed_ack = *(uint32_t *)payload_ptr;
-                        std::cout << "received ack, num freed " << freed_ack << std::endl;
-
-                        // Tell our Sender that the REMOTE buffer has cleared space!
-                        senders[i]->AckSentBytes(freed_ack);
-                    }
-
-                    // THE FIX:
-                    // Footprint = 1 (Opcode) + payload length + 4 (Length) + 1 (Shared Magic Byte)
-                    uint32_t message_footprint = 1 + recv.length + 5;
-                    freed_this_batch += message_footprint;
-
-                    // Recycle the pointer
-                    receivers[i]->FreeReceive(recv);
+                    // Instead of tracking bytes, we track the NUMBER of messages processed (credits)
+                    freed_this_batch++;
                 }
                 recvs.clear();
             }
 
-            // Lock-free handoff: Tell the Send Thread to ACK these freed bytes
+            // Tell the Send Thread to ACK these freed buffers
             if (freed_this_batch > 0) {
                 pending_freed_bytes[i].fetch_add(freed_this_batch, std::memory_order_relaxed);
             }
         }
     }
 }
+
 void RDMAManager::send_loop() {
+    // 120 Tokens. Matches the 128 queue depth, leaving 8 slots for ACKs.
     std::vector<int32_t> can_send(num_servers, 120);
-
-    // THE FIX: Track in-flight ACKs to enforce the 8-slot limit
     std::vector<int32_t> acks_in_flight(num_servers, 0);
-
     std::vector<Region*> stalled_regions(num_servers, nullptr);
-    const uint32_t ACK_THRESHOLD = 1024;
+
+    // We send an ACK every 32 messages processed
+    const uint32_t ACK_THRESHOLD = 32;
 
     while (this->running) {
         for (int i = 0; i < num_servers; i++) {
             if (!senders[i]) continue;
 
             // =================================================================
-            // 1. SEND PENDING FLOW-CONTROL ACKs (VIP TRAFFIC)
+            // 0. READ INCOMING CREDITS
+            // =================================================================
+            uint32_t new_credits = incoming_credits[i].exchange(0, std::memory_order_relaxed);
+            if (new_credits > 0) {
+                can_send[i] += new_credits;
+            }
+
+            // =================================================================
+            // 1. SEND PENDING FLOW-CONTROL ACKs
             // =================================================================
             uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
 
             if (current_freed >= ACK_THRESHOLD && acks_in_flight[i] < 8) {
-              uint32_t bytes_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
-
-              uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
+              uint32_t credits_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+              uint64_t ack_id = senders[i]->SendAckAsync(credits_to_ack);
 
               if (ack_id == (uint64_t)-1) {
-                // THE FIX: The remote buffer is full!
-                // Put the freed bytes back so we don't lose flow control, and skip the array update!
-                pending_freed_bytes[i].fetch_add(bytes_to_ack, std::memory_order_relaxed);
+                pending_freed_bytes[i].fetch_add(credits_to_ack, std::memory_order_relaxed);
               } else {
-                // Success! Record the ACK in flight.
-                std::cout << "sending bytes to ack " << bytes_to_ack << std::endl;
                 in_flight_regions[i][ack_id % 128] = nullptr;
                 acks_in_flight[i]++;
               }
@@ -726,17 +955,14 @@ void RDMAManager::send_loop() {
                 Region* completed_region = in_flight_regions[i][pending_ack_ids[i] % 128];
 
                 if (completed_region != nullptr) {
-                    // It was a Data Message
+                    // NOTE: We do NOT increment can_send here anymore!
+                    // can_send is now strictly controlled by remote incoming_credits!
                     Region::delete_addr(completed_region->addr, (void *)completed_region);
-                    can_send[i]++;
                 } else {
-                    // THE FIX: It was an ACK. Refund the ACK slot!
                     acks_in_flight[i]--;
                 }
-
                 pending_ack_ids[i]++;
             }
-
             // =================================================================
             // 3. TRANSMIT USER DATA
             // =================================================================
@@ -749,7 +975,7 @@ void RDMAManager::send_loop() {
                     }
                 }
 
-                uint64_t msg_id = senders[i]->SendDataAsync(target_region);
+                uint64_t msg_id = senders[i]->SendAsync(target_region);
 
                 if (msg_id == (uint64_t)-1) {
                     stalled_regions[i] = target_region;
@@ -763,6 +989,7 @@ void RDMAManager::send_loop() {
         }
     }
 }
+
 void RDMAManager::start_send_recv_threads() {
   running = true;
   send_thread = std::thread(&RDMAManager::send_loop, this);
