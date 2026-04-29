@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
         prealloc_region_queue.dequeue_exact(1, &r);
         r->length = msg_size;
         communicator.send_to_peer(peer_id, r);
+        total_sent.fetch_add(1, std::memory_order_relaxed);
       }
     }
   }
