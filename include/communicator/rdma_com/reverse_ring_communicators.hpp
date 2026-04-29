@@ -144,6 +144,7 @@ public:
 
     sges[2].addr = suffix_addr;
     sges[2].length = suffix_len;
+    wr.num_sge = 3;
 
     // 5. Hardware Handoff
     wr.wr_id = next_id_;
@@ -162,55 +163,37 @@ public:
     return SendAsync(msg_opcode_t::USER_DATA, user_region);
   }
 
-  uint64_t SendAckAsync(uint32_t freed_bytes) {
-    // std::cout << "sending ack " << std::endl;
+uint64_t SendAckAsync(uint32_t freed_bytes) {
     struct ibv_send_wr *bad_wr;
 
     uint32_t slot_index = next_id_ % 128;
     uint64_t slot_base_addr = local_mem + (slot_index * 16);
-    uint64_t suffix_addr = slot_base_addr + 8;
 
-    uint32_t prefix_len = sizeof(MAGIC_BYTE_T) + sizeof(msg_opcode_t);
-    uint32_t suffix_len = sizeof(LEN_BYTE_T) + sizeof(MAGIC_BYTE_T);
+    // Pack contiguously to avoid Error 4 hardware alignment fault!
+    char* ptr = (char*)slot_base_addr;
 
-    // 1. Write Prefix (Opcode 0x02)
-    *(volatile MAGIC_BYTE_T*)(void*)(slot_base_addr) = 0;
-    *(volatile msg_opcode_t*)(void*)(slot_base_addr + 1) = msg_opcode_t::FREED_BYTES;
+    *(volatile MAGIC_BYTE_T*)ptr = 0; ptr += 1;
+    *(volatile uint8_t*)ptr = (uint8_t)msg_opcode_t::FREED_BYTES; ptr += 1;
+    *(volatile uint32_t*)ptr = freed_bytes; ptr += 4;
+    *(volatile LEN_BYTE_T*)ptr = 4; ptr += 4;
+    *(volatile MAGIC_BYTE_T*)ptr = 1; ptr += 1;
 
-    // 2. Write Suffix (Length is fixed at 4 bytes for an ACK)
-    *(volatile LEN_BYTE_T*)(void*)(suffix_addr) = 4;
-    *(volatile MAGIC_BYTE_T*)(void*)(suffix_addr + sizeof(LEN_BYTE_T)) = 1;
+    uint32_t wire_length = 11;
 
-    // 3. Write ACK payload directly into the unused metadata space
-    *(volatile uint32_t*)(void*)(slot_base_addr + 2) = freed_bytes;
-
-    // 4. Setup SGEs
     sges[0].addr   = slot_base_addr;
-    sges[0].length = prefix_len;
+    sges[0].length = wire_length;
+    sges[0].lkey   = local_mem_lkey;
+    wr.num_sge = 1;
 
-    // SGE 1 points to our embedded integer
-    sges[1].addr   = slot_base_addr + 2;
-    sges[1].length = 4;
-    sges[1].lkey   = local_mem_lkey;
-
-    sges[2].addr   = suffix_addr;
-    sges[2].length = suffix_len;
-
-    // 5. Calculate total wire footprint and apply the OVERLAP HACK
-    uint32_t wire_length = prefix_len + 4 + suffix_len;
-    uint32_t ring_allocation = wire_length - sizeof(MAGIC_BYTE_T);
+    uint32_t ring_allocation = wire_length - 1; // Overlap hack!
     uint64_t rem_addr = remote_buffer->GetWriteAddr(ring_allocation);
-    if (rem_addr == 0) {
-      throw std::runtime_error("sendack rem_addr = 0");
-    }
+
+    if (rem_addr == 0) return (uint64_t)-1; // Safe yield
 
     wr.wr.rdma.remote_addr = rem_addr + 1;
     wr.wr_id = next_id_;
 
-    if(ibv_post_send(ep->qp, &wr, &bad_wr)) {
-      printf("Failed to send ACK %d\n", errno);
-      exit(1);
-    }
+    if(ibv_post_send(ep->qp, &wr, &bad_wr)) exit(1);
 
     return next_id_++;
   }
