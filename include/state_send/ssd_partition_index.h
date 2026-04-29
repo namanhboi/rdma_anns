@@ -269,10 +269,14 @@ private:
   std::atomic<int> current_search_thread_id = 0;
 
 private:
+  // RDMA stuff
+  bool use_rdma = false;
+
+private:
   /*
     Distributedann stuff
    */
-  bool is_orchestration_server; 
+  bool is_orchestration_server;
 
   /*
     returns 3 values, FINISHED, FRONTIER_OFF_SERVER (issue rpc to scoring
@@ -311,7 +315,7 @@ private:
     std::atomic<uint64_t> number_concurrent_queries = 0;
 
     std::atomic<uint64_t> number_own_states = 0;
-    std::atomic<uint64_t> number_foreign_states = 0;    
+    std::atomic<uint64_t> number_foreign_states = 0;
     // main loop poll on this queue to get search result which contains pointer
     // to io request which contains pointer to the state.
     // Use this state pointer to add the results back into the state
@@ -373,14 +377,14 @@ handle the enable loc bullshit
     std::atomic<uint64_t> number_concurrent_queries = 0;
 
     std::atomic<uint64_t> number_own_states = 0;
-    std::atomic<uint64_t> number_foreign_states = 0;    
+    std::atomic<uint64_t> number_foreign_states = 0;
     void process_state(SearchExecutionState s,
                        SearchState<T, TagT> *state);
     void main_loop_batch();
 
     void add_states_to_batch(SearchState<T, TagT> **states, size_t num_states);
-    
-    
+
+
   public:
     ScoringThread(SSDPartitionIndex<T, TagT> *parent, uint64_t thread_id);
     void start();
@@ -468,19 +472,19 @@ public:
      is_local = true and num_parittion = 1 is fine, this just means that we send
      query and receive results via tcp.
    */
-  SSDPartitionIndex(pipeann::Metric m, uint8_t partition_id,
-                    uint32_t num_search_threads,
-                    uint32_t num_orchestration_threads,
-                    uint32_t num_scoring_threads,
-                    std::shared_ptr<AlignedFileReader> &fileReader,
-                    std::unique_ptr<P2PCommunicator> &communicator,
-                    DistributedSearchMode dist_search_mode,
-                    SearchThreadMode search_thread_mode,
+  SSDPartitionIndex(
+      pipeann::Metric m, uint8_t partition_id, uint32_t num_search_threads,
+      uint32_t num_orchestration_threads, uint32_t num_scoring_threads,
+      std::shared_ptr<AlignedFileReader> &fileReader,
+      std::unique_ptr<P2PCommunicator> &communicator,
+      DistributedSearchMode dist_search_mode,
+      SearchThreadMode search_thread_mode,
       pipeann::IndexBuildParameters *parameters = nullptr,
       uint64_t max_queries_balance = 8, bool use_batching = false,
       uint64_t max_batch_size = 0, bool use_counter_thread = false,
       std::string counter_csv = "", uint64_t counter_sleep_ms = 500,
-		    bool use_logging = false, const std::string &log_file = "", bool use_mem_index = false);
+      bool use_logging = false, const std::string &log_file = "",
+                    bool use_mem_index = false, bool rdma = false);
   ~SSDPartitionIndex();
 
   // returns region of `node_buf` containing [COORD(T)]
@@ -612,7 +616,7 @@ private:
 
   /*used by statesend + client gather and distributedann orchestration server*/
   void load_partition_assignment(const std::string &partition_assignment_file);
-  
+
 
 
 private:
@@ -677,16 +681,16 @@ private:
   // assumed max thread, only the first nthreads are initialized.
 
   bool load_flag = false;   // already loaded.
-  
+
   // each of the variables below correspond to a load function
   bool enable_mem_index = false;
   bool enable_disk_index = false;
-  bool enable_tags = false; 
-  bool enable_locs = false; 
+  bool enable_tags = false;
+  bool enable_locs = false;
   bool enable_pq = false;
   bool enable_max_norm = false;
   bool enable_partition_assignment=false;
-  
+
 
   std::atomic<uint64_t> cur_id, cur_loc;
   static constexpr uint32_t kMaxElemInAPage = 16;

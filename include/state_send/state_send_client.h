@@ -76,7 +76,7 @@ private:
 private:
   class ResultReceiveThread {
   private:
-    
+
     std::thread real_thread;
     uint64_t my_thread_id;
 
@@ -88,7 +88,7 @@ private:
 
     // used by STATE_SEND_CLIENT_GATHER
     void process_state_send_client_gather_result(search_result_t* res);
-    
+
     void main_loop();
     std::atomic<bool> running{false};
 
@@ -114,18 +114,20 @@ private:
   size_t num_partitions;
   size_t dim;
   T *partition_medoids;
-  pipeann::Distance<T> *distance_fn; 
-  
+  pipeann::Distance<T> *distance_fn;
+
 public:
   StateSendClient(const uint64_t id,
                   const std::vector<std::string> &address_list,
                   int num_worker_threads,
                   DistributedSearchMode dist_search_mode, uint64_t dim,
-                  uint32_t top_n,
-                  const std::string &medoid_file);
+                  uint32_t top_n, const std::string &medoid_file,
+                  bool use_rdma = false);
   PreallocatedQueue<search_result_t> prealloc_result_queue;
   PreallocatedQueue<Region> prealloc_region_queue;
-  
+
+  bool use_rdma;
+
   void start();
 
   uint64_t search(const T *query_emb, const uint64_t k_search, const uint64_t mem_l, const uint64_t mem_k,
@@ -139,7 +141,7 @@ public:
 
   std::chrono::steady_clock::time_point
   get_query_result_time(const uint64_t query_id);
-  
+
 
   /*
     logs the time received and also save the result for comparison later
@@ -156,5 +158,3 @@ public:
   void shutdown();
 
 };
-
-

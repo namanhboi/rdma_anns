@@ -1,4 +1,5 @@
 #include "state_send_client.h"
+#include "communicator.h"
 #include "disk_utils.h"
 #include "distance.h"
 #include "neighbor.h"
@@ -185,7 +186,7 @@ StateSendClient<T>::search(const T *query_emb, const uint64_t k_search,
   query->query_id = query_id;
   query->client_peer_id = my_id;
   query->mem_l = mem_l;
-  query->mem_k = mem_k;  
+  query->mem_k = mem_k;
   query->l_search = l_search;
   query->k_search = k_search;
   query->beam_width = beam_width;
@@ -220,12 +221,16 @@ template <typename T>
 StateSendClient<T>::StateSendClient(
     const uint64_t id, const std::vector<std::string> &address_list,
     int num_worker_threads, DistributedSearchMode dist_search_mode,
-    uint64_t dim, uint32_t top_n, const std::string &medoid_file)
+    uint64_t dim, uint32_t top_n, const std::string &medoid_file, bool use_rdma)
     : my_id(id), dim(dim), dist_search_mode(dist_search_mode),
-      prealloc_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset),
+      use_rdma(use_rdma),
+      prealloc_region_queue((use_rdma) ? Region::MAX_PRE_ALLOC_ELEMENTS_RDMA
+                                       : Region::MAX_PRE_ALLOC_ELEMENTS,
+                            Region::reset),
       prealloc_result_queue(search_result_t::MAX_PRE_ALLOC_ELEMENTS * 3,
                             search_result_t::reset) {
-  communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
+  // communicator = std::make_unique<ZMQP2PCommunicator>(my_id, address_list);
+  communicator = P2PCommunicator::create_communicator(use_rdma, my_id, address_list);
   // std::cout << "Done with constructor for statesendclient" << std::endl;
   other_peer_ids = communicator->get_other_peer_ids();
   // if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
@@ -255,8 +260,19 @@ StateSendClient<T>::StateSendClient(
   }
   // }
 
-  prealloc_region_queue.allocate_and_assign_additional_block(
-      Region::MAX_BYTES_REGION, Region::assign_addr);
+  if (!use_rdma) {
+    prealloc_region_queue.allocate_and_assign_additional_block(
+                                                               Region::MAX_BYTES_REGION, Region::assign_addr);
+  } else {
+    std::pair<char *, uint32_t> ptr_lkey =
+        communicator->get_preallocated_region_ptr_lkey(
+                                                       Region::MAX_BYTES_REGION, Region::MAX_PRE_ALLOC_ELEMENTS_RDMA);
+    char *region_addr = ptr_lkey.first;
+    uint32_t lkey = ptr_lkey.second;
+
+    prealloc_region_queue.assign_additional_block_mr(
+                                                     region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
+  }
 
   result_thread = std::make_unique<ResultReceiveThread>(this);
 }

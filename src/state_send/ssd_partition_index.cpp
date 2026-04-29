@@ -23,7 +23,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
     pipeann::IndexBuildParameters *params, uint64_t num_queries_balance,
     bool use_batching, uint64_t max_batch_size, bool use_counter_thread,
     std::string counter_csv, uint64_t counter_sleep_ms, bool use_logging,
-    const std::string &log_file, bool enable_mem_index)
+    const std::string &log_file, bool enable_mem_index, bool rdma)
     : reader(fileReader), communicator(communicator),
       client_state_prod_token(global_state_queue),
       server_state_prod_token(global_state_queue),
@@ -33,7 +33,7 @@ SSDPartitionIndex<T, TagT>::SSDPartitionIndex(
       pq_table(m), metric(m), num_search_threads(num_search_threads),
       num_orchestration_threads(num_orchestration_threads),
       num_scoring_threads(num_scoring_threads),
-      enable_mem_index(enable_mem_index) {
+      enable_mem_index(enable_mem_index), use_rdma(rdma) {
   other_peer_ids = communicator->get_other_peer_ids();
 
   if (dist_search_mode == DistributedSearchMode::DISTRIBUTED_ANN) {
@@ -913,9 +913,24 @@ template <typename T, typename TagT>
 SSDPartitionIndex<T, TagT>::BatchingThread::BatchingThread(
     SSDPartitionIndex<T, TagT> *parent)
     : parent(parent),
-      preallocated_region_queue(Region::MAX_PRE_ALLOC_ELEMENTS, Region::reset) {
-  preallocated_region_queue.allocate_and_assign_additional_block(
-      Region::MAX_BYTES_REGION, Region::assign_addr);
+      preallocated_region_queue((parent->use_rdma)
+                                    ? Region::MAX_PRE_ALLOC_ELEMENTS_RDMA
+                                    : Region::MAX_PRE_ALLOC_ELEMENTS,
+                                Region::reset) {
+  if (!parent->use_rdma) {
+    preallocated_region_queue.allocate_and_assign_additional_block(
+                                                                   Region::MAX_BYTES_REGION, Region::assign_addr);
+  } else {
+    std::pair<char *, uint32_t> ptr_lkey =
+        parent->communicator->get_preallocated_region_ptr_lkey(
+                                                               Region::MAX_BYTES_REGION, Region::MAX_PRE_ALLOC_ELEMENTS_RDMA);
+    char *region_addr = ptr_lkey.first;
+    uint32_t lkey = ptr_lkey.second;
+
+    preallocated_region_queue.assign_additional_block_mr(
+                                                         region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
+
+  }
 }
 
 template <typename T, typename TagT>

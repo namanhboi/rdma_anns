@@ -207,11 +207,12 @@ int main(int argc, char **argv) {
         }
       });
 
-  PreallocatedQueue<Region> prealloc_region_queue(12000, Region::reset);
+  PreallocatedQueue<Region> prealloc_region_queue(
+                                                  Region::MAX_PRE_ALLOC_ELEMENTS_RDMA, Region::reset);
 
   std::pair<char *, uint32_t> ptr_lkey =
-      communicator->get_preallocated_region_ptr_lkey(Region::MAX_BYTES_REGION,
-                                                    12000);
+      communicator->get_preallocated_region_ptr_lkey(
+                                                     Region::MAX_BYTES_REGION, Region::MAX_PRE_ALLOC_ELEMENTS_RDMA);
 
   char *region_addr = ptr_lkey.first;
   uint32_t lkey = ptr_lkey.second;

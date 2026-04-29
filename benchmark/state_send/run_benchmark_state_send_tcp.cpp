@@ -61,13 +61,13 @@ template <typename T>
 int search_disk_index(uint64_t num_client_thread, uint64_t dim,
                       std::string query_bin, std::string truthset_bin,
                       uint32_t num_queries_to_send, std::vector<uint64_t> &Lvec,
-                      uint64_t beam_width, uint64_t K, uint64_t mem_L, uint64_t mem_k, 
+                      uint64_t beam_width, uint64_t K, uint64_t mem_L, uint64_t mem_k,
                       bool record_stats, bool write_query_csv,
                       std::string dist_search_mode_str, uint64_t client_peer_id,
                       uint64_t send_rate_per_second,
                       const std::vector<std::string> &address_list,
                       const std::string &result_output_folder, uint32_t top_n,
-                      const std::string &medoid_file) {
+                      const std::string &medoid_file, bool use_rdma) {
 
   uint64_t microsecond_sleep_time = 0;
   if (send_rate_per_second != 0) {
@@ -114,7 +114,8 @@ int search_disk_index(uint64_t num_client_thread, uint64_t dim,
   std::vector<std::vector<float>> query_result_dists(Lvec.size());
 
   StateSendClient<T> client(client_peer_id, address_list, num_client_thread,
-                            dist_search_mode, dim, top_n, medoid_file);
+                            dist_search_mode, dim, top_n, medoid_file,
+                            use_rdma);
   // client.start_result_thread();
   // client.start_client_threads();
   client.start();
@@ -358,6 +359,7 @@ int main(int argc, char **argv) {
   std::vector<std::string> address_list;
   std::string result_output_folder;
   uint32_t top_n;
+  bool use_rdma;
 
   // required for SCATTER_GATHER_TOP_N
   std::string medoid_file;
@@ -378,10 +380,9 @@ int main(int argc, char **argv) {
                   "Beam width")("K", po::value<uint64_t>(&K)->required(),
                                 "K value")(
       "mem_L", po::value<uint64_t>(&mem_L)->required(),
-      "Memory L")(
-      "mem_k", po::value<uint64_t>(&mem_k)->required(),
-      "Memory K")("record_stats", po::value<bool>(&record_stats)->required(),
-                  "Record statistics flag")(
+      "Memory L")("mem_k", po::value<uint64_t>(&mem_k)->required(), "Memory K")(
+      "record_stats", po::value<bool>(&record_stats)->required(),
+      "Record statistics flag")(
       "dist_search_mode",
       po::value<std::string>(&dist_search_mode_str)->required(),
       "Distance search mode")("client_peer_id",
@@ -404,7 +405,10 @@ int main(int argc, char **argv) {
       po::value<uint32_t>(&top_n)->default_value(
           std::numeric_limits<uint32_t>::max()),
       "top_n for scatter_gather_top_n")("medoid_file",
-                                        po::value<std::string>(&medoid_file));
+                                        po::value<std::string>(&medoid_file))(
+      "use_rdma", po::value<bool>(&use_rdma)->default_value(false),
+                                                                              "whether to use rdma or not");
+
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -423,22 +427,22 @@ int main(int argc, char **argv) {
   if (data_type == "uint8") {
     search_disk_index<uint8_t>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-			       Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
+        Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, top_n, medoid_file);
+                               address_list, result_output_folder, top_n, medoid_file, use_rdma);
   } else if (data_type == "int8") {
     search_disk_index<int8_t>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-			      Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
+        Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, top_n, medoid_file);
+                              address_list, result_output_folder, top_n, medoid_file, use_rdma);
 
   } else if (data_type == "float") {
     search_disk_index<float>(
         num_client_thread, dim, query_bin, truthset_bin, num_queries_to_send,
-			     Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
+        Lvec, beam_width, K, mem_L, mem_k, record_stats, write_query_csv,
         dist_search_mode_str, client_peer_id, send_rate_per_second,
-        address_list, result_output_folder, top_n, medoid_file);
+                             address_list, result_output_folder, top_n, medoid_file, use_rdma);
   } else {
     throw std::invalid_argument(
         "data type in json file is not uint8, int8, float " + data_type);
