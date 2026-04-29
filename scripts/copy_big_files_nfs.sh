@@ -18,7 +18,7 @@ DEST_DIR="/mydata/local/anngraphs/bigann/100M/"
 SSH_OPT="-o StrictHostKeyChecking=no"
 
 # The nodes in exact order of the daisy chain
-NODES=("nfs" "node1" "node2" "node3" "node4")
+NODES=("nfs" "node1" "node2" "node3" "node4" "node5" "node6" "node7" "node8" "node9")
 
 # --- Execution ---
 
@@ -42,11 +42,11 @@ echo ">>> Phase 0 Complete. Starting Daisy Chain..."
 for i in {1..4}; do
     PREV_NODE="${NODES[$((i-1))]}"
     CURR_NODE="${NODES[$i]}"
-    
+
     echo "===================================================="
     echo ">>> Phase $i: $CURR_NODE pulling from $PREV_NODE"
     echo "===================================================="
-    
+
     for FILE in "${FILES[@]}"; do
         # We send the 'if exists' logic directly to the remote node via SSH
         ssh $SSH_OPT namanh@$CURR_NODE "
