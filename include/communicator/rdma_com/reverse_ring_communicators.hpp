@@ -225,7 +225,7 @@ uint64_t SendAckAsync(uint32_t freed_bytes) {
     }
 
     return next_id_++;
-}
+  }
   bool AckSentBytes(uint32_t bytes) { return remote_buffer->FreeBytes(bytes); }
 
   void WaitSend(uint64_t id) {

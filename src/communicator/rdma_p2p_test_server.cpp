@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
         r->length = msg_size;
         communicator.send_to_peer(peer_id, r);
         // total_sent.fetch_add(1, std::memory_order_relaxed);
-     }
+      }
     }
   }
 
