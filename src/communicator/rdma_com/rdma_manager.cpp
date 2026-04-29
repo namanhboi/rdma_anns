@@ -645,8 +645,8 @@ void RDMAManager::cleanup() {
     struct rdma_cm_id *client_cm_id = eps[i]->id;
 
     struct rdma_event_channel *temp_channel = client_cm_id->channel;
-    struct ibv_cq *client_send_cq = eps[i]->qp->send_cq;
-    struct ibv_cq *client_recv_cq = eps[i]->qp->recv_cq;
+    // struct ibv_cq *client_send_cq = eps[i]->qp->send_cq;
+    // struct ibv_cq *client_recv_cq = eps[i]->qp->recv_cq;
 
     // Disconnect safely before destroying
     rdma_disconnect(client_cm_id);
@@ -660,15 +660,15 @@ void RDMAManager::cleanup() {
       rdma_destroy_event_channel(temp_channel);
     }
 
-    ret = ibv_destroy_cq(client_send_cq);
-    if (ret) {
-      printf("Failed to destroy client send cq cleanly, %d \n", -errno);
-    }
+    // ret = ibv_destroy_cq(client_send_cq);
+    // if (ret) {
+    //   printf("Failed to destroy client send cq cleanly, %d \n", -errno);
+    // }
 
-    ret = ibv_destroy_cq(client_recv_cq);
-    if (ret) {
-      printf("Failed to destroy client rev cq cleanly, %d \n", -errno);
-    }
+    // ret = ibv_destroy_cq(client_recv_cq);
+    // if (ret) {
+    //   printf("Failed to destroy client rev cq cleanly, %d \n", -errno);
+    // }
 
     free(connect_buffers[i]);
 
