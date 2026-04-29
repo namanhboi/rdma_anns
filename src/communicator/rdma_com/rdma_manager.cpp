@@ -167,18 +167,26 @@ void RDMAManager::receive_connections(int starting_client_id, int num_clients,
         get_client_ep_and_info(attr, &info, 16, true);
     uint64_t client_id = connect_buffer->server_id;
 
-    size_t buffer_size = 2048;
+    size_t buffer_size = Region::MAX_BYTES_REGION;
     size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
-    char *recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+
+    // aligned_alloc requires the allocation size to be a multiple of alignment.
+    size_t alloc_size = ((local_recv_size + 4095) / 4096) * 4096;
+
+    char *recv_mem = (char *)aligned_alloc(4096, alloc_size);
     if (!recv_mem) {
       perror("aligned_alloc recv_mem");
       exit(1);
     }
-    memset(recv_mem, 0, local_recv_size);
+
+    memset(recv_mem, 0, alloc_size);
 
     struct ibv_mr *recv_mr =
-        ibv_reg_mr(this->getPD(), recv_mem, local_recv_size,
-                   IBV_ACCESS_LOCAL_WRITE);
+      ibv_reg_mr(this->getPD(),
+                 recv_mem,
+                 alloc_size,
+                 IBV_ACCESS_LOCAL_WRITE);
+
     if (!recv_mr) {
       perror("ibv_reg_mr recv_mr");
       free(recv_mem);
@@ -230,29 +238,31 @@ void RDMAManager::send_connections(int starting_server_id,
                                16,
                                true);
 
-    size_t buffer_size = 2048;
+    size_t buffer_size = Region::MAX_BYTES_REGION;
     size_t local_recv_size = buffer_size * MAX_SEND_RECV_WR;
 
-    char *recv_mem = (char *)aligned_alloc(4096, local_recv_size);
+    // aligned_alloc requires the allocation size to be a multiple of alignment.
+    size_t alloc_size = ((local_recv_size + 4095) / 4096) * 4096;
+
+    char *recv_mem = (char *)aligned_alloc(4096, alloc_size);
     if (!recv_mem) {
       perror("aligned_alloc recv_mem");
       exit(1);
     }
 
-    memset(recv_mem, 0, local_recv_size);
+    memset(recv_mem, 0, alloc_size);
 
     struct ibv_mr *recv_mr =
-        ibv_reg_mr(this->getPD(),
-                   recv_mem,
-                   local_recv_size,
-                   IBV_ACCESS_LOCAL_WRITE);
+      ibv_reg_mr(this->getPD(),
+                 recv_mem,
+                 alloc_size,
+                 IBV_ACCESS_LOCAL_WRITE);
 
     if (!recv_mr) {
       perror("ibv_reg_mr recv_mr");
       free(recv_mem);
       exit(1);
     }
-
     local_mrs.push_back(recv_mr);
     local_mems.push_back(recv_mem);
 
