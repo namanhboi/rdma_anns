@@ -196,7 +196,8 @@ public:
 
     sges[2].addr   = suffix_addr;
     sges[2].length = suffix_len;
-    sges[0].lkey   = local_mem_lkey; // <--- 1. ADD THIS MISSING KEY
+    sges[2].lkey = local_mem_lkey;
+    wr.num_sge = 3;
 
     // 5. Calculate total wire footprint and apply the OVERLAP HACK
     uint32_t wire_length = prefix_len + 4 + suffix_len;
