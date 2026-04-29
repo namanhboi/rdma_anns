@@ -64,31 +64,33 @@ int main(int argc, char **argv) {
                                                    region_addr, lkey, Region::MAX_BYTES_REGION, Region::assign_addr);
 
   communicator.start_recv_thread();
-  // int max_in_flight = 128; // Do not allow the app to blast more than 512 messages at once!
-  // std::atomic<int> total_sent{0};
+
   for (size_t i = 0; i < num_msg; i++) {
     for (uint64_t peer_id = 0; peer_id < communicator.get_num_peers(); peer_id++) {
       if (peer_id != communicator.get_my_id()) {
-        // char * arr = new char[msg_size];
-        // while ((total_sent.load(std::memory_order_relaxed) -
-                // num_received.load(std::memory_order_relaxed)) >= max_in_flight) {
-          // std::this_thread::yield();
-        // }
         Region *r;
         prealloc_region_queue.dequeue_exact(1, &r);
         r->length = msg_size;
         communicator.send_to_peer(peer_id, r);
-        // total_sent.fetch_add(1, std::memory_order_relaxed);
       }
     }
   }
 
-  std::string shutdown;
+  uint64_t expected_received =
+    static_cast<uint64_t>(num_msg) *
+    static_cast<uint64_t>(communicator.get_num_peers() - 1);
 
+  while (num_received.load(std::memory_order_relaxed) < expected_received) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  std::cout << "All expected messages received: "
+  << num_received.load(std::memory_order_relaxed)
+  << std::endl;
+
+  std::string shutdown;
   while (shutdown != "q") {
     std::cin >> shutdown;
   }
-
-
   return 0;
 }
