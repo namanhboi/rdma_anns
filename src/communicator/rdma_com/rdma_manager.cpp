@@ -705,9 +705,11 @@ void RDMAManager::send_loop() {
             uint32_t current_freed = pending_freed_bytes[i].load(std::memory_order_relaxed);
 
             if (current_freed >= ACK_THRESHOLD) {
-                uint32_t bytes_to_ack = pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
-                uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
-                in_flight_regions[i][ack_id % 128] = nullptr;
+              uint32_t bytes_to_ack =
+                pending_freed_bytes[i].exchange(0, std::memory_order_relaxed);
+              std::cout << "sending bytes to ack " << bytes_to_ack;
+              uint64_t ack_id = senders[i]->SendAckAsync(bytes_to_ack);
+              in_flight_regions[i][ack_id % 128] = nullptr;
             }
 
             // =================================================================
