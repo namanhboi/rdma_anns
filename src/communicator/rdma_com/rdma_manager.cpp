@@ -3,6 +3,16 @@
 #include "rdma_com/reverse_ring_communicators.hpp"
 #include <infiniband/verbs.h>
 
+static void drain_cq(struct ibv_cq *cq) {
+  if (!cq) return;
+
+  struct ibv_wc wc[32];
+
+  while (true) {
+    int n = ibv_poll_cq(cq, 32, wc);
+    if (n <= 0) break;
+  }
+}
 
 inline uint32_t local_log2(const uint32_t x) {
   uint32_t y;
@@ -697,61 +707,72 @@ RDMAManager::get_server_ep_and_info(int server_id, struct ibv_qp_init_attr attr,
 void RDMAManager::cleanup() {
   int ret = -1;
 
-  // =================================================================
-  // 1. DISCONNECT PEERS, DESTROY QPs, THEN DESTROY THEIR PRIVATE CQs
-  // =================================================================
+  // Software wrappers should not outlive the QPs/CQs they point at.
+  // Their destructors are currently empty, but clearing them first avoids
+  // accidental future use-after-free.
+  receivers.clear();
+  senders.clear();
+
   for (int i = 0; i < num_servers; i++) {
     if (eps[i] == nullptr) continue;
 
-    struct rdma_cm_id *client_cm_id = eps[i]->id;
-    struct rdma_event_channel *temp_channel = client_cm_id->channel;
+    struct rdma_cm_id *cm_id = eps[i]->id;
+    struct rdma_event_channel *temp_channel = cm_id->channel;
 
-    // Save CQ pointers before destroying the QP. After the per-peer-CQ fix,
-    // each QP owns private CQs created by prepare_qp().
-    struct ibv_cq *client_send_cq = eps[i]->qp ? eps[i]->qp->send_cq : nullptr;
-    struct ibv_cq *client_recv_cq = eps[i]->qp ? eps[i]->qp->recv_cq : nullptr;
+    struct ibv_qp *qp = eps[i]->qp;
+    struct ibv_cq *send_cq = qp ? qp->send_cq : nullptr;
+    struct ibv_cq *recv_cq = qp ? qp->recv_cq : nullptr;
 
-    rdma_disconnect(client_cm_id);
+    // Start disconnect. This is asynchronous; do not rely on it to have
+    // fully completed before local object teardown.
+    rdma_disconnect(cm_id);
 
-    if (client_cm_id->qp) {
-      rdma_destroy_qp(client_cm_id);
+    // Destroying the QP may generate flushed completions into the CQs.
+    if (cm_id->qp) {
+      rdma_destroy_qp(cm_id);
     }
 
-    ret = rdma_destroy_id(client_cm_id);
+    // Drain any normal or flushed completions before destroying CQs.
+    drain_cq(send_cq);
+    if (recv_cq != send_cq) {
+      drain_cq(recv_cq);
+    }
+
+    if (send_cq) {
+      ret = ibv_destroy_cq(send_cq);
+      if (ret) {
+        printf("WARNING: failed to destroy send CQ for peer %d: errno=%d\n",
+               i, errno);
+      }
+    }
+
+    if (recv_cq && recv_cq != send_cq) {
+      ret = ibv_destroy_cq(recv_cq);
+      if (ret) {
+        printf("WARNING: failed to destroy recv CQ for peer %d: errno=%d\n",
+               i, errno);
+      }
+    }
+
+    ret = rdma_destroy_id(cm_id);
     if (ret) {
-      printf("Failed to destroy client id cleanly, %d \n", -errno);
+      printf("Failed to destroy client id cleanly for peer %d, errno=%d\n",
+             i, errno);
     }
 
-    if (client_send_cq) {
-      ret = ibv_destroy_cq(client_send_cq);
-      if (ret) {
-        printf("Failed to destroy client send cq cleanly, %d \n", -errno);
-      }
-    }
-
-    if (client_recv_cq && client_recv_cq != client_send_cq) {
-      ret = ibv_destroy_cq(client_recv_cq);
-      if (ret) {
-        printf("Failed to destroy client recv cq cleanly, %d \n", -errno);
-      }
-    }
-
-    // Passive-side IDs use the manager's shared listening event channel.
-    // Active-side IDs got one temporary event channel per outgoing connection.
+    // Only active outgoing connections created their own event channel.
+    // Passive accepted connections share the manager listener channel.
     if (i > my_id && temp_channel) {
       rdma_destroy_event_channel(temp_channel);
     }
 
     free(connect_buffers[i]);
+    connect_buffers[i] = nullptr;
+
     delete eps[i];
     eps[i] = nullptr;
   }
-  receivers.clear();
-  senders.clear();
 
-  // =================================================================
-  // 2. DEREGISTER MEMORY REGIONS
-  // =================================================================
   for (size_t i = 0; i < local_mrs.size(); i++) {
     if (local_mrs[i]) {
       ibv_dereg_mr(local_mrs[i]);
@@ -763,9 +784,6 @@ void RDMAManager::cleanup() {
   local_mrs.clear();
   local_mems.clear();
 
-  // =================================================================
-  // 3. TEARDOWN GLOBAL LISTENING INFRASTRUCTURE
-  // =================================================================
   if (this->_listen_id) {
     rdma_destroy_id(this->_listen_id);
     this->_listen_id = nullptr;
@@ -791,7 +809,6 @@ void RDMAManager::cleanup() {
     this->_ec = nullptr;
   }
 }
-
 void RDMAManager::enqueue_region_to_send(uint64_t peer_id, Region *r) {
   outgoing_queues[peer_id].enqueue(r);
 }
