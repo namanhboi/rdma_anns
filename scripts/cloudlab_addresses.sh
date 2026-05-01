@@ -3,12 +3,17 @@ SOURCED=0
 
 
 ALL_CLOUDLAB_HOSTS=(
-    "namanh@hp199.utah.cloudlab.us"
-    "namanh@hp177.utah.cloudlab.us"
-    "namanh@hp171.utah.cloudlab.us"
-    "namanh@hp163.utah.cloudlab.us"
-    "namanh@hp196.utah.cloudlab.us"
-    "namanh@hp188.utah.cloudlab.us"
+    "namanh@amd228.utah.cloudlab.us"
+    "namanh@amd222.utah.cloudlab.us"
+    "namanh@amd234.utah.cloudlab.us"
+    "namanh@amd217.utah.cloudlab.us"
+    "namanh@amd230.utah.cloudlab.us"
+    "namanh@amd227.utah.cloudlab.us"
+    "namanh@amd239.utah.cloudlab.us"
+    "namanh@amd236.utah.cloudlab.us"
+    "namanh@amd241.utah.cloudlab.us"
+    "namanh@amd207.utah.cloudlab.us"
+    "namanh@amd213.utah.cloudlab.us"
 )
 
 if [[ $SOURCED == 0 ]]; then
@@ -16,7 +21,7 @@ if [[ $SOURCED == 0 ]]; then
     for CLOUDLAB_HOST in ${ALL_CLOUDLAB_HOSTS[@]}; do
 	echo "$CLOUDLAB_HOST"
     done
-    
+
 fi
 
 export ALL_CLOUDLAB_HOSTS
