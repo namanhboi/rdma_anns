@@ -2,13 +2,13 @@
 
 # --- Configuration ---
 FILES=(
-    "base.1B.u8bin"
-    "pipeann_1B_pq_compressed.bin"
-    "pipeann_1B_pq_pivots.bin"
-    "vamana_64_128_1.2"
-    "pipeann_1B_mem.index"
-    "pipeann_1B_mem.index.data"
-    "pipeann_1B_mem.index.tags"
+    "base.1B.u8bin.crop_nb_100000000"
+    "pipeann_100M_pq_compressed.bin"
+    "pipeann_100M_pq_pivots.bin"
+    "pipeann_100M_graph"
+    "pipeann_100M_mem.index"
+    "pipeann_100M_mem.index.data"
+    "pipeann_100M_mem.index.tags"
 )
 
 SOURCE_DIR="/nfs/anngraphs/bigann/1B/"
