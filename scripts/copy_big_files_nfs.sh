@@ -1,18 +1,18 @@
-#!/bin/bash
+#!/usr/bin/bash
 
 # --- Configuration ---
 FILES=(
-    "base.1B.u8bin.crop_nb_100000000"
-    "pipeann_100M_pq_compressed.bin"
-    "pipeann_100M_pq_pivots.bin"
-    "pipeann_100M_graph"
-    "pipeann_100M_mem.index"
-    "pipeann_100M_mem.index.data"
-    "pipeann_100M_mem.index.tags"
+    "base.1B.u8bin"
+    "pipeann_1B_pq_compressed.bin"
+    "pipeann_1B_pq_pivots.bin"
+    "pipeann_1B_graph"
+    "pipeann_1B_mem.index"
+    "pipeann_1B_mem.index.data"
+    "pipeann_1B_mem.index.tags"
 )
 
-SOURCE_DIR="/nfs/anngraphs/bigann/100M/"
-DEST_DIR="/mydata/local/anngraphs/bigann/100M/"
+SOURCE_DIR="/nfs/anngraphs/bigann/1B/"
+DEST_DIR="/mydata/local/anngraphs/bigann/1B/"
 
 # Bypasses the "Host key verification failed" prompts
 SSH_OPT="-o StrictHostKeyChecking=no"
